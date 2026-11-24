@@ -2,7 +2,7 @@ from email.message import EmailMessage
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, SimpleTestCase
+from django.test import Client, TestCase
 
 from mailimport.parser import MAX_EML_BYTES
 
@@ -14,7 +14,7 @@ def eml_file(html, name="beispiel.eml"):
     return SimpleUploadedFile(name, message.as_bytes(), content_type="message/rfc822")
 
 
-class MailPreviewTests(SimpleTestCase):
+class MailPreviewTests(TestCase):
     def setUp(self):
         self.client = Client(enforce_csrf_checks=True)
 

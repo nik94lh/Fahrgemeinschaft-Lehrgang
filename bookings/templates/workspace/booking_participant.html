@@ -1,0 +1,24 @@
+{% extends "workspace/base.html" %}
+{% block title %}Teilnehmer zur Buchung{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'bookings' %}">‹ Zurück zu den Buchungen</a></p>
+    <h1>Teilnehmer zur Buchung</h1>
+    <p class="intro">{{ seat.session.course.name }} · {% include "workspace/session_period.html" with session=seat.session only %}</p>
+    <section class="panel" aria-label="Teilnehmerprofil">
+        <dl class="details">
+            <div><dt>Name</dt><dd>{{ seat.participant.name }}</dd></div>
+            <div><dt>E-Mail-Adresse</dt><dd>{{ seat.participant.email|default:"Noch nicht hinterlegt" }}</dd></div>
+            <div><dt>Verknüpfte Buchungen</dt><dd>{{ booking_count }}</dd></div>
+        </dl>
+        {% if form %}
+            <form method="post" class="participant-contact-form">
+                {% csrf_token %}
+                {{ form.participant_id }}
+                {{ form.participant_id.errors }}
+                <p>{{ form.email.label_tag }} {{ form.email }} {{ form.email.errors }}</p>
+                <p class="note">Gibt es bereits ein Profil mit diesem Namen und dieser Adresse, kann BMS diese Buchung damit verknüpfen.</p>
+                <button type="submit">Adresse speichern</button>
+            </form>
+        {% endif %}
+    </section>
+{% endblock %}

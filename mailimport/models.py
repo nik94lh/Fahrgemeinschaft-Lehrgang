@@ -20,3 +20,13 @@ class MailboxCursor(models.Model):
     last_uid = models.PositiveBigIntegerField(default=0)
     last_sync_at = models.DateTimeField(null=True, blank=True)
     last_sync_ok = models.BooleanField(null=True, blank=True)
+
+
+class ParticipantRecognitionConfiguration(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    functional_addresses = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=models.Q(id=1), name="single_participant_recognition_configuration")
+        ]

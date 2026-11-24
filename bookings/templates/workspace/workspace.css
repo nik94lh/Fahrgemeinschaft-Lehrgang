@@ -42,3 +42,5 @@ td { vertical-align: top; }
 .review-explanation { margin-block: 0 1rem; }
 .review-form select { max-width: 100%; }
 .overview-courses { margin-block-end: 1rem; }
+.participant-contact-form { max-width: 32rem; margin-block-start: 1rem; }
+.participant-contact-form .note { margin-block-start: .5rem; }

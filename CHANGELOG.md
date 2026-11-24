@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.5.0
+
+- Der Import kann die Teilnehmeradresse aus dem ursprünglichen An-Feld einer Lehrgangsmail übernehmen. CC und hinterlegte Funktionsadressen bleiben dabei unberücksichtigt.
+- Weitere Buchungen mit derselben normalisierten E-Mail-Adresse und übereinstimmendem Namen verwenden dasselbe Teilnehmerprofil. Konflikte erscheinen unter **Klärung**.
+- Unter **Buchungen** lässt sich die Teilnehmeradresse nach Prüfung manuell ergänzen. Frühere Importe werden nicht pauschal erneut verarbeitet. Der Versand bleibt deaktiviert.
+
 ## 0.4.0
 
 - Der Kalender bietet eine Jahresansicht mit Lehrgangsterminen nach Monaten.

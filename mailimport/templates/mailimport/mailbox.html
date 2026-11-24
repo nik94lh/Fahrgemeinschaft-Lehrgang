@@ -1,6 +1,18 @@
 {% extends "workspace/base.html" %}
 
 {% block title %}Postfach{% endblock %}
+{% block page_styles %}
+#id_functional_addresses {
+    display: block;
+    width: 100%;
+    margin-block-start: .25rem;
+    padding: .6rem;
+    border: 1px solid var(--line);
+    border-radius: .45rem;
+    font: inherit;
+    resize: vertical;
+}
+{% endblock %}
 
 {% block content %}
 <h1>Postfach</h1>
@@ -26,5 +38,18 @@
     <button type="submit">Postfach speichern</button>
   </form>
   <p class="note">Aktiviere den Abruf nur für ein freigegebenes Postfach. BMS berücksichtigt die Einstellung beim nächsten Abruf.</p>
+</section>
+<section class="panel" aria-labelledby="functional-addresses-heading" style="max-width: 38rem; margin-block-start: 1rem;">
+  <h2 id="functional-addresses-heading">Funktionsadressen der Lehrgangskommunikation</h2>
+  {% if addresses_saved %}
+    <p role="status">Funktionsadressen gespeichert.</p>
+  {% endif %}
+  <p class="note">Trage Sammel- und Verteileradressen ein, die keine Personen bezeichnen. Ohne hinterlegte Funktionsadressen übernimmt BMS bei künftigen Importen nur ausdrücklich genannte Teilnehmende.</p>
+  <form method="post" style="margin-block-start: 1rem;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save-functional-addresses">
+    {{ addresses_form.as_p }}
+    <button type="submit">Funktionsadressen speichern</button>
+  </form>
 </section>
 {% endblock %}

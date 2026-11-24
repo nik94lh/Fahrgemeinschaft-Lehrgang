@@ -4,6 +4,7 @@ from django.urls import path
 from bookings import views
 from bookings.brigades import brigade_edit, brigades
 from bookings.calendar import calendar, calendar_detail
+from bookings.participant_views import booking_participant
 from bookings.review_actions import review_detail
 from bookings.rides import rides
 from mailimport.mailbox_views import mailbox_view
@@ -17,6 +18,7 @@ def health(request):
 urlpatterns = [
     path("", views.overview, name="overview"),
     path("buchungen/", views.bookings, name="bookings"),
+    path("buchungen/<int:seat_id>/teilnehmer/", booking_participant, name="booking_participant"),
     path("kalender/", calendar, name="calendar"),
     path("kalender/<int:session_id>/", calendar_detail, name="calendar_detail"),
     path("fahrgemeinschaften/", rides, name="rides"),

@@ -9,11 +9,12 @@ from django.views.decorators.debug import sensitive_post_parameters, sensitive_v
 from django.views.decorators.http import require_http_methods
 
 from .imap_sync import mailbox_source_id
-from .mailbox_forms import MailboxForm
-from .models import MailboxConfiguration, MailboxCursor
+from .mailbox_forms import FunctionalAddressesForm, MailboxForm
+from .models import MailboxConfiguration, MailboxCursor, ParticipantRecognitionConfiguration
+from .participant_settings import get_functional_addresses
 
 
-@sensitive_post_parameters("password")
+@sensitive_post_parameters("password", "functional_addresses")
 @sensitive_variables()
 @never_cache
 @require_http_methods(["GET", "POST"])
@@ -22,7 +23,9 @@ def mailbox_view(request):
     if not settings.HTTPS or not request.is_secure():
         raise Http404
 
-    if request.method == "POST":
+    is_post = request.method == "POST"
+    saving_addresses = is_post and request.POST.get("action") == "save-functional-addresses"
+    if is_post and not saving_addresses:
         with transaction.atomic():
             record = MailboxConfiguration.objects.select_for_update().first()
             form = MailboxForm(request.POST, configuration=record)
@@ -37,6 +40,18 @@ def mailbox_view(request):
         record = MailboxConfiguration.objects.first()
         form = MailboxForm(configuration=record)
 
+    if saving_addresses:
+        addresses_form = FunctionalAddressesForm(request.POST)
+        if addresses_form.is_valid():
+            ParticipantRecognitionConfiguration.objects.update_or_create(
+                pk=1, defaults={"functional_addresses": addresses_form.cleaned_data["functional_addresses"]},
+            )
+            return redirect(f"{reverse('mailbox')}?funktionsadressen_gespeichert=1")
+    else:
+        addresses_form = FunctionalAddressesForm(
+            initial={"functional_addresses": "\n".join(get_functional_addresses())},
+        )
+
     last_sync_at = None
     last_sync_ok = None
     if record is not None:
@@ -49,6 +64,8 @@ def mailbox_view(request):
 
     return render(request, "mailimport/mailbox.html", {
         "form": form,
+        "addresses_form": addresses_form,
+        "addresses_saved": not is_post and request.GET.get("funktionsadressen_gespeichert") == "1",
         "section": "mailbox",
         "configured": record is not None,
         "enabled": record is not None and record.enabled,

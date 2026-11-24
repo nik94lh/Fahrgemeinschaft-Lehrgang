@@ -1,7 +1,10 @@
 from django.core.validators import RegexValidator
 from django.db import models
 from django.db.models import F, Q
+from django.db.models.functions import Lower, Trim
 from django.utils import timezone
+
+from mailimport.email_address import normalize_contact_email
 
 
 class School(models.TextChoices):
@@ -51,6 +54,7 @@ class FireBrigade(models.Model):
 
 class Participant(models.Model):
     name = models.CharField(max_length=200)
+    email = models.EmailField(blank=True, default="", db_default="")
     home_brigade = models.ForeignKey(
         FireBrigade,
         on_delete=models.SET_NULL,
@@ -58,6 +62,28 @@ class Participant(models.Model):
         blank=True,
         related_name="participants",
     )
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                Lower(Trim("email")),
+                condition=~Q(email=""),
+                name="bookings_participant_unique_email",
+            ),
+        ]
+
+    @staticmethod
+    def normalize_email(email: str) -> str:
+        if not email:
+            return ""
+        normalized = normalize_contact_email(email)
+        if normalized is None:
+            raise ValueError("Gib eine gültige E-Mail-Adresse ein.")
+        return normalized
+
+    def save(self, *args, **kwargs):
+        self.email = self.normalize_email(self.email)
+        return super().save(*args, **kwargs)
 
 
 class Course(models.Model):
@@ -150,6 +176,12 @@ class EmailEvent(models.Model):
         NO_MATCHING_BOOKING = "no_matching_booking", "Kein passender Lehrgangsplatz vorhanden"
         EVENT_ORDER_UNCLEAR = "event_order_unclear", "Reihenfolge der Statusmeldungen ist unklar"
         PROTECTED_STATUS = "protected_status", "Vorhandener Buchungsstatus erfordert manuelle Prüfung"
+        PARTICIPANT_EMAIL_CONFLICT = (
+            "participant_email_conflict", "Teilnehmername und E-Mail-Adresse widersprechen einer bestehenden Zuordnung",
+        )
+        PARTICIPANT_IDENTITY_UNCLEAR = (
+            "participant_identity_unclear", "Teilnehmerprofil kann nicht eindeutig zugeordnet werden",
+        )
 
     class ReviewResolution(models.TextChoices):
         LINKED = "linked", "Einem Lehrgangsplatz zugeordnet"
@@ -174,7 +206,7 @@ class EmailEvent(models.Model):
     )
     occurred_at = models.DateTimeField(null=True, blank=True)
     imported_at = models.DateTimeField(auto_now_add=True)
-    review_reason = models.CharField(max_length=24, choices=ReviewReason.choices, blank=True)
+    review_reason = models.CharField(max_length=32, choices=ReviewReason.choices, blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     review_resolution = models.CharField(max_length=16, choices=ReviewResolution.choices, blank=True)
 

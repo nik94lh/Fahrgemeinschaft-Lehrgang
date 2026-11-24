@@ -16,6 +16,7 @@ from bookings.services import ingest
 
 from .forms import OVERSIZED_FILE, EmlPreviewForm
 from .parser import MAX_EML_BYTES, MailParseError, parse_eml
+from .participant_settings import get_functional_addresses
 
 
 CSP = (
@@ -90,7 +91,7 @@ def _render_preview(request, handler, *, persist):
                 if persist:
                     ingest(raw)
                     return redirect(f"{reverse('bookings')}?importiert=1")
-                result = parse_eml(raw)
+                result = parse_eml(raw, functional_addresses=get_functional_addresses())
             except MailParseError as error:
                 form.add_error("file", str(error))
                 status = HTTPStatus.BAD_REQUEST

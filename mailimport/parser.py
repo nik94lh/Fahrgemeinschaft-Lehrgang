@@ -2,15 +2,17 @@
 
 import hashlib
 import re
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterable
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from email import policy
 from email.errors import MessageError
+from email.headerregistry import Address
 from email.message import EmailMessage
 from email.parser import BytesParser
 from zoneinfo import ZoneInfo
 
+from .email_address import normalize_contact_email
 from .html_text import html_to_text
 
 
@@ -63,7 +65,7 @@ FORWARD_HEADER = re.compile(
     re.IGNORECASE,
 )
 FORWARD_SEPARATOR = re.compile(
-    r"^\s*-{2,}\s*(?:weitergeleitete nachricht|ursprüngliche nachricht|forwarded message)"
+    r"^\s*-{2,}\s*(?:weitergeleitete nachricht|ursprüngliche nachricht|forwarded message|original message)"
     r"\s*-{2,}\s*$", re.IGNORECASE | re.MULTILINE,
 )
 TIME_RANGE = re.compile(
@@ -78,6 +80,7 @@ GREETING = r"^sehr geehrte(?:r)?\s+(?:herr|frau)\s+([^,\n]+),"
 CONFIRMED_PARTICIPANT = (
     r"^die lehrgangsanmeldung (?:des teilnehmers|der teilnehmerin) ([^\n]+?) für den folgenden\b"
 )
+BOOKING_SUBJECT = "ihre lehrgangsanmeldung"
 
 
 class MailParseError(ValueError):
@@ -99,6 +102,8 @@ class ParsedMail:
     booking_reference: str | None
     warnings: tuple[str, ...]
     reference_conflict: bool = False
+    participant_email: str | None = field(default=None, repr=False)
+    participant_email_ambiguous: bool = False
 
 
 def _normalized(value: str) -> str:
@@ -133,6 +138,51 @@ def _booking_reference(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)*", value)) and len(value) <= 64
 
 
+def _header_addresses(values: list[str]) -> tuple[Address, ...]:
+    if len(values) != 1:
+        return ()
+    try:
+        # BytesParser uses surrogateescape for raw UTF-8 header bytes (SMTPUTF8).
+        value = values[0].encode("utf-8", errors="surrogateescape").decode("utf-8")
+        header = policy.default.header_fetch_parse("To", value)
+    except ValueError:
+        return ()
+    if header.defects or any(group.display_name is not None for group in header.groups):
+        return ()
+    return header.addresses
+
+
+def _inline_addresses(envelope: str, labels: str) -> tuple[Address, ...]:
+    values = re.findall(rf"^(?:{labels}) *: *([^\n]*)$", envelope, re.IGNORECASE | re.MULTILINE)
+    return _header_addresses(values)
+
+
+def _participant_email(
+    recipients: tuple[Address, ...], participant_name: str, functional_addresses: Iterable[str],
+) -> tuple[str | None, bool]:
+    excluded = {email for address in functional_addresses if (email := normalize_contact_email(address))}
+    remaining = []
+    for recipient in recipients:
+        email = normalize_contact_email(recipient.addr_spec)
+        if email is None:
+            return None, False
+        if email not in excluded:
+            remaining.append((_normalized(recipient.display_name).casefold(), email))
+
+    target = participant_name.casefold()
+    named_matches = {email for name, email in remaining if name == target}
+    if len(named_matches) == 1:
+        match = named_matches.pop()
+        if any(email == match and name and name != target for name, email in remaining):
+            return None, True
+        return match, False
+    if len({email for _, email in remaining}) > 1:
+        return None, True
+    if excluded and len(remaining) == 1 and not remaining[0][0]:
+        return remaining[0][1], False
+    return None, False
+
+
 def _body_text(part: EmailMessage) -> str:
     try:
         value = part.get_content()
@@ -151,7 +201,7 @@ def _attached_messages(message: EmailMessage) -> list[EmailMessage]:
     return child_messages
 
 
-def _inline_forward(text: str) -> tuple[str, str] | None:
+def _inline_forward(text: str) -> tuple[str, str, tuple[Address, ...]] | None:
     lines = [re.sub(r"^\s*(?:>\s*)+", "", line) for line in text.splitlines()]
     unfolded = "\n".join(lines)
     separators = list(FORWARD_SEPARATOR.finditer(unfolded))
@@ -162,22 +212,38 @@ def _inline_forward(text: str) -> tuple[str, str] | None:
 
     lines = unfolded[separators[0].end():].strip().splitlines()
     headers = []
+    first_gap = None
     for index, line in enumerate(lines):
         line = _normalized(line)
         if line and not FORWARD_HEADER.match(line):
-            subjects = _values("\n".join(headers), "Betreff|Subject")
+            envelope = "\n".join(headers)
+            subjects = _values(envelope, "Betreff|Subject")
             if len(subjects) == 1:
-                return subjects[0], "\n".join(lines[index:])
+                recipients = ()
+                if subjects[0].casefold() == BOOKING_SUBJECT:
+                    original_headers = "\n".join(headers[:first_gap])
+                    senders = _inline_addresses(original_headers, "Von|From")
+                    original_subject = _values(original_headers, "Betreff|Subject")
+                    if (
+                        original_subject == subjects
+                        and len(senders) == 1
+                        and normalize_contact_email(senders[0].addr_spec)
+                    ):
+                        recipients = _inline_addresses(original_headers, "An|To")
+                return subjects[0], "\n".join(lines[index:]), recipients
             break
         if line:
             headers.append(line)
+        elif first_gap is None:
+            first_gap = len(headers)
     raise MailParseError("Die zitierte Weiterleitung ist unvollständig.")
 
 
-def _original_text(message: EmailMessage) -> tuple[str, str]:
+def _original_text(message: EmailMessage) -> tuple[str, str, tuple[Address, ...]]:
     subject = _normalized(str(message.get("Subject", "")))
+    forwarded = bool(FORWARD_PREFIX.match(subject))
     body = message.get_body(preferencelist=("plain", "html"))
-    if body is None or FORWARD_PREFIX.match(subject):
+    if body is None or forwarded:
         attached = _attached_messages(message)
         if len(attached) > 1:
             raise MailParseError("Die Weiterleitung enthält mehrere E-Mails.")
@@ -188,15 +254,22 @@ def _original_text(message: EmailMessage) -> tuple[str, str]:
         raise MailParseError("Die E-Mail enthält keinen lesbaren Klartext- oder HTML-Teil.")
 
     text = _body_text(body)
+    recipients = ()
     if not REPLY_PREFIX.match(subject):
         original = _inline_forward(text)
         if original:
-            subject, text = original
+            subject, text, inline_recipients = original
+            if forwarded:
+                recipients = inline_recipients
+        elif subject.casefold() == BOOKING_SUBJECT and len(message.get_all("Subject")) == 1:
+            recipients = _header_addresses([
+                value for name, value in message.raw_items() if name.casefold() == "to"
+            ])
     subject = FORWARD_PREFIX.sub("", subject, count=1)
     cleaned = "\n".join(_normalized(line) for line in text.splitlines())
     if not cleaned.strip():
         raise MailParseError("Die E-Mail enthält keinen lesbaren Inhalt.")
-    return subject, cleaned
+    return subject, cleaned, recipients
 
 
 def _classify(subject: str, text: str) -> str:
@@ -258,7 +331,7 @@ def _date_from_match(pattern: str, text: str) -> date | None:
         return None
 
 
-def parse_eml(raw: bytes) -> ParsedMail:
+def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> ParsedMail:
     """Parse bounded bytes locally. The result contains structured fields only."""
     if not raw:
         raise MailParseError("Die EML-Datei ist leer.")
@@ -268,7 +341,7 @@ def parse_eml(raw: bytes) -> ParsedMail:
         message = BytesParser(policy=policy.default).parsebytes(raw)
         if not message.keys() or message.defects:
             raise MailParseError("Die EML-Kopfzeilen sind beschädigt oder fehlen.")
-        subject, text = _original_text(message)
+        subject, text, recipients = _original_text(message)
     except (MessageError, RecursionError) as error:
         raise MailParseError("Die EML-Struktur kann nicht gelesen werden.") from error
 
@@ -281,6 +354,11 @@ def parse_eml(raw: bytes) -> ParsedMail:
         pattern = CONFIRMED_PARTICIPANT if event_type == "confirmation" else GREETING
         participant = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
     participant_name = _unique(participant, _name)
+    participant_email, participant_email_ambiguous = None, False
+    if recipients and participant_name and event_type != "unknown":
+        participant_email, participant_email_ambiguous = _participant_email(
+            recipients, participant_name, functional_addresses,
+        )
     previous_name = _unique(_values(text, "Bisherige[rs]? Teilnehmer(?:in)?"), _name)
     course_name = _unique(_values(text, "Lehrgangsart|Lehrgang"), _course_name)
     references = re.findall(
@@ -306,6 +384,7 @@ def parse_eml(raw: bytes) -> ParsedMail:
         (school is None, "Schulungsort fehlt oder ist nicht eindeutig."),
         (starts_at is None, "Lehrgangszeitraum fehlt oder ist ungültig."),
         (reference_conflict, "Die Buchungsreferenz ist ungültig oder nicht eindeutig."),
+        (participant_email_ambiguous, "Die E-Mail-Adresse des Teilnehmers ist nicht eindeutig."),
     )
     return ParsedMail(
         fingerprint=hashlib.sha256(raw).hexdigest(),
@@ -321,4 +400,6 @@ def parse_eml(raw: bytes) -> ParsedMail:
         booking_reference=reference,
         warnings=tuple(warning for invalid, warning in checks if invalid),
         reference_conflict=reference_conflict,
+        participant_email=participant_email,
+        participant_email_ambiguous=participant_email_ambiguous,
     )

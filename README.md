@@ -39,6 +39,12 @@ Auf dem zugriffsgeschützten HTTPS-Testhost richtest du unter **Postfach** eine 
 
 Ein aktivierter Postfachdienst verarbeitet standardmäßig bis zu 25 Nachrichten pro Abrufversuch und wartet danach 120 Sekunden bis zum nächsten Versuch. Die Weboberfläche zeigt den aktuellen Datenbankstand beim Öffnen oder Neuladen der Seite.
 
+## Teilnehmerprofile und E-Mail-Adressen
+
+Bei unterstützten Lehrgangsmails übernimmt BMS die Teilnehmeradresse nur bei eindeutiger Zuordnung aus dem ursprünglichen An-Feld. Hinterlege die auszuschließenden Adressen unter **Postfach → Funktionsadressen**. Wiederkehrende Teilnehmer mit derselben normalisierten Adresse und übereinstimmendem Namen verwenden dasselbe Profil.
+
+Fehlt bei einer Buchung die E-Mail-Adresse, wähle unter **Buchungen** den Teilnehmernamen aus. Prüfe die Originalnachricht, ergänze die Adresse unter **Teilnehmer zur Buchung** und wähle **Adresse speichern**. Bereits hinterlegte Adressen bleiben erhalten. Konflikte aus dem Import bleiben unter **Klärung** offen. Das Ergänzen einer Adresse löst keinen Versand aus. [Regeln für die Zuordnung](docs/MAILIMPORT.md#teilnehmeradresse-aus-dem-ursprünglichen-an-feld)
+
 ## Termine, Buchungen und mögliche Fahrten
 
 Die **Übersicht** zeigt anstehende Lehrgänge mit Beginn und Ende pro Termin. Unter **Buchungen** stehen die beiden Zeitpunkte in der Spalte **Zeitraum**. Die Anzeige verwendet die Zeitzone `Europe/Berlin`.

@@ -1,6 +1,7 @@
 from django import forms
 from django.views.decorators.debug import sensitive_variables
 
+from .email_address import normalize_contact_email
 from .imap_network import validate_public_hostname
 from .mailbox_settings import encrypt_password
 
@@ -64,3 +65,32 @@ class MailboxForm(forms.Form):
             self.add_error("password", "Bitte gib das Passwort für dieses Postfach ein.")
         values["encrypted_password"] = stored_password
         return values
+
+
+class FunctionalAddressesForm(forms.Form):
+    functional_addresses = forms.CharField(
+        label="Funktionsadressen",
+        required=False,
+        max_length=12000,
+        strip=False,
+        widget=forms.Textarea(attrs={"rows": 4, "autocomplete": "off", "spellcheck": "false"}),
+        help_text="Eine vollständige E-Mail-Adresse pro Zeile. Zum Entfernen alle Zeilen leeren.",
+    )
+
+    def clean_functional_addresses(self):
+        field = forms.EmailField(max_length=254)
+        addresses = {}
+        for line_number, line in enumerate(self.cleaned_data["functional_addresses"].splitlines(), start=1):
+            if not line.strip():
+                continue
+            try:
+                address = normalize_contact_email(field.clean(line))
+            except forms.ValidationError:
+                address = None
+            if address is None:
+                raise forms.ValidationError(
+                    "Zeile %(line)s enthält keine gültige E-Mail-Adresse.",
+                    params={"line": line_number},
+                )
+            addresses[address] = None
+        return list(addresses)
