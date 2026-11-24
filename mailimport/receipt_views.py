@@ -80,7 +80,8 @@ def mail_receipt(request, receipt_id):
     if not settings.HTTPS or not request.is_secure():
         raise Http404
 
-    receipt = get_object_or_404(MailReceipt.objects.select_related("event__seat"), pk=receipt_id)
+    receipt = get_object_or_404(MailReceipt.objects.select_related("event__seat__participant"), pk=receipt_id)
+    seat = receipt.event.seat if receipt.event_id else None
     config, _ = _active_mailbox()
     fields = receipt.fields.copy()
     for field in ("starts_at", "ends_at"):
@@ -96,5 +97,6 @@ def mail_receipt(request, receipt_id):
         "fields": fields,
         "school_name": dict(School.choices).get(fields.get("school")),
         "has_review": receipt.event and receipt.event.state in CASE_STATES,
+        "has_current_address": bool(seat and seat.participant_id and seat.participant.email),
         "mailbox": config.mailbox if config and config.source_id == receipt.source_id else "",
     })

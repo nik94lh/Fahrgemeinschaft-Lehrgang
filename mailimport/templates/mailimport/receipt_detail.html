@@ -12,12 +12,13 @@
             <p><a href="{% url 'review_detail' receipt.event_id %}">Klärungsfall {{ receipt.event_id }} ansehen</a></p>
         {% elif receipt.event.seat.participant_id %}
             <p><a href="{% url 'booking_participant' receipt.event.seat_id %}">Verknüpfte Buchung ansehen</a></p>
+            <p><strong>Adresse an der Buchung aktuell</strong> · {% if has_current_address %}Hinterlegt{% else %}Fehlt{% endif %}</p>
         {% endif %}
     </section>
 
     <div class="receipt-detail-layout">
         <section class="panel" aria-labelledby="receipt-fields">
-            <h2 id="receipt-fields">Erkannte Angaben</h2>
+                <h2 id="receipt-fields">Erkannte Angaben beim Abruf</h2>
             {% if receipt.outcome == 'skipped' %}
                 <p>Für diese Nachricht konnte BMS keine Buchungsdaten auslesen.</p>
             {% else %}

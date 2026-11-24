@@ -96,6 +96,19 @@ class MailReceiptTests(TestCase):
         self.assertEqual(CourseSeat.objects.get().participant.email, PERSONAL)
 
     @override_settings(HTTPS=True)
+    def test_receipt_distinguishes_an_old_extraction_from_current_booking_contact(self):
+        self.sync({1: booking_mail()})
+        receipt = MailReceipt.objects.get()
+        participant = receipt.event.seat.participant
+        participant.email = PERSONAL
+        participant.save(update_fields=["email"])
+
+        response = self.client.get(reverse("mail_receipt", args=[receipt.pk]), secure=True)
+        self.assertContains(response, "Erkannte Angaben beim Abruf")
+        self.assertContains(response, "Nicht erkannt")
+        self.assertContains(response, "Adresse an der Buchung aktuell</strong> · Hinterlegt")
+
+    @override_settings(HTTPS=True)
     def test_receipt_links_review_to_detected_fields_and_specific_disagreement(self):
         ingest(booking_mail(reference="DEMO-1"))
         self.sync({1: booking_mail(name="Pat Musterfall", reference="DEMO-1")})
