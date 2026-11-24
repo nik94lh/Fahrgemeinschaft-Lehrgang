@@ -1,13 +1,24 @@
-<p class="calendar-hint quiet">Hervorgehobene Tage haben mindestens einen Lehrgang. Wähle einen Monat für den Terminplan.</p>
+<p class="calendar-hint quiet">Jeder Kalendertag mit Lehrgang zählt einmal. Wähle einen Monat für den Terminplan.</p>
+<div class="calendar-occupancy-legend">
+    <span id="occupancy-legend-label">Belegte Tage</span>
+    <ul aria-labelledby="occupancy-legend-label" role="list">
+        {% for level, label in occupancy_legend %}
+            <li class="calendar-occupancy-band" data-occupancy="{{ level }}">{{ label }}</li>
+        {% endfor %}
+    </ul>
+</div>
 <ul class="calendar-year" role="list">
     {% for tile in months %}
         <li>
-            <a class="calendar-month-card" href="?{{ tile.query }}"
-               aria-label="{{ tile.start|date:'F Y' }}, {{ tile.session_count }} {% if tile.session_count == 1 %}Lehrgang{% else %}Lehrgänge{% endif %}"
+            <a class="calendar-month-card" data-occupancy="{{ tile.occupancy_level }}" href="?{{ tile.query }}"
+               aria-label="{{ tile.start|date:'F Y' }}, {{ tile.session_count }} {% if tile.session_count == 1 %}Lehrgang{% else %}Lehrgänge{% endif %}, {{ tile.occupied_count }} {% if tile.occupied_count == 1 %}belegter Tag{% else %}belegte Tage{% endif %}"
                {% if tile.occupied_days %}aria-describedby="month-days-{{ tile.start|date:'m' }}"{% endif %}>
                 <span class="calendar-month-title">
                     <strong>{{ tile.start|date:"F" }}</strong>
-                    <span>{{ tile.session_count }} {% if tile.session_count == 1 %}Lehrgang{% else %}Lehrgänge{% endif %}</span>
+                    <span class="calendar-month-counts">
+                        <span class="calendar-occupied-count">{{ tile.occupied_count }} {% if tile.occupied_count == 1 %}belegter Tag{% else %}belegte Tage{% endif %}</span>
+                        <span>{{ tile.session_count }} {% if tile.session_count == 1 %}Lehrgang{% else %}Lehrgänge{% endif %}</span>
+                    </span>
                 </span>
                 <span class="calendar-mini" aria-hidden="true">
                     <span class="calendar-mini-weekday">Mo</span><span class="calendar-mini-weekday">Di</span>

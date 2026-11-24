@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.8.0
+
+- BMS bildet einen gemeinsamen **Fahrgemeinschaftsvorschlag** für Hin- und Rückfahrt. Mindestens zwei verschiedene Teilnehmer müssen bestätigte, eindeutige Buchungen an derselben Schule mit übereinstimmendem Start- und Endtag haben. Maßgeblich sind die Kalendertage in `Europe/Berlin`, unabhängig von der Uhrzeit.
+- Die Monatskacheln der Kalender-Jahresansicht zeigen die genaue Anzahl belegter Tage und färben sich je nach Anzahl und Schulfilter.
+- Frühere Fälle für einzelne Fahrtrichtungen bleiben im Archiv. Ein kombinierter Vorschlag erhält einen eigenen Bearbeitungsstand.
+- Die Planung umfasst alle künftigen Abfahrten zu erfassten Lehrgängen. Der Versand und die Kontaktfreigabe bleiben deaktiviert.
+
 ## 0.7.2
 
 - BMS ermittelt mögliche Fahrgemeinschaften für alle bereits erfassten künftigen Hin- und Rückfahrten. Passende Fälle für Lehrgänge im nächsten Jahr können dadurch schon jetzt zur Planung erscheinen.

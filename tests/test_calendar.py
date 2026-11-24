@@ -216,3 +216,38 @@ class CalendarTests(TestCase):
         self.assertContains(response, "Musterlehrgang Regensburg")
         self.assertNotContains(response, "Übergreifender Musterlehrgang")
         self.assertEqual(response.context["current_query"], "month=2031-05&school=regensburg")
+
+    def test_year_highlights_months_by_distinct_occupied_days_for_the_selected_school(self):
+        for course in ("Synthetischer Julikurs A", "Synthetischer Julikurs B"):
+            self.add_session(
+                course, School.GERETSRIED,
+                datetime(2031, 7, 15, 8, tzinfo=UTC), datetime(2031, 7, 15, 16, tzinfo=UTC),
+            )
+        self.add_session(
+            "Sommerlehrgang", School.GERETSRIED,
+            datetime(2031, 8, 3, 8, tzinfo=UTC), datetime(2031, 8, 10, 22, tzinfo=UTC),
+        )
+        self.add_session(
+            "Herbstlehrgang", School.GERETSRIED,
+            datetime(2031, 9, 1, 8, tzinfo=UTC), datetime(2031, 9, 21, 19, tzinfo=UTC),
+        )
+        self.add_session(
+            "Andere Schule", School.REGENSBURG,
+            datetime(2031, 7, 11, 8, tzinfo=UTC), datetime(2031, 7, 25, 19, tzinfo=UTC),
+        )
+
+        response = self.client.get("/kalender/", {
+            "view": "year", "year": "2031", "school": School.GERETSRIED,
+        })
+
+        june, july, august, september = response.context["months"][5:9]
+        self.assertEqual((june["occupied_count"], june["occupancy_level"]), (0, 0))
+        self.assertEqual(july["session_count"], 2)
+        self.assertEqual((july["occupied_count"], july["occupancy_level"]), (1, 1))
+        self.assertEqual(august["occupied_days"], list(range(3, 11)))
+        self.assertEqual((august["occupied_count"], august["occupancy_level"]), (8, 3))
+        self.assertEqual((september["occupied_count"], september["occupancy_level"]), (21, 5))
+        self.assertContains(response, 'class="calendar-month-card" data-occupancy="0"')
+        self.assertContains(response, 'class="calendar-month-card" data-occupancy="5"')
+        self.assertContains(response, 'aria-label="Juli 2031, 2 Lehrgänge, 1 belegter Tag"')
+        self.assertContains(response, "21 belegte Tage")

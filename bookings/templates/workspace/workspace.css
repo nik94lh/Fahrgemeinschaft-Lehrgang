@@ -18,6 +18,7 @@ td { vertical-align: top; }
 .pagination { display: flex; flex-wrap: wrap; gap: .75rem; margin-block-start: 1rem; }
 .pagination a { color: var(--accent); }
 .quiet { color: var(--muted); }
+.ride-heading { overflow-wrap: anywhere; }
 @media (max-width: 680px) {
     .stats, .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .filters button { grid-column: 1 / -1; }
@@ -30,6 +31,7 @@ td { vertical-align: top; }
 .notice a { color: var(--accent); }
 
 @media (max-width: 560px) {
+    .ride-heading { font-size: clamp(1.25rem, 6vw, 1.85rem); }
     .mobile-table, .mobile-table tbody, .mobile-table tr { display: block; }
     .mobile-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
     .mobile-table tr { padding: .35rem 0; border-block-end: 1px solid var(--rule); }

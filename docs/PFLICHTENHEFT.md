@@ -24,7 +24,9 @@ Der Kalender zeigt mehrtägige Termine als interaktive Balken in Tages-, Wochen-
 
 ## Vermittlung und Teilnehmerportal
 
-Die Vermittlung betrachtet Hin- und Rückfahrt getrennt. Voraussetzung für eine mögliche Einladung sind mindestens zwei unterschiedliche bestätigte Teilnehmer am selben Schulstandort mit eindeutigen Buchungen und passenden Reisezeitpunkten. Die Lehrgangsart spielt für den Vergleich keine Rolle. Die Zeitfenster sind administrativ einstellbar. Vorgeschlagene Werte sind 28 Tage für die erste Potenzialprüfung, 21 Tage für eine erste Einladung, 14 Tage für erneute Prüfung und optionale Erinnerung sowie 7 Tage für die letzte optionale Erinnerung.
+Ein Fahrgemeinschaftsvorschlag umfasst Hin- und Rückfahrt. Voraussetzung sind mindestens zwei unterschiedliche Teilnehmer mit jeweils einer bestätigten, eindeutigen Buchung am selben Schulstandort. Für jede Person liefert dieselbe Buchung den Starttag für die Hinfahrt und den Endtag für die Rückfahrt. Bei allen Beteiligten müssen beide Kalendertage in `Europe/Berlin` übereinstimmen. Die Lehrgangsart und die Uhrzeiten spielen für den Vergleich keine Rolle. BMS berücksichtigt alle erfassten künftigen Abfahrten.
+
+Für die spätere Einladungs- und Versandsteuerung bleiben als separat konfigurierbare Vorschläge 28 Tage für eine Vorprüfung, 21 Tage für eine erste Einladung, 14 Tage für eine erneute Prüfung und optionale Erinnerung sowie 7 Tage für die letzte optionale Erinnerung vorgesehen.
 
 Die geografische Prüfung nutzt lokal gepflegte Feuerwehrkoordinaten und einen einstellbaren Suchradius. Die Stammdaten enthalten Name, Gemeinde, Ortsteil, Adresse, Koordinaten und Aktivstatus. Die Auswahl einer Heimatfeuerwehr darf mit gesonderter Zustimmung für spätere Lehrgänge gespeichert werden.
 

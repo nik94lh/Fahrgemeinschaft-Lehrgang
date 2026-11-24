@@ -18,6 +18,9 @@ from .models import CourseSession, School
 DAY = timedelta(days=1)
 WEEK = timedelta(days=7)
 MONTH_CHOICES = tuple(date(2000, month, 1) for month in range(1, 13))
+MONTH_OCCUPANCY_RANGES = (
+    (0, "0"), (1, "1"), (5, "2–5"), (10, "6–10"), (20, "11–20"), (31, "21–31"),
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,11 +137,18 @@ def _month_overview(sessions, period, today, school):
             days.append({"date": day, "count": running_count, "is_today": day == today})
             if running_count:
                 occupied_days.append(number)
+        occupied_count = len(occupied_days)
+        occupancy_level = next(
+            level for level, (upper, _) in enumerate(MONTH_OCCUPANCY_RANGES)
+            if occupied_count <= upper
+        )
         months.append({
             "start": start,
             "query": _query_string("month", start, school),
             "days": days,
             "occupied_days": occupied_days,
+            "occupied_count": occupied_count,
+            "occupancy_level": occupancy_level,
             "session_count": month_counts[month_number],
         })
     return months
@@ -219,6 +229,7 @@ def calendar(request):
     }
     if period.view == "year":
         context["months"] = _month_overview(sessions, period, today, school)
+        context["occupancy_legend"] = tuple(enumerate(label for _, label in MONTH_OCCUPANCY_RANGES))
     else:
         ticks = _ticks(period, today)
         context.update({

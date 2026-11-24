@@ -254,6 +254,8 @@ class Carpool(models.Model):
 
 
 class RideCase(models.Model):
+    ROUND_TRIP = "roundtrip"
+
     class Status(models.TextChoices):
         OPEN = "open", "Offen"
         IN_REVIEW = "in_review", "In Prüfung"
@@ -261,10 +263,13 @@ class RideCase(models.Model):
 
     match_key = models.CharField(max_length=96, unique=True)
     school = models.CharField(max_length=16, choices=School.choices)
-    direction = models.CharField(max_length=8, choices=Carpool.Direction.choices)
+    direction = models.CharField(max_length=9, choices=[*Carpool.Direction.choices, (ROUND_TRIP, "Hin- und Rückfahrt")])
     travel_date = models.DateField()
     earliest = models.DateTimeField()
     latest = models.DateTimeField()
+    return_date = models.DateField(null=True, blank=True)
+    return_earliest = models.DateTimeField(null=True, blank=True)
+    return_latest = models.DateTimeField(null=True, blank=True)
     seats = models.ManyToManyField(CourseSeat, related_name="ride_cases")
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.OPEN)
     currently_matches = models.BooleanField(default=True)
@@ -274,6 +279,19 @@ class RideCase(models.Model):
         indexes = [models.Index(fields=["currently_matches", "travel_date"], name="bookings_ride_active_day")]
         constraints = [
             models.CheckConstraint(condition=Q(earliest__lte=F("latest")), name="bookings_ride_ordered_times"),
+            models.CheckConstraint(
+                condition=Q(
+                    direction="roundtrip",
+                    return_date__isnull=False,
+                    return_earliest__isnull=False,
+                    return_latest__isnull=False,
+                    return_earliest__lte=F("return_latest"),
+                ) | (
+                    ~Q(direction="roundtrip")
+                    & Q(return_date__isnull=True, return_earliest__isnull=True, return_latest__isnull=True)
+                ),
+                name="bookings_ride_return_fields",
+            ),
         ]
 
 

@@ -1,6 +1,6 @@
 # Lehrgangs- und Fahrgemeinschaftsmanagement
 
-LFM verwaltet Lehrgänge und Buchungen für die Feuerwehren eines Landkreises. Die Anwendung enthält eine Buchungsübersicht, einen Kalender mit Wochen-, Monats- und Jahresansicht, eine EML-Vorschau und einen optionalen lesenden IMAP-Import. Sie zeigt mögliche Hin- und Rückfahrten anhand bestätigter Lehrgänge. Einladung, Teilnahme und Kontaktfreigabe folgen in späteren Entwicklungsphasen.
+LFM verwaltet Lehrgänge und Buchungen für die Feuerwehren eines Landkreises. Die Anwendung enthält eine Buchungsübersicht, einen Kalender mit Wochen-, Monats- und Jahresansicht, eine EML-Vorschau und einen optionalen lesenden IMAP-Import. Sie zeigt Fahrgemeinschaftsvorschläge für gemeinsame Hin- und Rückfahrten anhand bestätigter Lehrgänge. Einladung, Teilnahme und Kontaktfreigabe folgen in späteren Entwicklungsphasen.
 
 ## Lokaler Start mit Docker Compose
 
@@ -61,11 +61,11 @@ Fehlt bei einer Buchung die E-Mail-Adresse, wähle unter **Buchungen** den Teiln
 
 Die **Übersicht** zeigt anstehende Lehrgänge mit Beginn und Ende pro Termin. Unter **Buchungen** stehen die beiden Zeitpunkte in der Spalte **Zeitraum**. Die Anzeige verwendet die Zeitzone `Europe/Berlin`.
 
-Im **Kalender** kannst du zwischen Woche, Monat und Jahr wechseln und nach Schule filtern. In der Jahresansicht markieren die Balken die Monate, in denen ein Lehrgang stattfindet. Wähle einen Monat, um direkt in seinen Monatsplan zu springen. Dort stehen Wochentage an der Zeitachse. Die genauen Zeiten stehen in der zugänglichen Terminliste und in den Details. Wähle einen Termin, um die zugehörigen Buchungen zu sehen.
+Im **Kalender** kannst du zwischen Woche, Monat und Jahr wechseln und nach Schule filtern. In der Jahresansicht zeigen die Monatskacheln, an wie vielen verschiedenen Tagen mindestens ein Lehrgang zum gewählten Schulfilter stattfindet. Die Kacheln sind bei 0 Tagen neutral, bei 1 Tag blau, bei 2–5 Tagen indigoblau, bei 6–10 Tagen violett, bei 11–20 Tagen dunkelrosa und bei 21–31 Tagen dunkelrot. Die genaue Anzahl steht auf der Kachel. Wähle einen Monat, um direkt in seinen Monatsplan zu springen. Dort stehen Wochentage an der Zeitachse. Die genauen Zeiten stehen in der zugänglichen Terminliste und in den Details. Wähle einen Termin, um die zugehörigen Buchungen zu sehen.
 
-BMS legt unter **Fahrgemeinschaften** Fälle für mögliche Hin- und Rückfahrten aus allen erfassten künftigen Terminen an. So kannst du auch Fahrten für Lehrgänge im nächsten Jahr frühzeitig prüfen. Voraussetzung sind mindestens zwei unterschiedliche Teilnehmerprofile mit bestätigten Buchungen an derselben Schule und ohne offenen Klärungsfall zur Buchung. Für die Hinfahrt zählt der Starttag der Lehrgänge, für die Rückfahrt der Endtag. Ausschlaggebend ist jeweils derselbe Kalendertag in `Europe/Berlin`, unabhängig von der Uhrzeit. BMS führt beide Fahrtrichtungen getrennt.
+Ein **Fahrgemeinschaftsvorschlag** verbindet Hin- und Rückfahrt. BMS sucht unter allen erfassten künftigen Abfahrten nach mindestens zwei unterschiedlichen Teilnehmern mit bestätigten Buchungen an derselben Schule und ohne offenen Klärungsfall. Der Starttag und der Endtag müssen jeweils bei beiden Buchungen übereinstimmen. BMS verwendet für jede Person Beginn und Ende aus derselben Buchung. Die Kalendertage richten sich nach `Europe/Berlin`. Die Uhrzeiten sind für den Abgleich unerheblich.
 
-Der Hintergrunddienst gleicht die Buchungen standardmäßig alle zwei Minuten ab. Mit **Abgleich starten** kannst du die Prüfung manuell auslösen. Ein Fahrgemeinschaftsfall zeigt Zeitraum, Schule und Anzahl der Personen. Unter **Fahrgemeinschaften** kannst du einen Fall öffnen und den Bearbeitungsstand zwischen **Offen**, **In Prüfung** und **Abgeschlossen** ändern. Wenn die Buchungen nicht mehr zusammenpassen, kennzeichnet BMS den Fall gesondert und erhält den Bearbeitungsstand. BMS verschickt dabei keine Einladungen und gibt keine Kontaktdaten frei.
+Der Hintergrunddienst gleicht die Buchungen standardmäßig alle zwei Minuten ab. Mit **Abgleich starten** kannst du die Prüfung manuell auslösen. Unter **Fahrgemeinschaften** kannst du einen Vorschlag öffnen und seinen Bearbeitungsstand ändern. Wenn die Buchungen nicht mehr zusammenpassen, kennzeichnet BMS den Vorschlag und erhält seinen Bearbeitungsstand. Frühere Fälle für einzelne Hin- oder Rückfahrten bleiben im Archiv. Die kombinierten Vorschläge beginnen mit einem eigenen Bearbeitungsstand. BMS verschickt dabei keine Einladungen und gibt keine Kontaktdaten frei.
 
 ## Dokumentation
 

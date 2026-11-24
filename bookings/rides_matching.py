@@ -1,4 +1,4 @@
-"""Persist potential rides separately from the operator's workflow decisions."""
+"""Keep round-trip suggestions in sync with the confirmed bookings."""
 
 from collections import defaultdict
 from dataclasses import dataclass
@@ -8,31 +8,32 @@ from zoneinfo import ZoneInfo
 from django.db import transaction
 from django.utils import timezone
 
-from .models import BookingStatus, Carpool, CourseSeat, EmailEvent, RideCase, School
+from .models import BookingStatus, CourseSeat, EmailEvent, RideCase, School
 from .services import _lock_import
 
 
 BERLIN = ZoneInfo("Europe/Berlin")
-_LEGACY_STATUS_PRIORITY = {RideCase.Status.IN_REVIEW: 2, RideCase.Status.CLOSED: 1}
 
 
 @dataclass(frozen=True, slots=True)
 class _Match:
-    school: School
-    direction: Carpool.Direction
+    school: str
     travel_date: date
+    return_date: date
     earliest: datetime
     latest: datetime
+    return_earliest: datetime
+    return_latest: datetime
     seat_ids: frozenset[int]
 
     @property
     def key(self) -> str:
-        return f"{self.school}:{self.direction}:{self.travel_date.isoformat()}"
+        return f"{self.school}:{RideCase.ROUND_TRIP}:{self.travel_date}:{self.return_date}"
 
 
-def _trip_groups(now: datetime):
+def _round_trip_matches(now: datetime):
     seats = CourseSeat.objects.filter(
-        session__ends_at__gte=now,
+        session__starts_at__gte=now,
         status=BookingStatus.CONFIRMED,
         participant__isnull=False,
         session__school__in=School.values,
@@ -41,11 +42,16 @@ def _trip_groups(now: datetime):
     )
     groups = defaultdict(list)
     for school, start, end, participant, seat_id in seats.iterator():
-        for direction, instant in ((Carpool.Direction.OUTBOUND, start), (Carpool.Direction.RETURN, end)):
-            if instant >= now:
-                travel_date = instant.astimezone(BERLIN).date()
-                groups[(School(school), direction, travel_date)].append((instant, participant, seat_id))
-    return groups
+        key = (school, start.astimezone(BERLIN).date(), end.astimezone(BERLIN).date())
+        groups[key].append((start, end, participant, seat_id))
+
+    for (school, travel_date, return_date), trips in groups.items():
+        starts, ends, participants, seat_ids = zip(*trips)
+        if len(set(participants)) >= 2:
+            yield _Match(
+                school, travel_date, return_date,
+                min(starts), max(starts), min(ends), max(ends), frozenset(seat_ids),
+            )
 
 
 def _seat_links(cases):
@@ -56,81 +62,33 @@ def _seat_links(cases):
     return links
 
 
-def _adopt_legacy_return_cases(matches, cases):
-    pending = {
-        (match.school, match.travel_date): match
-        for key, match in matches.items()
-        if key not in cases and match.direction == Carpool.Direction.RETURN
-    }
-    if not pending:
-        return
-
-    legacy = RideCase.objects.select_for_update().filter(
-        school__in={school for school, _ in pending},
-        direction=Carpool.Direction.RETURN,
-        travel_date__in={day for _, day in pending},
-    )
-    options = []
-    for case in legacy:
-        match = pending.get((case.school, case.travel_date))
-        if match and case.match_key.startswith(f"{match.key}:"):
-            options.append((match, case))
-
-    links = _seat_links(case for _, case in options)
-    candidates = defaultdict(list)
-    for match, case in options:
-        shared = len(links[case.pk] & match.seat_ids)
-        if shared:
-            priority = _LEGACY_STATUS_PRIORITY.get(case.status, 0)
-            candidates[match.key].append((priority, shared, -case.pk, case))
-
-    adopted = []
-    for key, choices in candidates.items():
-        # Preserve work in progress and closed decisions before adopting an open case.
-        case = max(choices, key=lambda choice: choice[:3])[3]
-        case.match_key = key
-        cases[key] = case
-        adopted.append(case)
-    if adopted:
-        RideCase.objects.bulk_update(adopted, ["match_key"])
-
-
 @transaction.atomic
 def sync_ride_cases(*, now: datetime | None = None) -> int:
-    """Refresh qualifying seats while preserving each case's workflow status."""
+    """Refresh round-trip suggestions while preserving their workflow state."""
     _lock_import()
-    groups = _trip_groups(now or timezone.now())
-    matches = {}
-    for (school, direction, travel_date), trips in groups.items():
-        if len({participant for _, participant, _ in trips}) < 2:
-            continue
-        times = [instant for instant, _, _ in trips]
-        match = _Match(
-            school, direction, travel_date, min(times), max(times),
-            frozenset(seat_id for _, _, seat_id in trips),
-        )
-        matches[match.key] = match
+    matches = {match.key: match for match in _round_trip_matches(now or timezone.now())}
     cases = RideCase.objects.in_bulk(matches, field_name="match_key")
-    _adopt_legacy_return_cases(matches, cases)
     new = []
     changed = []
     for key, match in matches.items():
         case = cases.get(key)
+        times = (match.earliest, match.latest, match.return_earliest, match.return_latest)
         if case is None:
             new.append(RideCase(
-                match_key=key, school=match.school, direction=match.direction, travel_date=match.travel_date,
+                match_key=key, school=match.school, direction=RideCase.ROUND_TRIP,
+                travel_date=match.travel_date, return_date=match.return_date,
                 earliest=match.earliest, latest=match.latest,
+                return_earliest=match.return_earliest, return_latest=match.return_latest,
             ))
-        elif (case.currently_matches, case.earliest, case.latest) != (True, match.earliest, match.latest):
+        elif not case.currently_matches or (case.earliest, case.latest, case.return_earliest, case.return_latest) != times:
             case.currently_matches = True
-            case.earliest = match.earliest
-            case.latest = match.latest
+            case.earliest, case.latest, case.return_earliest, case.return_latest = times
             changed.append(case)
     if new:
         RideCase.objects.bulk_create(new)
         cases.update((case.match_key, case) for case in new)
     if changed:
-        RideCase.objects.bulk_update(changed, ["currently_matches", "earliest", "latest"])
+        RideCase.objects.bulk_update(changed, ["currently_matches", "earliest", "latest", "return_earliest", "return_latest"])
 
     links = _seat_links(cases.values())
     for key, match in matches.items():
@@ -146,10 +104,10 @@ def sync_ride_cases(*, now: datetime | None = None) -> int:
 def set_ride_case_status(case_id: int, status: str, *, expected_status: str) -> RideCase:
     """Apply an operator's decision only if the workflow state is still current."""
     if status not in RideCase.Status.values:
-        raise ValueError("Wähle einen gültigen Fallstatus.")
+        raise ValueError("Wähle einen gültigen Bearbeitungsstand.")
     case = RideCase.objects.select_for_update().filter(pk=case_id).first()
     if case is None or case.status != expected_status:
-        raise ValueError("Der Fallstatus hat sich geändert. Lade die Seite neu.")
+        raise ValueError("Der Bearbeitungsstand hat sich geändert. Lade die Seite neu.")
     if case.status != status:
         case.status = status
         case.save(update_fields=["status"])

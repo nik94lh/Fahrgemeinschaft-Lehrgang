@@ -1,29 +1,37 @@
 {% extends "workspace/base.html" %}
-{% block title %}Fahrgemeinschaften{% endblock %}
+{% block title %}{% if archived %}Frühere Einzelstrecken{% else %}Fahrgemeinschaftsvorschläge{% endif %}{% endblock %}
 {% block page_styles %}
     .ride-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 38rem; }
     .ride-toolbar { display: flex; align-items: end; justify-content: space-between; flex-wrap: wrap; gap: .75rem; margin-block-end: 1rem; }
     .ride-filter { display: flex; gap: .5rem; flex-wrap: wrap; align-items: end; margin: 0; }
     .ride-toolbar button { width: auto; margin: 0; }
-    .ride-match-label { display: block; font-size: .875rem; color: var(--muted); }
+    .ride-match-label, .ride-time { display: block; font-size: .875rem; color: var(--muted); }
     .ride-rules { margin-block-start: 1rem; font-size: .9rem; }
+    .ride-archive-link { margin-block-start: 1rem; }
 {% endblock %}
 {% block content %}
-    <h1>Fahrgemeinschaften</h1>
-    <p class="intro">Gespeicherte Fälle für gemeinsame Fahrten zu bestätigten Lehrgängen.</p>
-    {% if synced %}<p class="notice" role="status">Abgleich abgeschlossen.</p>{% endif %}
-    <dl class="stats ride-stats">
-        <div><dt>Beim letzten Abgleich passend</dt><dd>{{ active_count }}</dd></div>
-        <div><dt>Davon offen oder in Prüfung</dt><dd>{{ pending_count }}</dd></div>
-    </dl>
+    {% if archived %}
+        <p class="back-link"><a href="{% url 'rides' %}">Zu den Fahrgemeinschaftsvorschlägen</a></p>
+        <h1 id="ride-cases">Frühere Einzelstrecken</h1>
+        <p class="intro">Einzelne Hin- oder Rückfahrten aus dem früheren Abgleich.</p>
+    {% else %}
+        <h1 id="ride-cases" class="ride-heading">Fahrgemeinschaftsvorschläge</h1>
+        <p class="intro">Gemeinsame Hin- und Rückfahrten zu bestätigten Lehrgängen.</p>
+        {% if synced %}<p class="notice" role="status">Abgleich abgeschlossen.</p>{% endif %}
+        <dl class="stats ride-stats">
+            <div><dt>Beim letzten Abgleich passend</dt><dd>{{ active_count }}</dd></div>
+            <div><dt>Davon offen oder in Prüfung</dt><dd>{{ pending_count }}</dd></div>
+        </dl>
+    {% endif %}
+
     <section class="panel" aria-labelledby="ride-cases">
-        <h2 id="ride-cases">Fahrgemeinschaftsfälle</h2>
         <div class="ride-toolbar">
             <form class="filters ride-filter" method="get">
+                {% if archived %}<input type="hidden" name="archiv" value="1">{% endif %}
                 <div>
-                    <label for="ride-status-filter">Fallstatus</label>
+                    <label for="ride-status-filter">Bearbeitungsstand</label>
                     <select name="status" id="ride-status-filter">
-                        <option value="">Alle Fälle</option>
+                        <option value="">Alle</option>
                         {% for value, label in status_choices %}
                             <option value="{{ value }}"{% if value == selected_status %} selected{% endif %}>{{ label }}</option>
                         {% endfor %}
@@ -31,40 +39,59 @@
                 </div>
                 <button type="submit" class="secondary-button">Filtern</button>
             </form>
-            <form method="post" action="{% url 'rides_sync' %}">
-                {% csrf_token %}
-                {% if selected_status %}<input type="hidden" name="status" value="{{ selected_status }}">{% endif %}
-                <button type="submit">Abgleich starten</button>
-            </form>
+            {% if not archived %}
+                <form method="post" action="{% url 'rides_sync' %}">
+                    {% csrf_token %}
+                    {% if selected_status %}<input type="hidden" name="status" value="{{ selected_status }}">{% endif %}
+                    <button type="submit">Abgleich starten</button>
+                </form>
+            {% endif %}
         </div>
         {% if page_obj %}
             <div class="table-scroll" tabindex="0" role="region" aria-labelledby="ride-cases">
                 <table class="mobile-table">
                     <thead>
                         <tr>
-                            <th scope="col">Fall</th>
-                            <th scope="col">Datum</th>
-                            <th scope="col">Richtung</th>
+                            {% if archived %}
+                                <th scope="col">Einzelstrecke</th>
+                                <th scope="col">Richtung</th>
+                                <th scope="col">Datum und Uhrzeit</th>
+                            {% else %}
+                                <th scope="col">Vorschlag</th>
+                                <th scope="col">Hinfahrt</th>
+                                <th scope="col">Rückfahrt</th>
+                            {% endif %}
                             <th scope="col">Schule</th>
-                            <th scope="col">Lehrgangszeiten</th>
                             <th scope="col">Personen</th>
-                            <th scope="col">Fallstatus</th>
+                            <th scope="col">Bearbeitungsstand</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in page_obj %}
                             <tr>
-                                <td data-label="Fall"><a href="{% url 'ride_detail' item.pk %}">Fall {{ item.pk }} öffnen</a></td>
-                                <td data-label="Datum">{{ item.travel_date|date:"d.m.Y" }}</td>
-                                <td data-label="Richtung">{{ item.get_direction_display }}</td>
+                                {% if archived %}
+                                    <td data-label="Einzelstrecke"><a href="{% url 'ride_detail' item.pk %}">Nr. {{ item.pk }} öffnen</a></td>
+                                    <td data-label="Richtung">{{ item.get_direction_display }}</td>
+                                    <td data-label="Datum und Uhrzeit">
+                                        <span><time datetime="{{ item.travel_date|date:"Y-m-d" }}">{{ item.travel_date|date:"d.m.Y" }}</time>
+                                        <span class="ride-time">{{ item.earliest|date:"H:i" }}{% if item.latest != item.earliest %}–{{ item.latest|date:"H:i" }}{% endif %} Uhr</span></span>
+                                    </td>
+                                {% else %}
+                                    <td data-label="Vorschlag"><a href="{% url 'ride_detail' item.pk %}">Vorschlag {{ item.pk }} öffnen</a></td>
+                                    <td data-label="Hinfahrt">
+                                        <span><time datetime="{{ item.travel_date|date:"Y-m-d" }}">{{ item.travel_date|date:"d.m.Y" }}</time>
+                                        <span class="ride-time">{{ item.earliest|date:"H:i" }}{% if item.latest != item.earliest %}–{{ item.latest|date:"H:i" }}{% endif %} Uhr</span></span>
+                                    </td>
+                                    <td data-label="Rückfahrt">
+                                        <span><time datetime="{{ item.return_date|date:"Y-m-d" }}">{{ item.return_date|date:"d.m.Y" }}</time>
+                                        <span class="ride-time">{{ item.return_earliest|date:"H:i" }}{% if item.return_latest != item.return_earliest %}–{{ item.return_latest|date:"H:i" }}{% endif %} Uhr</span></span>
+                                    </td>
+                                {% endif %}
                                 <td data-label="Schule">{{ item.get_school_display }}</td>
-                                <td data-label="Lehrgangszeiten">
-                                    <span>{{ item.earliest|date:"H:i" }}{% if item.latest != item.earliest %}–{{ item.latest|date:"H:i" }}{% endif %} Uhr</span>
-                                </td>
                                 <td data-label="Personen">{{ item.participant_count }}</td>
-                                <td data-label="Fallstatus">
+                                <td data-label="Bearbeitungsstand">
                                     <span><strong>{{ item.get_status_display }}</strong>
-                                    <span class="ride-match-label">{% if item.currently_matches %}Passend{% else %}Kein aktueller Treffer{% endif %}</span></span>
+                                    {% if not archived %}<span class="ride-match-label">{% if item.currently_matches %}Passend{% else %}Kein aktueller Treffer{% endif %}</span>{% endif %}</span>
                                 </td>
                             </tr>
                         {% endfor %}
@@ -72,11 +99,16 @@
                 </table>
             </div>
             {% include "workspace/pagination.html" %}
+        {% elif archived %}
+            <p class="quiet">{% if selected_status %}Keine früheren Einzelstrecken mit diesem Bearbeitungsstand.{% else %}Keine früheren Einzelstrecken vorhanden.{% endif %}</p>
         {% elif selected_status %}
-            <p class="quiet">Keine Fälle mit diesem Status.</p>
+            <p class="quiet">Keine Vorschläge mit diesem Bearbeitungsstand.</p>
         {% else %}
-            <p class="quiet">Noch keine Fahrgemeinschaftsfälle.</p>
+            <p class="quiet">Noch keine Fahrgemeinschaftsvorschläge.</p>
         {% endif %}
-        <p class="quiet ride-rules">BMS prüft alle erfassten künftigen Fahrten. Ein Fall setzt mindestens zwei unterschiedliche Teilnehmerprofile mit bestätigten Buchungen ohne offenen Klärungsfall voraus. BMS gleicht Hin- und Rückfahrten getrennt nach Schule und Kalendertag ab. Bei der Hinfahrt zählt der Tag des Lehrgangsbeginns, bei der Rückfahrt der Tag des Lehrgangsendes.</p>
+        {% if not archived %}
+            <p class="quiet ride-rules">Ein Vorschlag setzt mindestens zwei verschiedene Personen mit bestätigten Buchungen ohne offenen Klärungsfall voraus. Ihre Lehrgänge stehen noch bevor und finden an derselben Schule statt. Die Tage für Lehrgangsbeginn und Lehrgangsende müssen jeweils übereinstimmen. Dafür gilt die Zeitzone Europe/Berlin. Die Zeitspannen zeigen die frühesten und spätesten Lehrgangszeiten am jeweiligen Tag.</p>
+            {% if has_legacy %}<p class="ride-archive-link"><a href="?archiv=1">Frühere Einzelstrecken</a></p>{% endif %}
+        {% endif %}
     </section>
 {% endblock %}

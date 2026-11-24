@@ -8,7 +8,6 @@ from bookings.rides_matching import sync_ride_cases
 
 from bookings.models import (
     BookingStatus,
-    Carpool,
     Course,
     CourseSeat,
     CourseSession,
@@ -31,7 +30,7 @@ class RideSuggestionTests(TestCase):
         session = CourseSession.objects.create(course=self.course, school=school, starts_at=start, ends_at=end)
         return CourseSeat.objects.create(session=session, participant=participant, status=status)
 
-    def test_suggestions_separate_trip_directions_and_disclose_no_names(self):
+    def test_suggestion_combines_both_directions_and_discloses_no_names(self):
         self.seat(self.first, self.date, self.date + timedelta(hours=4))
         self.seat(self.second, self.date + timedelta(hours=1), self.date + timedelta(hours=6))
         self.seat(self.third, self.date - timedelta(days=1), self.date + timedelta(hours=7))
@@ -47,8 +46,7 @@ class RideSuggestionTests(TestCase):
         self.assertNotContains(response, self.third.name)
         self.assertIn("no-store", response.headers["Cache-Control"])
         suggestions = list(response.context["page_obj"])
-        self.assertEqual([s.direction for s in suggestions], [Carpool.Direction.OUTBOUND, Carpool.Direction.RETURN])
-        self.assertEqual([s.participant_count for s in suggestions], [2, 3])
+        self.assertEqual([s.participant_count for s in suggestions], [2])
 
     def test_duplicate_participants_different_schools_and_unresolved_seats_do_not_form_groups(self):
         self.seat(self.first, self.date, self.date + timedelta(hours=4))
@@ -61,7 +59,7 @@ class RideSuggestionTests(TestCase):
         sync_ride_cases()
         response = self.client.get("/fahrgemeinschaften/")
 
-        self.assertContains(response, "Noch keine Fahrgemeinschaftsfälle")
+        self.assertContains(response, "Noch keine Fahrgemeinschaftsvorschläge")
         self.assertEqual(list(response.context["page_obj"]), [])
 
     def test_manual_sync_lists_long_range_matches_and_excludes_past_trips(self):
@@ -79,13 +77,9 @@ class RideSuggestionTests(TestCase):
         response = self.client.post(reverse("rides_sync"), follow=True)
 
         self.assertContains(response, "Abgleich abgeschlossen.")
-        self.assertCountEqual(
-            [(case.travel_date, case.direction) for case in response.context["page_obj"]],
-            [
-                (upcoming_return.date(), Carpool.Direction.RETURN),
-                (future.date(), Carpool.Direction.OUTBOUND),
-                (future.date(), Carpool.Direction.RETURN),
-            ],
+        self.assertEqual(
+            [(case.travel_date, case.return_date) for case in response.context["page_obj"]],
+            [(future.date(), future.date())],
         )
 
     def test_both_directions_group_same_day_without_hour_limit(self):
@@ -102,14 +96,12 @@ class RideSuggestionTests(TestCase):
         sync_ride_cases()
         response = self.client.get("/fahrgemeinschaften/")
 
-        suggestions = list(response.context["page_obj"])
-        outbound = [item for item in suggestions if item.direction == Carpool.Direction.OUTBOUND]
-        returns = [item for item in suggestions if item.direction == Carpool.Direction.RETURN]
-        self.assertEqual(len(outbound), 1)
-        self.assertEqual(outbound[0].participant_count, 3)
-        self.assertEqual(outbound[0].earliest, beginning)
-        self.assertEqual(outbound[0].latest, beginning + timedelta(hours=3))
-        self.assertEqual([item.participant_count for item in returns], [3])
+        suggestion, = response.context["page_obj"]
+        self.assertEqual(suggestion.participant_count, 3)
+        self.assertEqual(suggestion.earliest, beginning)
+        self.assertEqual(suggestion.latest, beginning + timedelta(hours=3))
+        self.assertEqual(suggestion.return_earliest, beginning + timedelta(hours=4))
+        self.assertEqual(suggestion.return_latest, beginning + timedelta(hours=5, minutes=40))
 
     def test_close_appointments_on_different_local_days_do_not_match(self):
         beginning = timezone.localtime(self.date).replace(hour=23, minute=50)
@@ -119,4 +111,4 @@ class RideSuggestionTests(TestCase):
         sync_ride_cases()
         response = self.client.get("/fahrgemeinschaften/")
 
-        self.assertContains(response, "Noch keine Fahrgemeinschaftsfälle")
+        self.assertContains(response, "Noch keine Fahrgemeinschaftsvorschläge")
