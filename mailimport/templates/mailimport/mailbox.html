@@ -15,8 +15,13 @@
 {% endblock %}
 
 {% block content %}
-<h1>Postfach</h1>
-<p class="intro">Verbinde ein separates Postfach für Kopien der Lehrgangs-E-Mails. BMS liest den Ordner über TLS, ohne Nachrichten zu verändern.</p>
+<div class="page-heading">
+  <div>
+    <h1>Postfach</h1>
+    <p class="intro">Konfiguriere den lesenden Abruf aus dem separaten Postfach für Lehrgangs-E-Mails.</p>
+  </div>
+  <a class="button-link" href="{% url 'mail_receipts' %}">Zum Mail-Eingang</a>
+</div>
 <section class="panel" aria-label="Postfachverbindung" style="max-width: 38rem;">
   {% if saved %}
     <p role="status">Postfachkonfiguration gespeichert.</p>

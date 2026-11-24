@@ -39,6 +39,8 @@ Auf dem zugriffsgeschützten HTTPS-Testhost richtest du unter **Postfach** eine 
 
 Ein aktivierter Postfachdienst verarbeitet standardmäßig bis zu 25 Nachrichten pro Abrufversuch und wartet danach 120 Sekunden bis zum nächsten Versuch. Die Weboberfläche zeigt den aktuellen Datenbankstand beim Öffnen oder Neuladen der Seite.
 
+Unter **Mail-Eingang** findest du den letzten Abruf und jede ab diesem Stand erfasste IMAP-Nachricht. Suche nach Teilnehmer, Lehrgang, Referenz oder IMAP-Nummer und öffne **Mail ansehen**. Dort stehen Verarbeitungsergebnis, erkannte Felder, Gründe für eine ausgebliebene Adressübernahme und der Link zur Buchung oder Klärung. Frühere Buchungsereignisse ohne protokollierten Postfachabruf stehen unter **Frühere Importe**.
+
 ## Buchungen, Teilnehmer und Klärung
 
 - Eine **Lehrgangsbuchung** ist die Belegung eines Platzes bei einem konkreten Termin. Sie hat einen eigenen Buchungsstatus.
@@ -47,7 +49,7 @@ Ein aktivierter Postfachdienst verarbeitet standardmäßig bis zu 25 Nachrichten
 
 Öffne den Teilnehmernamen in der Buchungsliste, um die Buchungen des Profils zu sehen. Eine mögliche Doppelbuchung liegt vor, wenn Lehrgangsname, Schule, Beginn und Ende übereinstimmen. Eine Überschneidung liegt vor, wenn zwei unterschiedliche Lehrgangstermine gemeinsame Zeit haben. Beide Hinweise dienen der Prüfung und verändern keine Buchungen.
 
-Öffne einen Fall unter **Klärung**, um die erkannten Daten zu sehen. Dazu gehören, soweit vorhanden, Teilnehmername, Lehrgang, Schule, Zeitraum und Buchungsreferenz. Die Ansicht enthält weder die vollständige E-Mail noch eine E-Mail-Adresse aus der Nachricht. Vergleiche sie mit der Originalnachricht im Importpostfach. **E-Mail zuordnen** verbindet das Ereignis mit der Buchung. Der Buchungsstatus bleibt dabei gleich. **Fall verwerfen** schließt das Ereignis mit dem gewählten Grund ab. Bei einer Ummeldung wechselt **Ummeldung in BMS übernehmen** die Person auf dem ausgewählten Platz und dokumentiert die Änderung in der Buchungshistorie.
+Öffne einen Fall unter **Klärung**, um die erkannten Angaben neben der betroffenen Buchung zu vergleichen. BMS nennt fehlende Felder und, bei einem erkennbaren Konflikt mit einer Buchung, die Felder, die vom aktuellen Stand abweichen. Über **Mail-Eingang ansehen** findest du den Auszug und die Angaben zum Auffinden der Originalnachricht im Importpostfach. **E-Mail zuordnen** verbindet das Ereignis mit der Buchung. Der Buchungsstatus bleibt dabei gleich. **Fall verwerfen** schließt das Ereignis mit dem gewählten Grund ab. Bei einer Ummeldung wechselt **Ummeldung in BMS übernehmen** die Person auf dem ausgewählten Platz und dokumentiert die Änderung in der Buchungshistorie.
 
 ## Teilnehmerprofile und E-Mail-Adressen
 

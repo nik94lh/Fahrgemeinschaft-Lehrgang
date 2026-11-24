@@ -89,7 +89,9 @@ def _render_preview(request, handler, *, persist):
             try:
                 raw = file.read(MAX_EML_BYTES + 1)
                 if persist:
-                    ingest(raw)
+                    event = ingest(raw)
+                    if event.state == EmailEvent.State.NEEDS_REVIEW:
+                        return redirect("review_detail", event_id=event.pk)
                     return redirect(f"{reverse('bookings')}?importiert=1")
                 result = parse_eml(raw, functional_addresses=get_functional_addresses())
             except MailParseError as error:

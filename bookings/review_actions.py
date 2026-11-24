@@ -1,6 +1,7 @@
 """Explicit, local operator decisions for a mail import review."""
 
 from django import forms
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
@@ -12,6 +13,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
 
 from .models import BookingHistory, BookingStatus, CourseSeat, EmailEvent, ImportLock, Participant, School
+from .services import _normalized_name
 
 
 RESULT_LIMIT = 20
@@ -31,11 +33,19 @@ ACTIONS = {
     ),
 }
 REASON_GUIDANCE = {
+    EmailEvent.ReviewReason.UNRECOGNIZED_TYPE: "Prüfe, ob die Nachricht eine Lehrgangsmeldung ist. Bei einer Antwort leite die Originalmeldung mit ihren Kopfzeilen weiter.",
+    EmailEvent.ReviewReason.UNSUPPORTED_TYPE: "BMS erkennt den Meldungstyp, kann daraus aber keine Buchungsänderung ableiten. Prüfe, zu welcher Buchung die Nachricht gehört.",
     EmailEvent.ReviewReason.REASSIGNMENT: "Prüfe, wer den Lehrgangsplatz bisher belegt hat und wer ihn übernehmen soll.",
     EmailEvent.ReviewReason.SCHEDULE_CHANGE: "Vergleiche Beginn und Ende aus der Nachricht mit dem aktuellen Lehrgangstermin.",
     EmailEvent.ReviewReason.INVALID_REFERENCE: "Vergleiche die Buchungsreferenz in der Originalnachricht mit der Lehrgangsbuchung.",
+    EmailEvent.ReviewReason.PARTICIPANT_UNCLEAR: "Suche den vollständigen Namen der angemeldeten Person in der Nachricht.",
+    EmailEvent.ReviewReason.COURSE_UNCLEAR: "Prüfe die Bezeichnung in der Zeile „Lehrgangsart“ und wähle den passenden Kurs.",
+    EmailEvent.ReviewReason.SCHOOL_UNCLEAR: "Prüfe den Schulungsort. BMS erwartet eine eindeutige Zuordnung zu Würzburg, Regensburg oder Geretsried.",
+    EmailEvent.ReviewReason.PERIOD_UNCLEAR: "Prüfe, ob die Nachricht für Beginn und Ende jeweils ein vollständiges Datum mit Uhrzeit nennt.",
     EmailEvent.ReviewReason.REFERENCE_MISMATCH: "Vergleiche Person, Lehrgang und Zeitraum der Nachricht mit der verknüpften Buchung.",
     EmailEvent.ReviewReason.MULTIPLE_SEATS: "Gleiche die infrage kommenden Buchungen mit Name und Buchungsreferenz in der Nachricht ab.",
+    EmailEvent.ReviewReason.MULTIPLE_SESSIONS: "Suche die richtige Buchung anhand der Referenz. Mehrere Termine haben denselben Lehrgang, dieselbe Schule und denselben Zeitraum.",
+    EmailEvent.ReviewReason.MULTIPLE_COURSES: "In BMS gibt es mehrere Lehrgänge mit dieser Bezeichnung. Prüfe, welcher zur Meldung gehört.",
     EmailEvent.ReviewReason.PREVIOUS_PARTICIPANT: "Prüfe, ob die Nachricht die aktuell zugeordnete Person oder eine frühere Belegung betrifft.",
     EmailEvent.ReviewReason.NO_MATCHING_BOOKING: "Suche die Buchung nach Referenz, Person oder Lehrgang.",
     EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR: "Vergleiche das Datum und den gemeldeten Status mit den bisherigen Buchungsänderungen.",
@@ -193,16 +203,21 @@ def _candidate_seats(event, recognized, action, search):
 
 def _context(request, event):
     recognized = _recognized(event)
+    comparison_seat = _comparison_seat(event)
     context = {
         "section": "review",
         "event": event,
         "recognized": recognized,
         "has_recognized_data": any(recognized.values()),
         "school_name": dict(School.choices).get(recognized.get("school")),
+        "comparison_seat": comparison_seat,
+        "differences": _current_booking_differences(event, recognized, comparison_seat),
         "guidance": REASON_GUIDANCE.get(
             event.review_reason, "Vergleiche die erkannten Angaben mit der Originalnachricht und der Lehrgangsbuchung.",
         ),
     }
+    if settings.HTTPS and request.is_secure():
+        context["receipt_id"] = event.mail_receipts.order_by("-observed_at", "-pk").values_list("pk", flat=True).first()
     if event.state != EmailEvent.State.NEEDS_REVIEW:
         return context
 
@@ -239,6 +254,33 @@ def _context(request, event):
         form=ReviewForm(data, event=event, seat_ids=seat_ids, initial=initial),
     )
     return context
+
+
+def _comparison_seat(event):
+    if event.seat_id:
+        return event.seat
+    if isinstance(event.review_context, dict):
+        candidate_id = event.review_context.get("candidate_seat_id")
+        if isinstance(candidate_id, int):
+            return _seats().filter(pk=candidate_id).first()
+    return None
+
+
+def _current_booking_differences(event, recognized, seat):
+    if seat is None or event.review_reason not in (
+        EmailEvent.ReviewReason.REFERENCE_MISMATCH, EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT,
+    ):
+        return []
+    comparisons = (
+        ("Teilnehmer", _normalized_name(recognized.get("participant_name", "")),
+         _normalized_name(seat.participant.name) if seat.participant else ""),
+        ("Lehrgang", recognized.get("course_name", "").casefold(), seat.session.course.name.casefold()),
+        ("Schule", recognized.get("school"), seat.session.school),
+        ("Beginn", recognized.get("starts_at"), seat.session.starts_at),
+        ("Ende", recognized.get("ends_at"), seat.session.ends_at),
+        ("Buchungsreferenz", recognized.get("booking_reference"), seat.external_reference),
+    )
+    return [f"{label} weicht ab" for label, incoming, current in comparisons if incoming and incoming != current]
 
 
 @never_cache

@@ -2,7 +2,7 @@ import imaplib
 from contextlib import nullcontext
 from email.message import EmailMessage
 from io import StringIO
-from unittest.mock import Mock, call, patch
+from unittest.mock import ANY, Mock, call, patch
 
 from django.core.management import call_command
 from django.core.management.base import CommandError
@@ -70,7 +70,7 @@ class ImapSyncTests(TestCase):
             call("FETCH", "2", "(UID RFC822.SIZE)"),
             call("FETCH", "2", "(UID BODY.PEEK[])"),
         ])
-        ingest.assert_called_once_with(self.raw, occurred_at=None)
+        ingest.assert_called_once_with(self.raw, occurred_at=None, receipt=ANY)
         client.close.assert_not_called()
         client.store.assert_not_called()
         client.expunge.assert_not_called()

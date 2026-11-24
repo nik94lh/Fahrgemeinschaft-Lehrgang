@@ -11,14 +11,15 @@
     </style>
 </head>
 <body>
+    <a class="skip-link" href="#main-content">Zum Inhalt</a>
     <header class="app-header">
         <div class="header-inner">
-            <div class="brand"><strong>BMS</strong><span>Lehrgangsverwaltung</span></div>
+            <a class="brand" href="{% url 'overview' %}"><strong>BMS</strong><span>Lehrgangsverwaltung</span></a>
             <span class="mode">Testbetrieb</span>
         </div>
     </header>
     {% include "workspace/navigation.html" %}
-    <main>
+    <main id="main-content" tabindex="-1">
         {% block content %}{% endblock %}
     </main>
 </body>

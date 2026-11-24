@@ -19,7 +19,11 @@ CSRF_TRUSTED_ORIGINS = [
     origin for origin in os.environ.get("BMS_CSRF_TRUSTED_ORIGINS", "").split(",") if origin
 ]
 TEMPLATES = [
-    {"BACKEND": "django.template.backends.django.DjangoTemplates", "APP_DIRS": True},
+    {
+        "BACKEND": "django.template.backends.django.DjangoTemplates",
+        "APP_DIRS": True,
+        "OPTIONS": {"context_processors": ["django.template.context_processors.request"]},
+    },
 ]
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"

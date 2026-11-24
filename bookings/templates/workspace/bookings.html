@@ -19,7 +19,7 @@
                         <tr>
                             <td data-label="Lehrgang">{{ seat.session.course.name }}</td><td data-label="Schule">{{ seat.session.get_school_display }}</td>
                             <td data-label="Zeitraum">{% include "workspace/session_period.html" with session=seat.session only %}</td><td data-label="Teilnehmer/in">{% if seat.participant %}<a href="{% url 'booking_participant' seat.pk %}">{{ seat.participant.name }}</a>{% else %}—{% endif %}</td>
-                            <td data-label="Status">{{ seat.get_status_display }}</td>
+                            <td data-label="Status"><span class="status-label status-{{ seat.status }}">{{ seat.get_status_display }}</span></td>
                         </tr>
                     {% endfor %}</tbody>
                 </table>

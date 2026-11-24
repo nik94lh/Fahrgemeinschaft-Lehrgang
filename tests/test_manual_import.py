@@ -46,3 +46,13 @@ class ManualImportTests(TestCase):
             "file": SimpleUploadedFile("testmail.eml", response.content),
         })
         self.assertEqual(CourseSeat.objects.count(), 1)
+
+    def test_incomplete_test_mail_opens_the_specific_review(self):
+        mail = EmailMessage()
+        mail["Subject"] = "Lehrgangsgenehmigung"
+        mail.set_content("Teilnehmer: Alex Beispiel")
+        response = self.client.post("/importieren/", {
+            "file": SimpleUploadedFile("synthetisch.eml", mail.as_bytes()),
+        })
+        event = EmailEvent.objects.get()
+        self.assertRedirects(response, f"/klaerung/{event.pk}/")

@@ -20,6 +20,38 @@ class MailboxCursor(models.Model):
     last_uid = models.PositiveBigIntegerField(default=0)
     last_sync_at = models.DateTimeField(null=True, blank=True)
     last_sync_ok = models.BooleanField(null=True, blank=True)
+    last_processed = models.PositiveSmallIntegerField(null=True, blank=True)
+    last_skipped = models.PositiveSmallIntegerField(null=True, blank=True)
+    last_has_more = models.BooleanField(null=True, blank=True)
+
+
+class MailReceipt(models.Model):
+    class Outcome(models.TextChoices):
+        APPLIED = "applied", "Verarbeitet"
+        REVIEW = "review", "Klärung nötig"
+        DUPLICATE = "duplicate", "Bereits verarbeitet"
+        ADDRESS_ADDED = "address_added", "Adresse ergänzt"
+        SKIPPED = "skipped", "Übersprungen"
+
+    source_id = models.CharField(max_length=64)
+    uid_validity = models.PositiveBigIntegerField()
+    uid = models.PositiveBigIntegerField()
+    observed_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    event = models.ForeignKey(
+        "bookings.EmailEvent", null=True, blank=True, on_delete=models.CASCADE,
+        related_name="mail_receipts",
+    )
+    outcome = models.CharField(max_length=16, choices=Outcome.choices)
+    detail = models.CharField(max_length=255, blank=True)
+    fields = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source_id", "uid_validity", "uid"], name="mailimport_unique_mail_receipt",
+            ),
+        ]
 
 
 class ParticipantRecognitionConfiguration(models.Model):

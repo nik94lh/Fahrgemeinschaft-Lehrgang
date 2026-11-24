@@ -11,12 +11,13 @@ from dataclasses import dataclass, field
 
 from django.db import DatabaseError, transaction
 from django.utils import timezone
+from django.views.decorators.debug import sensitive_variables
 
 from bookings.services import ingest
 
 from .imap_network import BoundedIMAP4_SSL, resolve_public_host, validate_public_hostname
 from .mailbox_settings import load_mailbox_settings
-from .models import MailboxCursor
+from .models import MailReceipt, MailboxCursor
 from .parser import MAX_EML_BYTES, MailParseError
 
 
@@ -196,22 +197,37 @@ def _fetch_body(client, uid: int, expected_size: int) -> bytes | None:
 
 
 def _read_uid(client, uid: int) -> bytes | None:
+    raw, _ = _read_message(client, uid)
+    return raw
+
+
+def _read_message(client, uid: int) -> tuple[bytes | None, str]:
     size = _fetch_size(client, uid)
-    if size is None or size == 0 or size > MAX_EML_BYTES:
-        return None
-    return _fetch_body(client, uid, size)
+    if size is None:
+        return None, "Die Nachricht war beim Abruf nicht mehr im ausgewählten Ordner."
+    if size == 0:
+        return None, "Die Nachricht ist leer."
+    if size > MAX_EML_BYTES:
+        return None, "Die Nachricht überschreitet die Importgrenze von 1 MiB."
+    return _fetch_body(client, uid, size), "Der IMAP-Server lieferte keinen Nachrichteninhalt."
 
 
-def _import_uid(client, uid: int) -> bool:
-    raw = _read_uid(client, uid)
-    if raw is None:
-        return False
-    try:
-        # UID order and arrival time of forwarded copies are not original event times.
-        ingest(raw, occurred_at=None)
-    except MailParseError:
-        return False
-    return True
+@sensitive_variables()
+def _import_uid(client, cursor: MailboxCursor, uid: int) -> bool:
+    receipt = MailReceipt(source_id=cursor.source_id, uid_validity=cursor.uid_validity, uid=uid)
+    raw, detail = _read_message(client, uid)
+    if raw is not None:
+        try:
+            # UID order and arrival time of forwarded copies are not original event times.
+            ingest(raw, occurred_at=None, receipt=receipt)
+        except MailParseError as error:
+            detail = str(error)
+        else:
+            return True
+    receipt.outcome = MailReceipt.Outcome.SKIPPED
+    receipt.detail = detail
+    receipt.save()
+    return False
 
 
 @transaction.atomic
@@ -231,12 +247,17 @@ def _sync_selected(client, config: ImapConfig, limit: int) -> SyncSummary:
     first_uid = cursor.last_uid + 1
     last_uid = min(newest_uid, cursor.last_uid + SEARCH_WINDOW)
     uids = _search(client, first_uid, last_uid) if first_uid <= last_uid else []
-    processed = sum(_import_uid(client, uid) for uid in uids[:limit])
+    processed = sum(_import_uid(client, cursor, uid) for uid in uids[:limit])
     cursor.last_uid = uids[limit - 1] if len(uids) > limit else last_uid
     cursor.last_sync_at = timezone.now()
     cursor.last_sync_ok = True
-    cursor.save(update_fields=("uid_validity", "last_uid", "last_sync_at", "last_sync_ok"))
-    return SyncSummary(processed, min(limit, len(uids)) - processed, cursor.last_uid < newest_uid)
+    cursor.last_processed = processed
+    cursor.last_skipped = min(limit, len(uids)) - processed
+    cursor.last_has_more = cursor.last_uid < newest_uid
+    cursor.save(update_fields=(
+        "uid_validity", "last_uid", "last_sync_at", "last_sync_ok", "last_processed", "last_skipped", "last_has_more",
+    ))
+    return SyncSummary(processed, cursor.last_skipped, cursor.last_has_more)
 
 
 def sync_mailbox(config: ImapConfig, *, limit: int = DEFAULT_BATCH_SIZE) -> SyncSummary:
@@ -245,7 +266,7 @@ def sync_mailbox(config: ImapConfig, *, limit: int = DEFAULT_BATCH_SIZE) -> Sync
     try:
         with _connect_readonly(config) as client:
             return _sync_selected(client, config, limit)
-    except (ImapSyncError, OSError, imaplib.IMAP4.error, DatabaseError) as error:
+    except Exception as error:
         try:
             MailboxCursor.objects.update_or_create(
                 source_id=config.source_id,
@@ -253,6 +274,6 @@ def sync_mailbox(config: ImapConfig, *, limit: int = DEFAULT_BATCH_SIZE) -> Sync
             )
         except DatabaseError:
             pass
-        if isinstance(error, ImapSyncError):
-            raise
-        raise ImapSyncError("Der IMAP-Abruf ist fehlgeschlagen.") from None
+        if isinstance(error, (OSError, imaplib.IMAP4.error, DatabaseError)):
+            raise ImapSyncError("Der IMAP-Abruf ist fehlgeschlagen.") from None
+        raise

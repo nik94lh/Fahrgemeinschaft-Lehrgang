@@ -7,8 +7,10 @@ from unicodedata import normalize
 from django.db import transaction
 from django.db.models.functions import Lower, Trim
 from django.utils import timezone
+from django.views.decorators.debug import sensitive_variables
 
 from mailimport.email_address import normalize_contact_email
+from mailimport.models import MailReceipt
 from mailimport.parser import ParsedMail, parse_eml
 from mailimport.participant_settings import get_functional_addresses
 
@@ -29,12 +31,15 @@ CANCELLATION_EVENTS = {EmailEvent.Kind.CANCELLATION, EmailEvent.Kind.AUTOMATIC_C
 ACTIVE_STATUSES = {BookingStatus.APPROVED, BookingStatus.AWAITING_CONFIRMATION, BookingStatus.CONFIRMED}
 
 
-def ingest(raw: bytes, *, occurred_at: datetime | None = None) -> EmailEvent:
+@sensitive_variables()
+def ingest(
+    raw: bytes, *, occurred_at: datetime | None = None, receipt: MailReceipt | None = None,
+) -> EmailEvent:
     """Import one EML. `occurred_at` is optional, trusted event time from the caller."""
     if occurred_at is not None and timezone.is_naive(occurred_at):
         raise ValueError("occurred_at must include a time zone")
     mail = parse_eml(raw, functional_addresses=get_functional_addresses())
-    return _reconcile(mail, occurred_at)
+    return _reconcile(mail, occurred_at, receipt=receipt)
 
 
 def _lock_import():
@@ -69,20 +74,35 @@ def set_participant_email(seat_id: int, email: str, *, expected_participant_id: 
 
 
 @transaction.atomic
-def _reconcile(mail: ParsedMail, occurred_at: datetime | None) -> EmailEvent:
+def _reconcile(
+    mail: ParsedMail, occurred_at: datetime | None, *, receipt: MailReceipt | None = None,
+) -> EmailEvent:
     _lock_import()
     event, new = EmailEvent.objects.get_or_create(
         sha256=mail.fingerprint,
         defaults={"kind": mail.event_type, "occurred_at": occurred_at},
     )
-    if not new:
+    address_added = False
+    address_note = mail.address_note
+    if new:
+        event = _apply_new_event(event, mail, receipt=receipt)
+    else:
         if event.state == EmailEvent.State.APPLIED and mail.participant_email:
             # Share the contact replay checks without reapplying the booking event.
-            from .contact_replay import _fill_existing_contact
+            from .contact_replay import ContactReplayResult, fill_existing_contact
 
-            _fill_existing_contact(mail)
-        return event
+            contact_result = fill_existing_contact(mail)
+            address_added = contact_result == ContactReplayResult.ADDED
+            if not address_added:
+                address_note = contact_result.value
+        elif mail.participant_email:
+            address_note = "Zur früheren Mail gibt es keine anwendbare Buchungszuordnung für einen Adressnachtrag."
+    if receipt is not None:
+        _record_receipt(receipt, event, mail, new=new, address_added=address_added, address_note=address_note)
+    return event
 
+
+def _apply_new_event(event: EmailEvent, mail: ParsedMail, *, receipt: MailReceipt | None) -> EmailEvent:
     referenced_seat = _referenced_seat(mail)
     reason = _parsed_review_reason(mail, event.kind)
     if reason:
@@ -97,8 +117,46 @@ def _reconcile(mail: ParsedMail, occurred_at: datetime | None) -> EmailEvent:
                 except _IdentityConflict as conflict:
                     return _flag_review(event, mail, conflict.reason, referenced_seat)
             return _flag_review(event, mail, EmailEvent.ReviewReason.REFERENCE_MISMATCH, referenced_seat)
-        return _update_booking(event, referenced_seat, mail)
-    return _reconcile_by_details(event, mail)
+        return _update_booking(event, referenced_seat, mail, receipt=receipt)
+    return _reconcile_by_details(event, mail, receipt=receipt)
+
+
+def _record_receipt(
+    receipt: MailReceipt, event: EmailEvent, mail: ParsedMail, *, new: bool, address_added: bool,
+    address_note: str,
+) -> None:
+    outcome = MailReceipt.Outcome
+    if address_added:
+        receipt.outcome = outcome.ADDRESS_ADDED
+        receipt.detail = "Die fehlende Adresse wurde ergänzt. Der Buchungsstatus blieb gleich."
+    elif not new:
+        receipt.outcome = outcome.DUPLICATE
+        receipt.detail = "Die Nachricht ist bytegleich mit einem früheren Eingang. Buchung und Adresse wurden bei diesem Abruf nicht geändert."
+    elif event.state == EmailEvent.State.NEEDS_REVIEW:
+        receipt.outcome = outcome.REVIEW
+        receipt.detail = event.get_review_reason_display()
+        if mail.participant_email:
+            address_note = "BMS hat die Teilnehmeradresse erkannt. Die Übernahme erfordert eine Klärung."
+    elif receipt.outcome != outcome.ADDRESS_ADDED:
+        receipt.outcome = outcome.APPLIED
+        receipt.detail = "Die Nachricht wurde der Buchung zugeordnet."
+        if mail.participant_email and event.seat and event.seat.participant:
+            if normalize_contact_email(event.seat.participant.email) == mail.participant_email:
+                address_note = "Die erkannte Adresse ist im verknüpften Teilnehmerprofil hinterlegt."
+
+    receipt.event = event
+    receipt.sent_at = mail.sent_at
+    fields = {
+        **_recognized_booking_fields(mail, include_previous=True),
+        "mail_type": EmailEvent.Kind(mail.event_type).label,
+        "participant_email": mail.participant_email,
+        "address_note": address_note,
+        "confirmation_deadline": mail.confirmation_deadline.isoformat() if mail.confirmation_deadline else None,
+        "cancellation_date": mail.cancellation_date.isoformat() if mail.cancellation_date else None,
+        "warnings": mail.warnings,
+    }
+    receipt.fields = {name: value for name, value in fields.items() if value}
+    receipt.save()
 
 
 def _parsed_review_reason(mail: ParsedMail, event_kind: str) -> EmailEvent.ReviewReason:
@@ -189,7 +247,7 @@ def _fill_email(participant: Participant, email: str):
         participant.save(update_fields=["email"])
 
 
-def _reconcile_by_details(event: EmailEvent, mail: ParsedMail) -> EmailEvent:
+def _reconcile_by_details(event: EmailEvent, mail: ParsedMail, *, receipt: MailReceipt | None) -> EmailEvent:
     sessions = list(CourseSession.objects.filter(
         course__name__iexact=mail.course_name,
         school=mail.school,
@@ -208,8 +266,8 @@ def _reconcile_by_details(event: EmailEvent, mail: ParsedMail) -> EmailEvent:
         if seats:
             seat = seats[0]
             if mail.booking_reference and seat.external_reference:
-                return _flag_review(event, mail, EmailEvent.ReviewReason.REFERENCE_MISMATCH)
-            return _update_booking(event, seat, mail)
+                return _flag_review(event, mail, EmailEvent.ReviewReason.REFERENCE_MISMATCH, candidate_seat_id=seat.pk)
+            return _update_booking(event, seat, mail, receipt=receipt)
         previous_names = BookingHistory.objects.filter(
             seat__session=session, previous_participant__isnull=False,
         ).order_by().values_list("previous_participant__name", flat=True).distinct()
@@ -234,7 +292,7 @@ def _reconcile_by_details(event: EmailEvent, mail: ParsedMail) -> EmailEvent:
     # A name on another date alone does not identify the same person.
     if participant is None:
         participant = Participant.objects.create(name=mail.participant_name, email=email)
-    return _update_booking(event, CourseSeat(session=session, participant=participant), mail)
+    return _update_booking(event, CourseSeat(session=session, participant=participant), mail, receipt=receipt)
 
 
 def _new_status(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> str:
@@ -249,7 +307,9 @@ def _new_status(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> str:
     return BookingStatus.APPROVED
 
 
-def _update_booking(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> EmailEvent:
+def _update_booking(
+    event: EmailEvent, seat: CourseSeat, mail: ParsedMail, *, receipt: MailReceipt | None,
+) -> EmailEvent:
     new = seat.pk is None
     status = _new_status(event, seat, mail)
     participant = seat.participant
@@ -277,9 +337,13 @@ def _update_booking(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> Em
 
     previous_status = "" if new else seat.status
     previous_participant = None if new else seat.participant
+    missing_address = previous_participant is not None and not previous_participant.email
     changed = []
     if allow_enrichment:
         _fill_email(participant, email)
+        if receipt is not None and missing_address and email:
+            receipt.outcome = MailReceipt.Outcome.ADDRESS_ADDED
+            receipt.detail = "BMS hat die fehlende Teilnehmeradresse bei der bestehenden Buchung ergänzt."
         if participant != seat.participant:
             seat.participant = participant
             changed.append("participant")
@@ -309,12 +373,7 @@ def _update_booking(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> Em
     return _record(event, EmailEvent.State.APPLIED, seat)
 
 
-def _flag_review(
-    event: EmailEvent,
-    mail: ParsedMail,
-    reason: EmailEvent.ReviewReason,
-    seat: CourseSeat | None = None,
-) -> EmailEvent:
+def _recognized_booking_fields(mail: ParsedMail, *, include_previous: bool = False) -> dict:
     context = {
         "course_name": mail.course_name,
         "school": mail.school,
@@ -323,10 +382,25 @@ def _flag_review(
         "participant_name": mail.participant_name,
         "booking_reference": mail.booking_reference,
     }
-    if event.kind == EmailEvent.Kind.REASSIGNMENT:
+    if include_previous:
         context["previous_participant_name"] = mail.previous_participant_name
+    return {key: value for key, value in context.items() if value is not None}
+
+
+def _flag_review(
+    event: EmailEvent,
+    mail: ParsedMail,
+    reason: EmailEvent.ReviewReason,
+    seat: CourseSeat | None = None,
+    *,
+    candidate_seat_id: int | None = None,
+) -> EmailEvent:
     event.review_reason = reason
-    event.review_context = {key: value for key, value in context.items() if value is not None}
+    event.review_context = _recognized_booking_fields(
+        mail, include_previous=event.kind == EmailEvent.Kind.REASSIGNMENT,
+    )
+    if candidate_seat_id is not None:
+        event.review_context["candidate_seat_id"] = candidate_seat_id
     return _record(event, EmailEvent.State.NEEDS_REVIEW, seat)
 
 

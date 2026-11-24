@@ -10,6 +10,7 @@ from email.errors import MessageError
 from email.headerregistry import Address
 from email.message import EmailMessage
 from email.parser import BytesParser
+from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
 
 from .email_address import normalize_contact_email
@@ -113,6 +114,8 @@ class ParsedMail:
     reference_conflict: bool = False
     participant_email: str | None = field(default=None, repr=False)
     participant_email_ambiguous: bool = False
+    address_note: str = ""
+    sent_at: datetime | None = None
 
 
 def _normalized(value: str) -> str:
@@ -358,6 +361,17 @@ def _date_from_match(pattern: str, text: str) -> date | None:
         return None
 
 
+def _sent_at(message: EmailMessage) -> datetime | None:
+    values = [value for name, value in message.raw_items() if name.casefold() == "date"]
+    if len(values) != 1:
+        return None
+    try:
+        value = parsedate_to_datetime(values[0])
+        return value.astimezone(UTC) if value.utcoffset() is not None else None
+    except (ValueError, TypeError, OverflowError):
+        return None
+
+
 def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> ParsedMail:
     """Parse bounded bytes locally. The result contains structured fields only."""
     if not raw:
@@ -373,7 +387,8 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
         raise MailParseError("Die EML-Struktur kann nicht gelesen werden.") from error
 
     # Replies can contain HTML quotations and must not create new events or preview stale fields.
-    if REPLY_PREFIX.match(subject):
+    is_reply = bool(REPLY_PREFIX.match(subject))
+    if is_reply:
         subject, text = "", ""
     event_type = _classify(subject, text)
     participant = _values(text, "Teilnehmer(?:in)?|Neue[rs]? Teilnehmer(?:in)?")
@@ -387,6 +402,20 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
             recipients, participant_name, functional_addresses,
             allow_unlabeled=subject.casefold() == BOOKING_SUBJECT,
         )
+    address_note = ""
+    if is_reply:
+        address_note = "Die Mail ist als Antwort gekennzeichnet. Leite die Original-Buchungsmail als EML oder mit ihren ursprünglichen Kopfzeilen weiter."
+    elif event_type in ("approval", "confirmation") and not participant_email:
+        if participant_email_ambiguous:
+            address_note = "Im ursprünglichen An-Feld kommen mehrere Adressen für die Person in Frage."
+        elif not participant_name:
+            address_note = "Die Adresse konnte ohne eindeutig erkannten Teilnehmernamen nicht geprüft werden."
+        elif not _contact_subject(subject):
+            address_note = "Für diesen Betreff ist keine automatische Adressübernahme eingerichtet."
+        elif not recipients:
+            address_note = "Das ursprüngliche An-Feld fehlt oder konnte nicht eindeutig gelesen werden."
+        else:
+            address_note = "Im ursprünglichen An-Feld steht keine eindeutig passende persönliche Adresse. Prüfe Anzeigenamen und hinterlegte Funktionsadressen."
     previous_name = _unique(_values(text, "Bisherige[rs]? Teilnehmer(?:in)?"), _name)
     course_name = _unique(_values(text, "Lehrgangsart|Lehrgang"), _course_name)
     references = re.findall(
@@ -430,4 +459,6 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
         reference_conflict=reference_conflict,
         participant_email=participant_email,
         participant_email_ambiguous=participant_email_ambiguous,
+        address_note=address_note,
+        sent_at=_sent_at(message),
     )

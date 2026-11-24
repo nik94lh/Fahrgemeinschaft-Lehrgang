@@ -3,10 +3,8 @@
 {% block page_styles %}
     .review-layout { display: grid; gap: 1rem; }
     .review-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
-    .review-next { border-inline-start: .3rem solid var(--accent); }
-    .review-next p + p { margin-block-start: .4rem; }
-    .review-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: .8rem; }
-    .review-action { display: grid; align-content: start; gap: .4rem; padding: .85rem; border: 1px solid var(--line); border-radius: .5rem; text-decoration: none; color: var(--ink); }
+    .review-actions { display: grid; gap: .7rem; }
+    .review-action { display: grid; gap: .2rem; padding: .85rem 1rem; border: 1px solid var(--line); border-radius: .5rem; text-decoration: none; color: var(--ink); }
     .review-action span { color: var(--muted); font-size: .92rem; }
     .review-action:hover, .review-action[aria-current] { border-color: var(--accent); background: #edf2ff; }
     .review-action strong { color: var(--accent); }
@@ -26,15 +24,18 @@
     @media (max-width: 680px) { .review-facts { grid-template-columns: 1fr; } }
 {% endblock %}
 {% block content %}
-    <p class="back-link"><a href="{% url 'review' %}">Zu den Klärungsfällen</a></p>
+    <p class="back-link"><a href="{% url 'review' %}">← Zu den Klärungsfällen</a></p>
     <h1>Klärungsfall {{ event.pk }}</h1>
     <p class="intro">{{ event.get_kind_display }} · Importiert am {{ event.imported_at|date:"d.m.Y H:i" }}</p>
 
     <div class="review-layout">
-        <section class="panel review-next" aria-labelledby="review-next">
+        <section class="panel diagnostic-panel{% if actions %} diagnostic-warning{% endif %}" aria-labelledby="review-next">
             {% if actions %}
-                <h2 id="review-next">Grund und nächster Schritt</h2>
-                <p><strong>{{ event.get_review_reason_display }}</strong></p>
+                <h2 id="review-next">{{ event.get_review_reason_display }}</h2>
+                {% if differences %}
+                    <p><strong>Abweichungen zur aktuellen Buchung</strong></p>
+                    <ul>{% for difference in differences %}<li>{{ difference }}</li>{% endfor %}</ul>
+                {% endif %}
                 <p>{{ guidance }}</p>
             {% else %}
                 <h2 id="review-next">Entscheidung</h2>
@@ -49,34 +50,35 @@
                 <h2 id="review-recognized">Erkannte Angaben</h2>
                 {% if has_recognized_data or event.occurred_at %}
                     <dl class="details">
-                        {% if recognized.participant_name %}<div><dt>Teilnehmer</dt><dd>{{ recognized.participant_name }}</dd></div>{% endif %}
+                        <div><dt>Teilnehmer</dt><dd>{{ recognized.participant_name|default:"Nicht eindeutig erkannt" }}</dd></div>
                         {% if recognized.previous_participant_name %}<div><dt>Bisheriger Teilnehmer laut Nachricht</dt><dd>{{ recognized.previous_participant_name }}</dd></div>{% endif %}
-                        {% if recognized.course_name %}<div><dt>Lehrgang</dt><dd>{{ recognized.course_name }}</dd></div>{% endif %}
-                        {% if school_name %}<div><dt>Schule</dt><dd>{{ school_name }}</dd></div>{% endif %}
-                        {% if recognized.starts_at %}<div><dt>Beginn</dt><dd>{{ recognized.starts_at|date:"d.m.Y H:i" }}</dd></div>{% endif %}
-                        {% if recognized.ends_at %}<div><dt>Ende</dt><dd>{{ recognized.ends_at|date:"d.m.Y H:i" }}</dd></div>{% endif %}
-                        {% if recognized.booking_reference %}<div><dt>Buchungsreferenz</dt><dd>{{ recognized.booking_reference }}</dd></div>{% endif %}
+                        <div><dt>Lehrgang</dt><dd>{{ recognized.course_name|default:"Nicht eindeutig erkannt" }}</dd></div>
+                        <div><dt>Schule</dt><dd>{{ school_name|default:"Nicht eindeutig erkannt" }}</dd></div>
+                        <div><dt>Beginn</dt><dd>{{ recognized.starts_at|date:"d.m.Y H:i"|default:"Nicht eindeutig erkannt" }}</dd></div>
+                        <div><dt>Ende</dt><dd>{{ recognized.ends_at|date:"d.m.Y H:i"|default:"Nicht eindeutig erkannt" }}</dd></div>
+                        <div><dt>Buchungsreferenz</dt><dd>{{ recognized.booking_reference|default:"Keine erkannt" }}</dd></div>
                         {% if event.occurred_at %}<div><dt>Meldungszeit</dt><dd>{{ event.occurred_at|date:"d.m.Y H:i" }}</dd></div>{% endif %}
                     </dl>
                 {% endif %}
                 {% if not has_recognized_data %}
                     <p>Zu diesem Import sind keine erkannten Angaben hinterlegt. Suche die Originalnachricht im Postfach. Der oben angegebene Importzeitpunkt grenzt den Abruf ein. Das Versanddatum kann früher liegen.</p>
                 {% endif %}
+                {% if receipt_id %}<p class="detail-note"><a href="{% url 'mail_receipt' receipt_id %}">Mail-Eingang ansehen →</a></p>{% endif %}
             </section>
 
             <section class="panel" aria-labelledby="review-linked">
-                <h2 id="review-linked">Verknüpfte Lehrgangsbuchung</h2>
-                {% if event.seat %}
+                <h2 id="review-linked">{% if event.seat_id %}Verknüpfte Lehrgangsbuchung{% else %}Mögliche Lehrgangsbuchung{% endif %}</h2>
+                {% if comparison_seat %}
                     <dl class="details">
-                        <div><dt>Buchung</dt><dd>Nr. {{ event.seat_id }}{% if event.seat.external_reference %} · {{ event.seat.external_reference }}{% endif %}</dd></div>
-                        <div><dt>Aktueller Teilnehmer</dt><dd>{{ event.seat.participant.name|default:"Ohne Zuordnung" }}</dd></div>
-                        <div><dt>Aktueller Status</dt><dd>{{ event.seat.get_status_display }}</dd></div>
-                        <div><dt>Lehrgang</dt><dd>{{ event.seat.session.course.name }}</dd></div>
-                        <div><dt>Schule</dt><dd>{{ event.seat.session.get_school_display }}</dd></div>
-                        <div><dt>Beginn</dt><dd>{{ event.seat.session.starts_at|date:"d.m.Y H:i" }}</dd></div>
-                        <div><dt>Ende</dt><dd>{{ event.seat.session.ends_at|date:"d.m.Y H:i" }}</dd></div>
+                        <div><dt>Buchung</dt><dd>Nr. {{ comparison_seat.pk }}{% if comparison_seat.external_reference %} · {{ comparison_seat.external_reference }}{% endif %}</dd></div>
+                        <div><dt>Aktueller Teilnehmer</dt><dd>{{ comparison_seat.participant.name|default:"Ohne Zuordnung" }}</dd></div>
+                        <div><dt>Aktueller Status</dt><dd><span class="status-label status-{{ comparison_seat.status }}">{{ comparison_seat.get_status_display }}</span></dd></div>
+                        <div><dt>Lehrgang</dt><dd>{{ comparison_seat.session.course.name }}</dd></div>
+                        <div><dt>Schule</dt><dd>{{ comparison_seat.session.get_school_display }}</dd></div>
+                        <div><dt>Beginn</dt><dd>{{ comparison_seat.session.starts_at|date:"d.m.Y H:i" }}</dd></div>
+                        <div><dt>Ende</dt><dd>{{ comparison_seat.session.ends_at|date:"d.m.Y H:i" }}</dd></div>
                     </dl>
-                    {% if actions and event.seat.status == "confirmed" %}
+                    {% if actions and event.seat_id and comparison_seat.status == "confirmed" %}
                         <p class="quiet review-info">Eine bestätigte Buchung kann nach Abschluss aller zugeordneten Klärungsfälle wieder für Fahrgemeinschaften berücksichtigt werden.</p>
                     {% endif %}
                 {% else %}

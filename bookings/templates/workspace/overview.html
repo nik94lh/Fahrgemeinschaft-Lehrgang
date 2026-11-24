@@ -1,7 +1,12 @@
 {% extends "workspace/base.html" %}
 {% block content %}
-    <h1>Übersicht</h1>
-    <p class="intro">Lehrgangsbuchungen und der letzte Stand des Mailimports.</p>
+    <div class="page-heading">
+        <div>
+            <h1>Übersicht</h1>
+            <p class="intro">Lehrgangsbuchungen und der letzte Stand des Mailimports.</p>
+        </div>
+        {% if request.is_secure %}<a class="button-link" href="{% url 'mail_receipts' %}">Mail-Eingang ansehen</a>{% endif %}
+    </div>
     <dl class="stats">
         <div><dt>Buchungen</dt><dd>{{ seats.total }}</dd></div>
         <div><dt>Bestätigt</dt><dd>{{ seats.confirmed }}</dd></div>
