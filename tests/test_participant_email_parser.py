@@ -15,6 +15,10 @@ APPROVAL = (
 )
 FUNCTIONAL = ("funktionspostfach@example.invalid",)
 BOOKING_SUBJECT = "Ihre Lehrgangsanmeldung"
+CONFIRMATION = APPROVAL.replace(
+    "Sehr geehrte Frau Alex Beispiel,\n\nIhre Teilnahme an folgendem Lehrgangstermin wurde genehmigt:",
+    "Die Lehrgangsanmeldung des Teilnehmers Alex Beispiel für den folgenden Lehrgangstermin wurde bestätigt:",
+)
 
 
 def booking_message(to=None, *, subject=BOOKING_SUBJECT, body=APPROVAL):
@@ -214,6 +218,80 @@ class ParticipantEmailParserTests(TestCase):
         message = booking_message("alex@example.invalid", subject="Lehrgangsgenehmigung")
         result = parse_eml(message.as_bytes(), functional_addresses=FUNCTIONAL)
         self.assertIsNone(result.participant_email)
+
+    def test_confirmation_subjects_accept_a_named_original_recipient(self):
+        for subject in ("Lehrgangsanmeldung wurde bestätigt", "Teilnahmebestätigung"):
+            with self.subTest(subject=subject):
+                mail = booking_message(
+                    "Service <funktionspostfach@example.invalid>, Alex Beispiel <Alex@Example.Invalid>",
+                    subject=subject,
+                    body=CONFIRMATION,
+                )
+                result = parse_eml(mail.as_bytes(), functional_addresses=FUNCTIONAL)
+                self.assertEqual(result.event_type, "confirmation")
+                self.assertEqual(result.participant_email, "alex@example.invalid")
+
+    def test_confirmation_does_not_accept_a_bare_address_or_infer_from_cc(self):
+        for recipients in (
+            "alex@example.invalid",
+            "alex@example.invalid, robin@example.invalid",
+            "Alex Beispiel <funktionspostfach@example.invalid>, alex@example.invalid",
+        ):
+            with self.subTest(recipients=recipients):
+                mail = booking_message(recipients, subject="Teilnahmebestätigung", body=CONFIRMATION)
+                mail["Cc"] = "Alex Beispiel <cc@example.invalid>"
+                result = parse_eml(mail.as_bytes(), functional_addresses=FUNCTIONAL)
+                self.assertIsNone(result.participant_email)
+                self.assertFalse(result.participant_email_ambiguous)
+
+    def test_confirmation_named_recipients_can_be_ambiguous(self):
+        mail = booking_message(
+            "Alex Beispiel <a@example.invalid>, Alex Beispiel <b@example.invalid>",
+            subject="Teilnahmebestätigung",
+            body=CONFIRMATION,
+        )
+        result = parse_eml(mail.as_bytes())
+        self.assertIsNone(result.participant_email)
+        self.assertTrue(result.participant_email_ambiguous)
+
+    def test_outlook_inline_forward_supports_separate_valid_semicolon_recipients(self):
+        mail = booking_message(
+            "Alex Beispiel <outer@example.invalid>",
+            subject="WG: Teilnahmebestätigung",
+            body=(
+                "-----Ursprüngliche Nachricht-----\n"
+                "Von: absender@example.invalid\n"
+                "Gesendet: Montag, 10. Mai 2027 09:00\n"
+                "An: Service <funktionspostfach@example.invalid>; Alex Beispiel <alex@example.invalid>\n"
+                "Cc: Alex Beispiel <cc@example.invalid>\n"
+                "Betreff: Teilnahmebestätigung\n\n"
+                + CONFIRMATION
+            ),
+        )
+        result = parse_eml(mail.as_bytes(), functional_addresses=FUNCTIONAL)
+        self.assertEqual(result.participant_email, "alex@example.invalid")
+
+    def test_malformed_outlook_inline_recipient_list_is_ignored(self):
+        mail = booking_message(
+            "Alex Beispiel <outer@example.invalid>",
+            subject="WG: Teilnahmebestätigung",
+            body=(
+                "-----Ursprüngliche Nachricht-----\n"
+                "Von: absender@example.invalid\n"
+                "An: Funktion; Alex Beispiel <alex@example.invalid>\n"
+                "Betreff: Teilnahmebestätigung\n\n"
+                + CONFIRMATION
+            ),
+        )
+        self.assertIsNone(parse_eml(mail.as_bytes(), functional_addresses=FUNCTIONAL).participant_email)
+
+    def test_forwarded_confirmation_never_uses_outer_recipient_as_fallback(self):
+        mail = booking_message(
+            "Alex Beispiel <outer@example.invalid>",
+            subject="WG: Teilnahmebestätigung",
+            body=CONFIRMATION,
+        )
+        self.assertIsNone(parse_eml(mail.as_bytes(), functional_addresses=FUNCTIONAL).participant_email)
 
     def test_invalid_email_or_duplicate_to_header_never_yields_a_recipient(self):
         invalid_to = booking_message("Alex Beispiel <alex@example>").as_bytes()

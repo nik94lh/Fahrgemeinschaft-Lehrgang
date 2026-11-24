@@ -51,6 +51,7 @@ class MailPreviewTests(TestCase):
         self.assertContains(response, "Alex Beispiel")
         self.assertContains(response, "Geretsried")
         self.assertContains(response, "Teilnahmebestätigung")
+        self.assertContains(response, "Keine persönliche Adresse erkannt")
         self.assertNotContains(response, "https://tracker.invalid")
         self.assertNotContains(response, "https://sfs.invalid")
         self.assertIn("no-store", response.headers["Cache-Control"])

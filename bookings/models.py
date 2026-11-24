@@ -253,6 +253,30 @@ class Carpool(models.Model):
     travel_at = models.DateTimeField(null=True, blank=True)
 
 
+class RideCase(models.Model):
+    class Status(models.TextChoices):
+        OPEN = "open", "Offen"
+        IN_REVIEW = "in_review", "In Prüfung"
+        CLOSED = "closed", "Abgeschlossen"
+
+    match_key = models.CharField(max_length=96, unique=True)
+    school = models.CharField(max_length=16, choices=School.choices)
+    direction = models.CharField(max_length=8, choices=Carpool.Direction.choices)
+    travel_date = models.DateField()
+    earliest = models.DateTimeField()
+    latest = models.DateTimeField()
+    seats = models.ManyToManyField(CourseSeat, related_name="ride_cases")
+    status = models.CharField(max_length=12, choices=Status.choices, default=Status.OPEN)
+    currently_matches = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["travel_date", "earliest", "pk"]
+        indexes = [models.Index(fields=["currently_matches", "travel_date"], name="bookings_ride_active_day")]
+        constraints = [
+            models.CheckConstraint(condition=Q(earliest__lte=F("latest")), name="bookings_ride_ordered_times"),
+        ]
+
+
 class CarpoolMember(models.Model):
     carpool = models.ForeignKey(Carpool, on_delete=models.CASCADE, related_name="members")
     participant = models.ForeignKey(

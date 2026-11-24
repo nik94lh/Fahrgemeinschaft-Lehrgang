@@ -1,41 +1,82 @@
 {% extends "workspace/base.html" %}
 {% block title %}Fahrgemeinschaften{% endblock %}
+{% block page_styles %}
+    .ride-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 38rem; }
+    .ride-toolbar { display: flex; align-items: end; justify-content: space-between; flex-wrap: wrap; gap: .75rem; margin-block-end: 1rem; }
+    .ride-filter { display: flex; gap: .5rem; flex-wrap: wrap; align-items: end; margin: 0; }
+    .ride-toolbar button { width: auto; margin: 0; }
+    .ride-match-label { display: block; font-size: .875rem; color: var(--muted); }
+    .ride-rules { margin-block-start: 1rem; font-size: .9rem; }
+{% endblock %}
 {% block content %}
     <h1>Fahrgemeinschaften</h1>
-    <p class="intro">Mögliche gemeinsame Fahrten zu bestätigten Lehrgängen in den nächsten {{ lookahead_days }} Tagen.</p>
-    <section class="panel" aria-labelledby="ride-suggestions">
-        <h2 id="ride-suggestions">Mögliche Fahrten</h2>
+    <p class="intro">Gespeicherte Fälle für gemeinsame Fahrten zu bestätigten Lehrgängen.</p>
+    {% if synced %}<p class="notice" role="status">Abgleich abgeschlossen.</p>{% endif %}
+    <dl class="stats ride-stats">
+        <div><dt>Beim letzten Abgleich passend</dt><dd>{{ active_count }}</dd></div>
+        <div><dt>Davon offen oder in Prüfung</dt><dd>{{ pending_count }}</dd></div>
+    </dl>
+    <section class="panel" aria-labelledby="ride-cases">
+        <h2 id="ride-cases">Fahrgemeinschaftsfälle</h2>
+        <div class="ride-toolbar">
+            <form class="filters ride-filter" method="get">
+                <div>
+                    <label for="ride-status-filter">Fallstatus</label>
+                    <select name="status" id="ride-status-filter">
+                        <option value="">Alle Fälle</option>
+                        {% for value, label in status_choices %}
+                            <option value="{{ value }}"{% if value == selected_status %} selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="secondary-button">Filtern</button>
+            </form>
+            <form method="post" action="{% url 'rides_sync' %}">
+                {% csrf_token %}
+                {% if selected_status %}<input type="hidden" name="status" value="{{ selected_status }}">{% endif %}
+                <button type="submit">Abgleich starten</button>
+            </form>
+        </div>
         {% if page_obj %}
-            <div class="table-scroll" tabindex="0" role="region" aria-labelledby="ride-suggestions">
-                <table>
+            <div class="table-scroll" tabindex="0" role="region" aria-labelledby="ride-cases">
+                <table class="mobile-table">
                     <thead>
                         <tr>
+                            <th scope="col">Fall</th>
                             <th scope="col">Datum</th>
                             <th scope="col">Richtung</th>
                             <th scope="col">Schule</th>
                             <th scope="col">Lehrgangszeiten</th>
                             <th scope="col">Personen</th>
+                            <th scope="col">Fallstatus</th>
                         </tr>
                     </thead>
                     <tbody>
                         {% for item in page_obj %}
                             <tr>
-                                <td>{{ item.earliest|date:"d.m.Y" }}</td>
-                                <td>{{ item.direction.label }}</td>
-                                <td>{{ item.school.label }}</td>
-                                <td>
-                                    {{ item.earliest|date:"H:i" }}{% if item.latest != item.earliest %}–{{ item.latest|date:"H:i" }}{% endif %} Uhr
+                                <td data-label="Fall"><a href="{% url 'ride_detail' item.pk %}">Fall {{ item.pk }} öffnen</a></td>
+                                <td data-label="Datum">{{ item.travel_date|date:"d.m.Y" }}</td>
+                                <td data-label="Richtung">{{ item.get_direction_display }}</td>
+                                <td data-label="Schule">{{ item.get_school_display }}</td>
+                                <td data-label="Lehrgangszeiten">
+                                    <span>{{ item.earliest|date:"H:i" }}{% if item.latest != item.earliest %}–{{ item.latest|date:"H:i" }}{% endif %} Uhr</span>
                                 </td>
-                                <td>{{ item.participant_count }}</td>
+                                <td data-label="Personen">{{ item.participant_count }}</td>
+                                <td data-label="Fallstatus">
+                                    <span><strong>{{ item.get_status_display }}</strong>
+                                    <span class="ride-match-label">{% if item.currently_matches %}Passend{% else %}Kein aktueller Treffer{% endif %}</span></span>
+                                </td>
                             </tr>
                         {% endfor %}
                     </tbody>
                 </table>
             </div>
+            {% include "workspace/pagination.html" %}
+        {% elif selected_status %}
+            <p class="quiet">Keine Fälle mit diesem Status.</p>
         {% else %}
-            <p class="quiet">Keine passenden Fahrten im betrachteten Zeitraum.</p>
+            <p class="quiet">Noch keine Fahrgemeinschaftsfälle.</p>
         {% endif %}
-        {% include "workspace/pagination.html" %}
-        <p class="quiet">Der Filter prüft Schule, Kalendertag und höchstens {{ tolerance_minutes }} Minuten Zeitunterschied. Abfahrtsort und Teilnahmebereitschaft werden erst mit der späteren Feuerwehrzuordnung und Einwilligung berücksichtigt.</p>
+        <p class="quiet ride-rules">Ein Fall setzt mindestens zwei unterschiedliche Teilnehmerprofile mit bestätigten Buchungen ohne offenen Klärungsfall in den nächsten {{ lookahead_days }} Tagen voraus. Für Hinfahrten zählen dieselbe Schule und derselbe Kalendertag. Bei Rückfahrten dürfen die Lehrgangsenden am selben Tag höchstens {{ return_tolerance_minutes }} Minuten auseinanderliegen.</p>
     </section>
 {% endblock %}

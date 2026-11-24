@@ -1,0 +1,65 @@
+{% extends "workspace/base.html" %}
+{% block title %}Fahrgemeinschaftsfall {{ case.pk }}{% endblock %}
+{% block page_styles %}
+    .ride-case-panel { margin-block-end: 1rem; }
+    .ride-case-status { max-width: 24rem; margin-block: 1rem; }
+    .ride-case-status select { display: block; width: 100%; margin-block-start: .25rem; padding: .6rem; font: inherit; border: 1px solid var(--line); border-radius: .45rem; background: white; color: var(--ink); }
+{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'rides' %}">‹ Zurück zu den Fahrgemeinschaften</a></p>
+    <h1>Fahrgemeinschaftsfall {{ case.pk }}</h1>
+    <p class="intro">{{ case.get_direction_display }} · {{ case.get_school_display }} · {{ case.travel_date|date:"d.m.Y" }}</p>
+
+    {% if saved %}<p class="notice" role="status">Fallstatus gespeichert.</p>{% endif %}
+    <section class="panel ride-case-panel" aria-labelledby="ride-status">
+        <h2 id="ride-status">Fall bearbeiten</h2>
+        <dl class="details">
+            <div><dt>Fallstatus</dt><dd>{{ case.get_status_display }}</dd></div>
+            <div><dt>Letzter Abgleich</dt><dd>{% if case.currently_matches %}Buchungen passen zusammen{% else %}Kein Treffer beim letzten Abgleich{% endif %}</dd></div>
+            <div><dt>Lehrgangszeiten</dt><dd>{{ case.earliest|date:"H:i" }}{% if case.latest != case.earliest %}–{{ case.latest|date:"H:i" }}{% endif %} Uhr</dd></div>
+        </dl>
+        {% if conflict %}<p class="errorlist" role="alert">{{ conflict }}</p>{% endif %}
+        <form class="ride-case-status" method="post">
+            {% csrf_token %}
+            {{ form.non_field_errors }}
+            {{ form.expected_status.errors }}
+            {{ form.expected_status }}
+            <label for="{{ form.status.id_for_label }}">Neuer Fallstatus</label>
+            {{ form.status.errors }}
+            {{ form.status }}
+            <button type="submit">Status speichern</button>
+        </form>
+        <p class="quiet">Der Fallstatus dokumentiert die Bearbeitung. Ein abgeschlossener Fall bleibt beim Abgleich abgeschlossen und kann hier wieder geöffnet werden.</p>
+    </section>
+
+    <section class="panel" aria-labelledby="ride-bookings">
+        <h2 id="ride-bookings">{% if case.currently_matches %}Zugeordnete Buchungen{% else %}Zuletzt zugeordnete Buchungen{% endif %}</h2>
+        {% if seats %}
+            <div class="table-scroll" tabindex="0" role="region" aria-labelledby="ride-bookings">
+                <table class="mobile-table">
+                    <thead><tr>
+                        <th scope="col">Buchung</th><th scope="col">Teilnehmer/in</th>
+                        <th scope="col">Lehrgang</th><th scope="col">Maßgebliche Zeit</th><th scope="col">Buchungsstatus</th>
+                    </tr></thead>
+                    <tbody>
+                        {% for seat in seats %}
+                            <tr>
+                                <td data-label="Buchung">
+                                    {% if seat.participant %}<a href="{% url 'booking_participant' seat.pk %}">Buchung {{ seat.pk }}</a>{% else %}Buchung {{ seat.pk }}{% endif %}
+                                </td>
+                                <td data-label="Teilnehmer/in">{{ seat.participant.name|default:"Ohne Zuordnung" }}</td>
+                                <td data-label="Lehrgang"><a href="{% url 'calendar_detail' seat.session_id %}">{{ seat.session.course.name }}</a></td>
+                                <td data-label="Maßgebliche Zeit">
+                                    {% if case.direction == "outbound" %}{{ seat.session.starts_at|date:"d.m.Y, H:i" }}{% else %}{{ seat.session.ends_at|date:"d.m.Y, H:i" }}{% endif %}
+                                </td>
+                                <td data-label="Buchungsstatus">{{ seat.get_status_display }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="quiet">Es sind keine verknüpften Buchungen mehr vorhanden.</p>
+        {% endif %}
+    </section>
+{% endblock %}

@@ -33,6 +33,8 @@ MONTHS = {
     )
 }
 MONTHS["maerz"] = 3
+CONFIRMATION_SUBJECT = r"^(?:teilnahmebestätigung|lehrgangsanmeldung wurde bestätigt)\b"
+BOOKING_SUBJECT = "ihre lehrgangsanmeldung"
 
 SUBJECT_PATTERNS = (
     ("automatic_cancellation", r"^automatische stornierung\b"),
@@ -41,7 +43,7 @@ SUBJECT_PATTERNS = (
     ("schedule_change", r"^terminänderung\b"),
     ("reminder", r"^erinnerung\b"),
     ("confirmation_request", r"^bestätigungsaufforderung\b|^bitte bestätigen sie\b"),
-    ("confirmation", r"^teilnahmebestätigung\b|^lehrgangsanmeldung wurde bestätigt\b"),
+    ("confirmation", CONFIRMATION_SUBJECT),
     ("approval", r"^lehrgangsgenehmigung\b"),
     ("invitation", r"^einladung\b"),
 )
@@ -80,7 +82,6 @@ GREETING = r"^sehr geehrte(?:r)?\s+(?:herr|frau)\s+([^,\n]+),"
 CONFIRMED_PARTICIPANT = (
     r"^die lehrgangsanmeldung (?:des teilnehmers|der teilnehmerin) ([^\n]+?) für den folgenden\b"
 )
-BOOKING_SUBJECT = "ihre lehrgangsanmeldung"
 
 
 class MailParseError(ValueError):
@@ -152,13 +153,26 @@ def _header_addresses(values: list[str]) -> tuple[Address, ...]:
     return header.addresses
 
 
-def _inline_addresses(envelope: str, labels: str) -> tuple[Address, ...]:
+def _inline_addresses(envelope: str, labels: str, *, outlook_recipients: bool = False) -> tuple[Address, ...]:
     values = re.findall(rf"^(?:{labels}) *: *([^\n]*)$", envelope, re.IGNORECASE | re.MULTILINE)
-    return _header_addresses(values)
+    addresses = _header_addresses(values)
+    if addresses or not outlook_recipients or len(values) != 1 or ";" not in values[0]:
+        return addresses
+
+    # Outlook quotes original recipients with semicolons. Accept only complete addresses.
+    parts = tuple(_header_addresses([value.strip()]) for value in values[0].split(";"))
+    if all(len(part) == 1 and normalize_contact_email(part[0].addr_spec) for part in parts):
+        return tuple(part[0] for part in parts)
+    return ()
+
+
+def _contact_subject(subject: str) -> bool:
+    return subject.casefold() == BOOKING_SUBJECT or bool(re.match(CONFIRMATION_SUBJECT, subject, re.IGNORECASE))
 
 
 def _participant_email(
     recipients: tuple[Address, ...], participant_name: str, functional_addresses: Iterable[str],
+    *, allow_unlabeled: bool,
 ) -> tuple[str | None, bool]:
     excluded = {email for address in functional_addresses if (email := normalize_contact_email(address))}
     remaining = []
@@ -176,10 +190,13 @@ def _participant_email(
         if any(email == match and name and name != target for name, email in remaining):
             return None, True
         return match, False
-    if len({email for _, email in remaining}) > 1:
+    if len(named_matches) > 1:
         return None, True
-    if excluded and len(remaining) == 1 and not remaining[0][0]:
-        return remaining[0][1], False
+    if allow_unlabeled:
+        if len({email for _, email in remaining}) > 1:
+            return None, True
+        if excluded and len(remaining) == 1 and not remaining[0][0]:
+            return remaining[0][1], False
     return None, False
 
 
@@ -220,7 +237,7 @@ def _inline_forward(text: str) -> tuple[str, str, tuple[Address, ...]] | None:
             subjects = _values(envelope, "Betreff|Subject")
             if len(subjects) == 1:
                 recipients = ()
-                if subjects[0].casefold() == BOOKING_SUBJECT:
+                if _contact_subject(subjects[0]):
                     original_headers = "\n".join(headers[:first_gap])
                     senders = _inline_addresses(original_headers, "Von|From")
                     original_subject = _values(original_headers, "Betreff|Subject")
@@ -229,7 +246,7 @@ def _inline_forward(text: str) -> tuple[str, str, tuple[Address, ...]] | None:
                         and len(senders) == 1
                         and normalize_contact_email(senders[0].addr_spec)
                     ):
-                        recipients = _inline_addresses(original_headers, "An|To")
+                        recipients = _inline_addresses(original_headers, "An|To", outlook_recipients=True)
                 return subjects[0], "\n".join(lines[index:]), recipients
             break
         if line:
@@ -261,7 +278,7 @@ def _original_text(message: EmailMessage) -> tuple[str, str, tuple[Address, ...]
             subject, text, inline_recipients = original
             if forwarded:
                 recipients = inline_recipients
-        elif subject.casefold() == BOOKING_SUBJECT and len(message.get_all("Subject")) == 1:
+        elif _contact_subject(subject) and len(message.get_all("Subject")) == 1:
             recipients = _header_addresses([
                 value for name, value in message.raw_items() if name.casefold() == "to"
             ])
@@ -358,6 +375,7 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
     if recipients and participant_name and event_type != "unknown":
         participant_email, participant_email_ambiguous = _participant_email(
             recipients, participant_name, functional_addresses,
+            allow_unlabeled=subject.casefold() == BOOKING_SUBJECT,
         )
     previous_name = _unique(_values(text, "Bisherige[rs]? Teilnehmer(?:in)?"), _name)
     course_name = _unique(_values(text, "Lehrgangsart|Lehrgang"), _course_name)

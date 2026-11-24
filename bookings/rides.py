@@ -1,80 +1,105 @@
-"""Potential ride windows based only on confirmed course appointments."""
-from collections import Counter, defaultdict
-from dataclasses import dataclass
-from datetime import datetime, timedelta
+"""Operator views for persisted ride matches."""
+from datetime import timedelta
+from urllib.parse import urlencode
 
+from django import forms
 from django.core.paginator import Paginator
-from django.db.models import Q
-from django.shortcuts import render
-from django.utils import timezone
+from django.db.models import Count, Q
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.cache import never_cache
-from django.views.decorators.http import require_safe
+from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
-from .models import BookingStatus, Carpool, CourseSeat, EmailEvent, School
-
-
-LOOKAHEAD = timedelta(days=28)
-TOLERANCE = timedelta(minutes=60)
+from .models import RideCase
+from .rides_matching import LOOKAHEAD, RETURN_TOLERANCE, set_ride_case_status, sync_ride_cases
 
 
-@dataclass(frozen=True, slots=True)
-class Suggestion:
-    school: School
-    direction: Carpool.Direction
-    earliest: datetime
-    latest: datetime
-    participant_count: int
+class RideCaseStatusForm(forms.Form):
+    status = forms.ChoiceField(label="Fallstatus", choices=RideCase.Status.choices)
+    expected_status = forms.ChoiceField(choices=RideCase.Status.choices, widget=forms.HiddenInput)
 
 
-def _trip_groups(now, horizon):
-    possible = CourseSeat.objects.filter(
-        Q(session__starts_at__gte=now, session__starts_at__lt=horizon)
-        | Q(session__ends_at__gte=now, session__ends_at__lt=horizon),
-        status=BookingStatus.CONFIRMED,
-        participant__isnull=False,
-        session__school__in=School.values,
-    ).exclude(email_events__state=EmailEvent.State.NEEDS_REVIEW).values_list(
-        "session__school", "session__starts_at", "session__ends_at", "participant_id",
-    )
-    groups = defaultdict(set)
-    for school, start, end, participant in possible.iterator():
-        for direction, instant in ((Carpool.Direction.OUTBOUND, start), (Carpool.Direction.RETURN, end)):
-            if now <= instant < horizon:
-                day = timezone.localtime(instant).date()
-                groups[(School(school), direction, day)].add((instant, participant))
-    return groups
-
-
-def _candidate_windows(trips, school, direction):
-    ordered = sorted(trips)
-    counts = Counter()
-    right = 0
-    for earliest, participant in ordered:
-        previous_right = right
-        while right < len(ordered) and ordered[right][0] - earliest <= TOLERANCE:
-            counts[ordered[right][1]] += 1
-            right += 1
-        # A window with the same end as its predecessor would only repeat a subset.
-        if right > previous_right and len(counts) >= 2:
-            yield Suggestion(school, direction, earliest, ordered[right - 1][0], len(counts))
-        counts[participant] -= 1
-        if not counts[participant]:
-            del counts[participant]
+def _selected_status(params):
+    value = params.get("status", "")
+    return value if value in RideCase.Status.values else ""
 
 
 @never_cache
 @require_safe
 def rides(request):
-    now = timezone.now()
-    suggestions = [
-        suggestion
-        for (school, direction, _day), trips in _trip_groups(now, now + LOOKAHEAD).items()
-        for suggestion in _candidate_windows(trips, school, direction)
-    ]
-    suggestions.sort(key=lambda suggestion: (suggestion.earliest, suggestion.direction, suggestion.school))
+    selected_status = _selected_status(request.GET)
+    cases = RideCase.objects.all()
+    counts = cases.aggregate(
+        active=Count("pk", filter=Q(currently_matches=True)),
+        pending=Count("pk", filter=Q(currently_matches=True) & ~Q(status=RideCase.Status.CLOSED)),
+    )
+    if selected_status:
+        cases = cases.filter(status=selected_status)
+    cases = cases.annotate(participant_count=Count("seats__participant_id", distinct=True)).order_by(
+        "-currently_matches", "travel_date", "earliest", "pk",
+    )
     return render(request, "workspace/rides.html", {
         "section": "rides",
-        "page_obj": Paginator(suggestions, 25).get_page(request.GET.get("page")),
+        "page_obj": Paginator(cases, 25).get_page(request.GET.get("page")),
+        "active_count": counts["active"],
+        "pending_count": counts["pending"],
+        "status_choices": RideCase.Status.choices,
+        "selected_status": selected_status,
+        "querystring": urlencode({"status": selected_status}) if selected_status else "",
+        "synced": request.GET.get("abgleich") == "1",
         "lookahead_days": LOOKAHEAD.days,
-        "tolerance_minutes": int(TOLERANCE.total_seconds() / 60),
+        "return_tolerance_minutes": RETURN_TOLERANCE // timedelta(minutes=1),
     })
+
+
+@never_cache
+@require_POST
+@csrf_protect
+def rides_sync(request):
+    sync_ride_cases()
+    params = {"abgleich": "1"}
+    status = _selected_status(request.POST)
+    if status:
+        params["status"] = status
+    return redirect(f"{reverse('rides')}?{urlencode(params)}")
+
+
+def _status_form(case):
+    return RideCaseStatusForm(initial={"status": case.status, "expected_status": case.status})
+
+
+@never_cache
+@require_http_methods(["GET", "HEAD", "POST"])
+@csrf_protect
+def ride_detail(request, case_id):
+    case = get_object_or_404(RideCase, pk=case_id)
+    status = 200
+    conflict = ""
+    if request.method == "POST":
+        form = RideCaseStatusForm(request.POST)
+        status = 400
+        if form.is_valid():
+            try:
+                set_ride_case_status(
+                    case.pk, form.cleaned_data["status"], expected_status=form.cleaned_data["expected_status"],
+                )
+            except ValueError as error:
+                case.refresh_from_db()
+                form = _status_form(case)
+                conflict = str(error)
+                status = 409
+            else:
+                return redirect(f"{reverse('ride_detail', args=[case.pk])}?gespeichert=1")
+    else:
+        form = _status_form(case)
+
+    seats = case.seats.select_related("participant", "session__course").order_by("participant__name", "pk")
+    return render(request, "workspace/ride_detail.html", {
+        "section": "rides",
+        "case": case,
+        "seats": seats,
+        "form": form,
+        "conflict": conflict,
+        "saved": request.method == "GET" and request.GET.get("gespeichert") == "1",
+    }, status=status)

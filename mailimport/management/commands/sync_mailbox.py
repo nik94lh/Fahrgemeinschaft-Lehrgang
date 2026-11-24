@@ -1,6 +1,9 @@
 from time import sleep
 
 from django.core.management.base import BaseCommand, CommandError
+from django.db import DatabaseError
+
+from bookings.rides_matching import sync_ride_cases
 
 from mailimport.imap_sync import (
     DEFAULT_BATCH_SIZE,
@@ -29,6 +32,10 @@ class Command(BaseCommand):
                 self._poll(limit, watch)
                 if not watch:
                     return
+                try:
+                    sync_ride_cases()
+                except DatabaseError:
+                    self.stderr.write("Der Abgleich der Fahrgemeinschaften ist fehlgeschlagen.")
                 sleep(interval)
         except KeyboardInterrupt:
             return

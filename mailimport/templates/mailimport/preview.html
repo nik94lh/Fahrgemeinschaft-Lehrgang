@@ -30,8 +30,8 @@
                         <div><dt>Beginn</dt><dd>{{ result.starts_at|date:"d.m.Y, H:i"|default:"—" }}</dd></div>
                         <div><dt>Ende</dt><dd>{{ result.ends_at|date:"d.m.Y, H:i"|default:"—" }}</dd></div>
                         <div><dt>Teilnehmer/in</dt><dd>{{ result.participant_name|default:"—" }}</dd></div>
-                        {% if result.participant_email %}
-                            <div><dt>Teilnehmeradresse</dt><dd>{{ result.participant_email }}</dd></div>
+                        {% if result.event_type == "approval" or result.event_type == "confirmation" %}
+                            <div><dt>Teilnehmeradresse</dt><dd>{{ result.participant_email|default:"Keine persönliche Adresse erkannt" }}</dd></div>
                         {% endif %}
                         {% if result.previous_participant_name %}
                             <div><dt>Bisherige/r Teilnehmer/in</dt><dd>{{ result.previous_participant_name }}</dd></div>

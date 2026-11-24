@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.7.0
+
+- Mögliche Hinfahrten werden bei bestätigten Lehrgängen an derselben Schule und mit Beginn am selben Kalendertag auch bei unterschiedlichen Startzeiten angezeigt. Für Rückfahrten dürfen die Endzeiten am selben Tag höchstens 60 Minuten auseinanderliegen.
+- BMS speichert passende Fahrgemeinschaften als Fälle. Unter **Fahrgemeinschaften** lassen sich offene Fälle prüfen und abschließen. Der Hintergrunddienst gleicht die Fälle standardmäßig im Abstand von zwei Minuten ab. Der Abgleich kann auch manuell gestartet werden.
+- Bestätigungsmails können eine Teilnehmeradresse liefern, wenn der Anzeigename im ursprünglichen An-Feld eindeutig mit dem Teilnehmer übereinstimmt. Frühere Importe werden dadurch nicht erneut verarbeitet. Der Versand bleibt deaktiviert.
+
 ## 0.6.0
 
 - Die Jahresansicht verlinkt jeden Monat direkt mit der Monatsansicht. Im Monatsplan stehen Wochentage neben den Datumsangaben. Die Navigation benennt die verfügbaren Ansichten und Zeiträume.

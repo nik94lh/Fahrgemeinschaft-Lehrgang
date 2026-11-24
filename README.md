@@ -51,7 +51,7 @@ Ein aktivierter Postfachdienst verarbeitet standardmäßig bis zu 25 Nachrichten
 
 ## Teilnehmerprofile und E-Mail-Adressen
 
-Bei unterstützten Lehrgangsmails übernimmt BMS die Teilnehmeradresse nur bei eindeutiger Zuordnung aus dem ursprünglichen An-Feld. Hinterlege die auszuschließenden Adressen unter **Postfach → Funktionsadressen**. Wiederkehrende Teilnehmer mit derselben normalisierten Adresse und übereinstimmendem Namen verwenden dasselbe Profil.
+Bei unterstützten Lehrgangsmails übernimmt BMS die Teilnehmeradresse nur bei eindeutiger Zuordnung aus dem ursprünglichen An-Feld. Bei Bestätigungsmails braucht BMS eine Adresse mit passendem Anzeigenamen. Hinterlege die auszuschließenden Adressen unter **Postfach → Funktionsadressen**. Wiederkehrende Teilnehmer mit derselben normalisierten Adresse und übereinstimmendem Namen verwenden dasselbe Profil.
 
 Fehlt bei einer Buchung die E-Mail-Adresse, wähle unter **Buchungen** den Teilnehmernamen aus. Prüfe die Originalnachricht, ergänze die Adresse unter **Teilnehmer zur Buchung** und wähle **Adresse speichern**. Bereits hinterlegte Adressen bleiben erhalten. Konflikte aus dem Import bleiben unter **Klärung** offen. Das Ergänzen einer Adresse löst keinen Versand aus. [Regeln für die Zuordnung](docs/MAILIMPORT.md#teilnehmeradresse-aus-dem-ursprünglichen-an-feld)
 
@@ -61,7 +61,9 @@ Die **Übersicht** zeigt anstehende Lehrgänge mit Beginn und Ende pro Termin. U
 
 Im **Kalender** kannst du zwischen Woche, Monat und Jahr wechseln und nach Schule filtern. In der Jahresansicht markieren die Balken die Monate, in denen ein Lehrgang stattfindet. Wähle einen Monat, um direkt in seinen Monatsplan zu springen. Dort stehen Wochentage an der Zeitachse. Die genauen Zeiten stehen in der zugänglichen Terminliste und in den Details. Wähle einen Termin, um die zugehörigen Buchungen zu sehen.
 
-Unter **Fahrgemeinschaften** erscheinen mögliche Hin- oder Rückfahrten in den nächsten 28 Tagen, wenn mindestens zwei bestätigte Teilnehmer zur selben Schule fahren und ihre Lehrgangszeiten am selben Tag höchstens 60 Minuten auseinanderliegen. Diese Übersicht zeigt Zeitraum und Anzahl der Personen. Sie sendet keine Einladungen und gibt keine Kontaktdaten frei.
+BMS legt unter **Fahrgemeinschaften** Fälle für mögliche Hin- und Rückfahrten in den nächsten 28 Tagen an. Voraussetzung sind mindestens zwei unterschiedliche Teilnehmerprofile mit bestätigten Buchungen an derselben Schule. Für die Hinfahrt zählt der gemeinsame Starttag der Lehrgänge, unabhängig von der Uhrzeit. Für die Rückfahrt müssen die Lehrgänge am selben Tag enden und ihre Endzeiten höchstens 60 Minuten auseinanderliegen. Kalendertage beziehen sich auf `Europe/Berlin`.
+
+Der Hintergrunddienst gleicht die Buchungen standardmäßig alle zwei Minuten ab. Mit **Abgleich starten** kannst du die Prüfung manuell auslösen. Ein Fahrgemeinschaftsfall zeigt Zeitraum, Schule und Anzahl der Personen. Unter **Fahrgemeinschaften** kannst du einen Fall öffnen und den Bearbeitungsstand zwischen **Offen**, **In Prüfung** und **Abgeschlossen** ändern. Wenn die Buchungen nicht mehr zusammenpassen, kennzeichnet BMS den Fall gesondert und erhält den Bearbeitungsstand. BMS verschickt dabei keine Einladungen und gibt keine Kontaktdaten frei.
 
 ## Dokumentation
 
