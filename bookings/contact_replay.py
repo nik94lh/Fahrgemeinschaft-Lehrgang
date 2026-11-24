@@ -24,6 +24,10 @@ from .services import (
 
 class ContactReplayResult(StrEnum):
     ADDED = "Die fehlende Adresse wurde ergänzt. Der Buchungsstatus blieb gleich."
+    UNREADABLE = "Die Mail war nicht verfügbar, zu groß oder nicht lesbar."
+    UNSUPPORTED = "Die Mail ist keine unterstützte Genehmigung oder Teilnahmebestätigung."
+    NO_ADDRESS = "Die Mail enthält keine eindeutig passende persönliche Teilnehmeradresse."
+    AMBIGUOUS_ADDRESS = "Im ursprünglichen An-Feld kommen mehrere Adressen für die Person in Frage."
     INVALID = "Die Nachricht enthält keine eindeutigen Angaben für einen Adressnachtrag."
     NO_APPLIED_EVENT = "Zur früheren Mail gibt es keine anwendbare Buchungszuordnung."
     NO_ACTIVE_BOOKING = "Die frühere Mail ist keiner aktiven Buchung mit Teilnehmer zugeordnet."
@@ -38,12 +42,18 @@ class ContactReplayResult(StrEnum):
 
 @sensitive_variables()
 def enrich_contact_from_imported_mail(raw: bytes) -> bool:
-    """Read the EML in memory and update only a provably unchanged blank contact."""
+    """Update only a provably unchanged blank contact."""
+    return contact_replay_outcome(raw) == ContactReplayResult.ADDED
+
+
+@sensitive_variables()
+def contact_replay_outcome(raw: bytes) -> ContactReplayResult:
+    """Read the EML in memory and return the reason for the update or skip."""
     try:
         mail = parse_eml(raw, functional_addresses=get_functional_addresses())
     except MailParseError:
-        return False
-    return fill_existing_contact(mail) == ContactReplayResult.ADDED
+        return ContactReplayResult.UNREADABLE
+    return fill_existing_contact(mail)
 
 
 def _history_matches(event, seat) -> bool:
@@ -74,8 +84,12 @@ def _history_matches(event, seat) -> bool:
 @sensitive_variables()
 @transaction.atomic
 def fill_existing_contact(mail: ParsedMail) -> ContactReplayResult:
-    if mail.event_type not in ACTIVATION_EVENTS or not mail.participant_email:
-        return ContactReplayResult.INVALID
+    if mail.event_type not in ACTIVATION_EVENTS:
+        return ContactReplayResult.UNSUPPORTED
+    if mail.participant_email_ambiguous:
+        return ContactReplayResult.AMBIGUOUS_ADDRESS
+    if not mail.participant_email:
+        return ContactReplayResult.NO_ADDRESS
     if _parsed_review_reason(mail, mail.event_type, allow_partial=bool(mail.booking_reference)):
         return ContactReplayResult.INVALID
     _lock_import()

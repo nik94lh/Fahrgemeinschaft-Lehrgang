@@ -70,6 +70,17 @@
       <div><dt>Ergänzte Adressen</dt><dd>{{ replay_job.enriched_count }}</dd></div>
       {% if replay_job.finished_at %}<div><dt>Beendet</dt><dd>{{ replay_job.finished_at|date:"d.m.Y, H:i" }} Uhr</dd></div>{% endif %}
     </dl>
+    {% if replay_skip_counts %}
+      <h3 style="margin-block-start: 1rem;">Nachrichten ohne Adressnachtrag</h3>
+      <dl class="details">
+        {% for reason, count in replay_skip_counts %}
+          <div><dt>{{ reason }}</dt><dd>{{ count }}</dd></div>
+        {% endfor %}
+      </dl>
+    {% endif %}
+    {% if replay_unclassified_count %}
+      <p class="note">Für {{ replay_unclassified_count }} geprüfte Nachrichten wurden noch keine Einzelgründe erfasst.</p>
+    {% endif %}
     {% if replay_job.error_message %}<p class="note" role="status">{{ replay_job.error_message }}</p>{% endif %}
   {% endif %}
   {% if replay_active %}

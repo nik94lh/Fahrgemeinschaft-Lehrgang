@@ -80,6 +80,7 @@ class ContactReplayJob(models.Model):
     last_uid = models.PositiveBigIntegerField(default=0)
     scanned_count = models.PositiveBigIntegerField(default=0)
     enriched_count = models.PositiveBigIntegerField(default=0)
+    outcome_counts = models.JSONField(default=dict, db_default={}, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     finished_at = models.DateTimeField(null=True, blank=True)

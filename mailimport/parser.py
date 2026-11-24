@@ -16,6 +16,7 @@ from zoneinfo import ZoneInfo
 
 from .email_address import normalize_contact_email
 from .html_text import html_to_text
+from .recipient_address import AddressSelection, header_addresses, inline_addresses, select_participant_address
 
 
 MAX_EML_BYTES = 1024 * 1024
@@ -37,6 +38,7 @@ MONTHS = {
 MONTHS["maerz"] = 3
 CONFIRMATION_SUBJECT = r"^(?:teilnahmebestätigung|lehrgangsanmeldung wurde bestätigt)\b"
 BOOKING_SUBJECT = "ihre lehrgangsanmeldung"
+APPROVAL_SUBJECT = r"^lehrgangsgenehmigung\b"
 
 SUBJECT_PATTERNS = (
     ("automatic_cancellation", r"^automatische stornierung\b"),
@@ -46,7 +48,7 @@ SUBJECT_PATTERNS = (
     ("reminder", r"^erinnerung\b"),
     ("confirmation_request", r"^bestätigungsaufforderung\b|^bitte bestätigen sie\b"),
     ("confirmation", CONFIRMATION_SUBJECT),
-    ("approval", r"^lehrgangsgenehmigung\b"),
+    ("approval", APPROVAL_SUBJECT),
     ("invitation", r"^einladung\b"),
 )
 BODY_PATTERNS = (
@@ -80,7 +82,6 @@ OUTLOOK_FORWARD_HEADERS = re.compile(
     r"[ \t]*(?:betreff|subject) *: *[^\n]+\n)",
     re.IGNORECASE,
 )
-REPEATED_MAILTO = re.compile(r"<([^<>\s]+)<mailto:([^<>\s]+)>>", re.IGNORECASE)
 LOCATION_LABELS = "Schulungsort|Lehrgangsort|Veranstaltungsort|Schule"
 ONLINE_FORMAT = re.compile(
     r"^(?:online(?:[-–— ]?(?:lehrgang|seminar|veranstaltung|unterricht|schulung|kurs))?"
@@ -167,80 +168,10 @@ def _booking_reference(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)*", value)) and len(value) <= 64
 
 
-def _header_addresses(values: list[str]) -> tuple[Address, ...]:
-    if len(values) != 1:
-        return ()
-    try:
-        # BytesParser uses surrogateescape for raw UTF-8 header bytes (SMTPUTF8).
-        value = values[0].encode("utf-8", errors="surrogateescape").decode("utf-8")
-        header = policy.default.header_fetch_parse("To", value)
-    except ValueError:
-        return ()
-    if header.defects or any(group.display_name is not None for group in header.groups):
-        return ()
-    return header.addresses
-
-
-def _inline_addresses(envelope: str, labels: str, *, outlook_recipients: bool = False) -> tuple[Address, ...]:
-    values = re.findall(rf"^(?:{labels}) *: *([^\n]*)$", envelope, re.IGNORECASE | re.MULTILINE)
-    values = [REPEATED_MAILTO.sub(_collapse_repeated_mailto, value) for value in values]
-    addresses = _header_addresses(values)
-    if addresses or not outlook_recipients or len(values) != 1 or ";" not in values[0]:
-        return addresses
-
-    # Outlook quotes original recipients with semicolons. Accept only complete addresses.
-    parts = tuple(_header_addresses([value.strip()]) for value in values[0].split(";"))
-    if all(len(part) == 1 and normalize_contact_email(part[0].addr_spec) for part in parts):
-        return tuple(part[0] for part in parts)
-    return ()
-
-
-def _collapse_repeated_mailto(match: re.Match) -> str:
-    visible, repeated = match.groups()
-    if visible.casefold() == repeated.casefold():
-        return f"<{visible}>"
-    return match[0]
-
-
 def _contact_subject(subject: str) -> bool:
-    return subject.casefold() == BOOKING_SUBJECT or bool(re.match(CONFIRMATION_SUBJECT, subject, re.IGNORECASE))
-
-
-def _participant_email(
-    recipients: tuple[Address, ...], participant_name: str, functional_addresses: Iterable[str],
-    *, allow_unlabeled: bool, allow_mailbox_display: bool,
-) -> tuple[str | None, bool]:
-    excluded = {email for address in functional_addresses if (email := normalize_contact_email(address))}
-    remaining = []
-    for recipient in recipients:
-        email = normalize_contact_email(recipient.addr_spec)
-        if email is None:
-            return None, False
-        if email not in excluded:
-            remaining.append((_normalized(recipient.display_name).casefold(), email))
-
-    target = participant_name.casefold()
-    named_matches = {email for name, email in remaining if name == target}
-    if len(named_matches) == 1:
-        match = named_matches.pop()
-        if any(email == match and name and name != target for name, email in remaining):
-            return None, True
-        return match, False
-    if len(named_matches) > 1:
-        return None, True
-    if allow_mailbox_display and len(remaining) == 1:
-        display_name, email = remaining[0]
-        name_parts = target.split()
-        # Some forwards render the original recipient address as its own display name.
-        # Use only an explicit, sole address whose dotted local part spells the full name.
-        if len(name_parts) >= 2 and display_name == email and email.rsplit("@", 1)[0] == ".".join(name_parts):
-            return email, False
-    if allow_unlabeled:
-        if len({email for _, email in remaining}) > 1:
-            return None, True
-        if excluded and len(remaining) == 1 and not remaining[0][0]:
-            return remaining[0][1], False
-    return None, False
+    return subject.casefold() == BOOKING_SUBJECT or any(
+        re.match(pattern, subject, re.IGNORECASE) for pattern in (APPROVAL_SUBJECT, CONFIRMATION_SUBJECT)
+    )
 
 
 def _body_text(part: EmailMessage) -> str:
@@ -261,7 +192,25 @@ def _attached_messages(message: EmailMessage) -> list[EmailMessage]:
     return child_messages
 
 
-def _inline_forward(text: str, *, forwarded: bool) -> tuple[str, str, tuple[Address, ...]] | None:
+@dataclass(frozen=True, slots=True)
+class _InlineMail:
+    subject: str
+    text: str
+    recipients: tuple[Address, ...]
+    sender: str | None
+    name_only_recipient: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class _OriginalMail:
+    subject: str
+    text: str
+    recipients: tuple[Address, ...] = ()
+    source: str = "Ursprüngliches An-Feld"
+    conflict: bool = False
+
+
+def _inline_forward(text: str, *, forwarded: bool) -> _InlineMail | None:
     lines = [re.sub(r"^\s*(?:>\s*)+", "", line) for line in text.splitlines()]
     unfolded = "\n".join(lines)
     separators = list(FORWARD_SEPARATOR.finditer(unfolded))
@@ -281,18 +230,7 @@ def _inline_forward(text: str, *, forwarded: bool) -> tuple[str, str, tuple[Addr
             envelope = "\n".join(headers)
             subjects = _values(envelope, "Betreff|Subject")
             if len(subjects) == 1:
-                recipients = ()
-                if _contact_subject(subjects[0]):
-                    original_headers = "\n".join(headers[:first_gap])
-                    senders = _inline_addresses(original_headers, "Von|From")
-                    original_subject = _values(original_headers, "Betreff|Subject")
-                    if (
-                        original_subject == subjects
-                        and len(senders) == 1
-                        and normalize_contact_email(senders[0].addr_spec)
-                    ):
-                        recipients = _inline_addresses(original_headers, "An|To", outlook_recipients=True)
-                return subjects[0], "\n".join(lines[index:]), recipients
+                return _quoted_mail(subjects[0], "\n".join(lines[index:]), headers[:first_gap])
             break
         if line:
             headers.append(line)
@@ -301,8 +239,84 @@ def _inline_forward(text: str, *, forwarded: bool) -> tuple[str, str, tuple[Addr
     raise MailParseError("Die zitierte Weiterleitung ist unvollständig.")
 
 
-def _original_text(message: EmailMessage) -> tuple[str, str, tuple[Address, ...]]:
+def _quoted_mail(subject: str, body: str, original_headers: list[str]) -> _InlineMail:
+    headers = "\n".join(original_headers)
+    senders = inline_addresses(headers, "Von|From")
+    sender = normalize_contact_email(senders[0].addr_spec) if len(senders) == 1 else None
+    if _values(headers, "Betreff|Subject") != [subject] or not sender or not _contact_subject(subject):
+        return _InlineMail(subject, body, (), None, None)
+    recipients = inline_addresses(headers, "An|To", outlook_recipients=True)
+    displayed_names = _values(headers, "An|To")
+    name_only = displayed_names[0] if len(displayed_names) == 1 and _name(displayed_names[0]) else None
+    return _InlineMail(subject, body, recipients, sender, name_only)
+
+
+def _body_identity(mail: _InlineMail) -> tuple | None:
+    text = _clean_text(mail.text)
+    event_type = _classify(mail.subject, text)
+    participant = _participant_name(text, event_type)
+    course = _unique(_values(text, "Lehrgangsart|Lehrgang"), _course_name)
+    starts_at, ends_at = _period(text)
+    venues = tuple(_values(text, LOCATION_LABELS))
+    if event_type not in ("approval", "confirmation") or not all((participant, course, starts_at, ends_at, venues)):
+        return None
+    return (
+        event_type, participant.casefold(), course.casefold(), starts_at, ends_at, venues,
+        tuple(_values(text, "Buchungsreferenz|Buchungsnummer")),
+    )
+
+
+def _forward_original(message: EmailMessage, body: EmailMessage, primary: _InlineMail) -> _OriginalMail:
+    source = "An-Feld der zitierten Originalmail"
+    selected = _OriginalMail(primary.subject, _clean_text(primary.text), primary.recipients, source)
+    if not primary.sender or body.get_content_type() != "text/plain":
+        return selected
+
+    # Only use a sibling HTML representation of the same forwarded mail.
+    html = message.get_body(("html",))
+    if html is None or not any(
+        part.get_content_type() == "multipart/alternative"
+        and body in part.get_payload() and html in part.get_payload()
+        for part in message.walk()
+    ):
+        return selected
+    try:
+        alternate = _inline_forward(_body_text(html), forwarded=True)
+    except MailParseError:
+        return selected
+    if not alternate or not alternate.recipients or not alternate.sender:
+        return selected
+
+    plain_addresses = {normalize_contact_email(address.addr_spec) for address in primary.recipients}
+    html_addresses = {normalize_contact_email(address.addr_spec) for address in alternate.recipients}
+    if None in html_addresses:
+        return selected
+    same_envelope = primary.sender == alternate.sender and primary.subject.casefold() == alternate.subject.casefold()
+    if plain_addresses:
+        plain_identity, html_identity = _body_identity(primary), _body_identity(alternate)
+        if (
+            not same_envelope or plain_addresses != html_addresses
+            or (plain_identity and html_identity and plain_identity != html_identity)
+        ):
+            return _OriginalMail(primary.subject, selected.text, conflict=True)
+        return selected
+
+    if same_envelope and primary.name_only_recipient and len(alternate.recipients) == 1:
+        recipient = alternate.recipients[0]
+        same_name = _normalized(recipient.display_name).casefold() == primary.name_only_recipient.casefold()
+        if same_name and (identity := _body_identity(primary)) and identity == _body_identity(alternate):
+            return _OriginalMail(primary.subject, selected.text, alternate.recipients, "An-Feld der HTML-Fassung der Originalmail")
+    return selected
+
+
+def _clean_text(text: str) -> str:
+    return "\n".join(_normalized(line) for line in text.splitlines())
+
+
+def _original_text(message: EmailMessage) -> _OriginalMail:
     subject = _normalized(str(message.get("Subject", "")))
+    if REPLY_PREFIX.match(subject):
+        return _OriginalMail(subject, "")
     forwarded = bool(FORWARD_PREFIX.match(subject))
     body = message.get_body(preferencelist=("plain", "html"))
     if body is None or forwarded:
@@ -316,22 +330,20 @@ def _original_text(message: EmailMessage) -> tuple[str, str, tuple[Address, ...]
         raise MailParseError("Die E-Mail enthält keinen lesbaren Klartext- oder HTML-Teil.")
 
     text = _body_text(body)
+    original = _inline_forward(text, forwarded=forwarded)
+    if original and forwarded:
+        return _forward_original(message, body, original)
+    if original:
+        subject, text = original.subject, original.text
+
     recipients = ()
-    if not REPLY_PREFIX.match(subject):
-        original = _inline_forward(text, forwarded=forwarded)
-        if original:
-            subject, text, inline_recipients = original
-            if forwarded:
-                recipients = inline_recipients
-        elif _contact_subject(subject) and len(message.get_all("Subject")) == 1:
-            recipients = _header_addresses([
-                value for name, value in message.raw_items() if name.casefold() == "to"
-            ])
+    if not original and _contact_subject(subject) and len(message.get_all("Subject")) == 1:
+        recipients = header_addresses([value for name, value in message.raw_items() if name.casefold() == "to"])
     subject = FORWARD_PREFIX.sub("", subject, count=1)
-    cleaned = "\n".join(_normalized(line) for line in text.splitlines())
+    cleaned = _clean_text(text)
     if not cleaned.strip():
         raise MailParseError("Die E-Mail enthält keinen lesbaren Inhalt.")
-    return subject, cleaned, recipients
+    return _OriginalMail(subject, cleaned, recipients)
 
 
 def _classify(subject: str, text: str) -> str:
@@ -404,6 +416,17 @@ def _sent_at(message: EmailMessage) -> datetime | None:
         return None
 
 
+PARTICIPANT_LABELS = "Teilnehmer(?:in)?|Neue[rs]? Teilnehmer(?:in)?"
+
+
+def _participant_name(text: str, event_type: str) -> str | None:
+    names = _values(text, PARTICIPANT_LABELS)
+    if not names:
+        pattern = CONFIRMED_PARTICIPANT if event_type == "confirmation" else GREETING
+        names = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
+    return _unique(names, _name)
+
+
 def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> ParsedMail:
     """Parse bounded bytes locally. The result contains structured fields only."""
     if not raw:
@@ -414,7 +437,8 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
         message = BytesParser(policy=policy.default).parsebytes(raw)
         if not message.keys() or message.defects:
             raise MailParseError("Die EML-Kopfzeilen sind beschädigt oder fehlen.")
-        subject, text, recipients = _original_text(message)
+        original = _original_text(message)
+        subject, text = original.subject, original.text
     except (MessageError, RecursionError) as error:
         raise MailParseError("Die EML-Struktur kann nicht gelesen werden.") from error
 
@@ -423,33 +447,29 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
     if is_reply:
         subject, text = "", ""
     event_type = _classify(subject, text)
-    participant_labels = "Teilnehmer(?:in)?|Neue[rs]? Teilnehmer(?:in)?"
-    participant = _values(text, participant_labels)
-    if not participant:
-        pattern = CONFIRMED_PARTICIPANT if event_type == "confirmation" else GREETING
-        participant = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
-    participant_name = _unique(participant, _name)
-    participant_email, participant_email_ambiguous = None, False
-    if recipients and participant_name and event_type != "unknown":
-        participant_email, participant_email_ambiguous = _participant_email(
-            recipients, participant_name, functional_addresses,
-            allow_unlabeled=subject.casefold() == BOOKING_SUBJECT,
-            allow_mailbox_display=event_type == "approval" and subject.casefold() == BOOKING_SUBJECT,
-        )
-    address_note = ""
+    participant_name = _participant_name(text, event_type)
+    selection = AddressSelection()
     if is_reply:
-        address_note = "Die Mail ist als Antwort gekennzeichnet. Leite die Original-Buchungsmail als EML oder mit ihren ursprünglichen Kopfzeilen weiter."
-    elif event_type in ("approval", "confirmation") and not participant_email:
-        if participant_email_ambiguous:
-            address_note = "Im ursprünglichen An-Feld kommen mehrere Adressen für die Person in Frage."
+        selection = AddressSelection(note="Die Mail ist als Antwort gekennzeichnet. Leite die Original-Buchungsmail als EML oder mit ihren ursprünglichen Kopfzeilen weiter.")
+    elif event_type in ("approval", "confirmation") or (event_type != "unknown" and original.recipients):
+        if original.conflict:
+            selection = AddressSelection(ambiguous=True, note="Klartext- und HTML-Fassung der Weiterleitung widersprechen sich bei Originalkopf oder Buchungsdaten.")
         elif not participant_name:
-            address_note = "Die Adresse konnte ohne eindeutig erkannten Teilnehmernamen nicht geprüft werden."
+            selection = AddressSelection(note="Die Adresse konnte ohne eindeutig erkannten Teilnehmernamen nicht geprüft werden.")
         elif not _contact_subject(subject):
-            address_note = "Für diesen Betreff ist keine automatische Adressübernahme eingerichtet."
-        elif not recipients:
-            address_note = "Das ursprüngliche An-Feld fehlt oder konnte nicht eindeutig gelesen werden."
+            selection = AddressSelection(note="Für diesen Betreff ist keine automatische Adressübernahme eingerichtet.")
+        elif not original.recipients:
+            selection = AddressSelection(note="Das ursprüngliche An-Feld fehlt oder konnte nicht eindeutig gelesen werden.")
         else:
-            address_note = "Im ursprünglichen An-Feld steht keine eindeutig passende persönliche Adresse. Prüfe Anzeigenamen und hinterlegte Funktionsadressen."
+            selection = select_participant_address(
+                original.recipients, participant_name, functional_addresses,
+                allow_approval_fallback=event_type == "approval" and subject.casefold() == BOOKING_SUBJECT,
+            )
+            if selection.email:
+                selection = AddressSelection(email=selection.email, note=f"Quelle: {original.source}.")
+    participant_email = selection.email
+    participant_email_ambiguous = selection.ambiguous
+    address_note = selection.note
     previous_name = _unique(_values(text, "Bisherige[rs]? Teilnehmer(?:in)?"), _name)
     course_name = _unique(_values(text, "Lehrgangsart|Lehrgang"), _course_name)
     references = re.findall(
@@ -474,7 +494,7 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
         school = "online"
     starts_at, ends_at = _period(text)
     expected_fields = (
-        ("participant_name", participant_labels, participant_name),
+        ("participant_name", PARTICIPANT_LABELS, participant_name),
         ("course_name", "Lehrgangsart|Lehrgang", course_name),
         ("school", LOCATION_LABELS, school),
         ("period", "Lehrgangstermin|Zeitraum", starts_at),

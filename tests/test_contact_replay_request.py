@@ -92,6 +92,7 @@ class RequestedContactReplayTests(TestCase):
             job = process_contact_replay()
 
         self.assertEqual((job.status, job.scanned_count, job.enriched_count), (job.Status.COMPLETED, 1, 1))
+        self.assertEqual(job.outcome_counts, {"ADDED": 1})
         self.assertEqual(EmailEvent.objects.count(), 1)
         old_event.refresh_from_db()
         self.assertEqual(old_event.state, EmailEvent.State.APPLIED)

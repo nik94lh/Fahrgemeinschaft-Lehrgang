@@ -45,6 +45,9 @@
                             <div><dt>Stornierungsdatum</dt><dd>{{ result.cancellation_date|date:"d.m.Y" }}</dd></div>
                         {% endif %}
                     </dl>
+                    {% if result.address_note %}
+                        <p class="note detail-note">{{ result.address_note }}</p>
+                    {% endif %}
                     {% if result.warnings %}
                         <aside class="warnings" aria-labelledby="warnings-title">
                             <h3 id="warnings-title">Bitte prüfen</h3>

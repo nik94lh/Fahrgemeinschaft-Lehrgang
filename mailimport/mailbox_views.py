@@ -8,11 +8,31 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.decorators.http import require_http_methods
 
+from bookings.contact_replay import ContactReplayResult
+
 from .contact_replay import ContactReplayError, queue_contact_replay
 from .imap_sync import mailbox_source_id
 from .mailbox_forms import FunctionalAddressesForm, MailboxForm
 from .models import ContactReplayJob, MailboxConfiguration, MailboxCursor, ParticipantRecognitionConfiguration
 from .participant_settings import get_functional_addresses
+
+
+REPLAY_SKIP_LABELS = {
+    ContactReplayResult.NO_ADDRESS: "Keine eindeutig passende Teilnehmeradresse erkannt",
+    ContactReplayResult.AMBIGUOUS_ADDRESS: "Mehrere mögliche Teilnehmeradressen",
+    ContactReplayResult.SAME_ADDRESS: "Adresse bereits hinterlegt",
+    ContactReplayResult.OTHER_ADDRESS: "Andere Adresse im Teilnehmerprofil hinterlegt",
+    ContactReplayResult.ADDRESS_IN_USE: "Adresse gehört zu einem anderen Profil",
+    ContactReplayResult.INVALID: "Buchungsangaben fehlen oder sind widersprüchlich",
+    ContactReplayResult.NO_APPLIED_EVENT: "Kein bereits angewendetes Buchungsereignis",
+    ContactReplayResult.NO_ACTIVE_BOOKING: "Keine aktive Buchung mit zugeordnetem Teilnehmer",
+    ContactReplayResult.BOOKING_CHANGED: "Buchungsangaben passen nicht zum heutigen Stand",
+    ContactReplayResult.PARTICIPANT_CHANGED: "Ursprünglicher Teilnehmer nicht mehr zweifelsfrei zugeordnet",
+    ContactReplayResult.OPEN_REVIEW: "Offener Klärungsfall zur Buchung",
+    ContactReplayResult.PROFILE_CHANGED: "Profil während des Abgleichs geändert",
+    ContactReplayResult.UNSUPPORTED: "Keine Genehmigung oder Teilnahmebestätigung",
+    ContactReplayResult.UNREADABLE: "Mail nicht verfügbar, zu groß oder nicht lesbar",
+}
 
 
 @sensitive_post_parameters("password", "functional_addresses")
@@ -76,6 +96,7 @@ def mailbox_view(request):
 
     replay_job = ContactReplayJob.objects.order_by("-created_at", "-pk").first()
     active_replay_statuses = (ContactReplayJob.Status.QUEUED, ContactReplayJob.Status.RUNNING)
+    counts = replay_job.outcome_counts if replay_job else {}
     return render(request, "mailimport/mailbox.html", {
         "form": form,
         "addresses_form": addresses_form,
@@ -90,4 +111,9 @@ def mailbox_view(request):
         "replay_job": replay_job,
         "replay_error": replay_error,
         "replay_active": replay_job is not None and replay_job.status in active_replay_statuses,
+        "replay_skip_counts": [
+            (label, counts[outcome.name]) for outcome, label in REPLAY_SKIP_LABELS.items()
+            if counts.get(outcome.name)
+        ],
+        "replay_unclassified_count": max(0, replay_job.scanned_count - sum(counts.values())) if replay_job else 0,
     }, status=400 if replay_error else 200)

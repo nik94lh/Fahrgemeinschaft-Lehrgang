@@ -19,8 +19,23 @@ class ContactReplayViewTests(TestCase):
         self.assertContains(response, "Einmaliger Adressabgleich")
         self.assertContains(response, "<dt>Geprüfte Nachrichten</dt><dd>25</dd>")
         self.assertContains(response, "<dt>Ergänzte Adressen</dt><dd>2</dd>")
+        self.assertContains(response, "Für 25 geprüfte Nachrichten wurden noch keine Einzelgründe erfasst.")
         self.assertNotContains(response, "Adressabgleich starten")
         self.assertIn("no-store", response.headers["Cache-Control"])
+
+    def test_mailbox_shows_diagnostic_counts_for_a_completed_job(self):
+        ContactReplayJob.objects.create(
+            status=ContactReplayJob.Status.COMPLETED, source_id="1" * 64,
+            uid_validity=22, upper_uid=8, last_uid=8, scanned_count=8, enriched_count=1,
+            outcome_counts={"ADDED": 1, "NO_ADDRESS": 4, "NO_APPLIED_EVENT": 3},
+        )
+
+        response = self.client.get("/postfach/", secure=True)
+
+        self.assertContains(response, "Nachrichten ohne Adressnachtrag")
+        self.assertContains(response, "<dt>Keine eindeutig passende Teilnehmeradresse erkannt</dt><dd>4</dd>")
+        self.assertContains(response, "<dt>Kein bereits angewendetes Buchungsereignis</dt><dd>3</dd>")
+        self.assertNotContains(response, "noch keine Einzelgründe")
 
     def test_manual_request_is_protected_and_calls_the_queue_only(self):
         payload = {"action": "start-contact-replay"}

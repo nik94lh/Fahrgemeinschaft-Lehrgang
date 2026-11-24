@@ -4,6 +4,7 @@ from unittest.mock import Mock, call, patch
 
 from django.test import TestCase
 
+from bookings.contact_replay import ContactReplayResult
 from bookings.models import Participant
 from mailimport.contact_replay import ContactReplayError, process_contact_replay, queue_contact_replay
 from mailimport.imap_sync import ImapConfig
@@ -27,11 +28,11 @@ class ContactReplayWorkerTests(TestCase):
 
     def step(self, client, callback=None):
         if callback is None:
-            callback = Mock(return_value=True)
+            callback = Mock(return_value=ContactReplayResult.ADDED)
         with (
             patch("mailimport.contact_replay.load_configuration", return_value=self.config),
             patch("mailimport.imap_sync._open_mailbox", return_value=nullcontext(client)),
-            patch("mailimport.contact_replay.enrich_contact_from_imported_mail", callback),
+            patch("mailimport.contact_replay.contact_replay_outcome", callback),
         ):
             return process_contact_replay()
 
@@ -74,13 +75,14 @@ class ContactReplayWorkerTests(TestCase):
             ("OK", [b" ".join(str(uid).encode() for uid in range(1, 27))]),
             *(result for uid in range(1, 26) for result in self.fetch(uid)),
         ]
-        callback = Mock(side_effect=[True] + [False] * 24)
+        callback = Mock(side_effect=[ContactReplayResult.ADDED] + [ContactReplayResult.NO_ADDRESS] * 24)
 
         first = self.step(client, callback)
 
         self.assertEqual(first.pk, job.pk)
         self.assertEqual(first.status, ContactReplayJob.Status.RUNNING)
         self.assertEqual((first.last_uid, first.scanned_count, first.enriched_count), (25, 25, 1))
+        self.assertEqual(first.outcome_counts, {"ADDED": 1, "NO_ADDRESS": 24})
         client.select.assert_called_once_with('"INBOX"', readonly=True)
         self.assertEqual(client.uid.call_args_list[:3], [
             call("SEARCH", None, "UID", "1:26"),
@@ -99,6 +101,7 @@ class ContactReplayWorkerTests(TestCase):
         second_client.uid.assert_any_call("SEARCH", None, "UID", "26:26")
         self.assertEqual(second.status, ContactReplayJob.Status.COMPLETED)
         self.assertEqual((second.last_uid, second.scanned_count, second.enriched_count), (26, 26, 2))
+        self.assertEqual(second.outcome_counts, {"ADDED": 2, "NO_ADDRESS": 24})
         self.assertEqual(MailboxCursor.objects.get().last_uid, 70)
         self.assertIsNotNone(second.finished_at)
 
@@ -113,6 +116,7 @@ class ContactReplayWorkerTests(TestCase):
         job = self.step(client, callback)
         self.assertEqual(job.status, ContactReplayJob.Status.COMPLETED)
         self.assertEqual((job.scanned_count, job.enriched_count), (1, 0))
+        self.assertEqual(job.outcome_counts, {"UNREADABLE": 1})
         self.assertEqual(client.uid.call_count, 2)
         callback.assert_not_called()
 
@@ -145,12 +149,13 @@ class ContactReplayWorkerTests(TestCase):
 
         def update_profile(_raw):
             Participant.objects.create(name="Alex Beispiel")
-            return True
+            return ContactReplayResult.ADDED
 
         interrupted = self.step(client, update_profile)
         self.assertFalse(Participant.objects.exists())
         self.assertEqual(interrupted.status, ContactReplayJob.Status.RUNNING)
         self.assertEqual((interrupted.last_uid, interrupted.scanned_count, interrupted.enriched_count), (0, 0, 0))
+        self.assertEqual(interrupted.outcome_counts, {})
         self.assertNotIn("untrusted", interrupted.error_message)
 
         retry = mock_mailbox()

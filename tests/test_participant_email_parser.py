@@ -1,5 +1,6 @@
 from email import policy
 from email.message import EmailMessage
+from html import escape
 from unittest import TestCase
 
 from mailimport.email_address import normalize_contact_email
@@ -68,6 +69,55 @@ class ParticipantEmailParserTests(TestCase):
         self.assertEqual(result.participant_email, "alex.beispiel@example.invalid")
         self.assertNotIn("alex.beispiel@example.invalid", repr(result))
 
+    def test_same_forward_html_can_complete_a_name_only_recipient(self):
+        raw = self.multipart_forward("Alex Beispiel", "Alex Beispiel <alex@example.invalid>")
+        parsed = parse_eml(raw)
+        self.assertEqual(parsed.participant_email, "alex@example.invalid")
+        self.assertIn("HTML", parsed.address_note)
+
+    def test_conflicting_alternative_recipients_require_review(self):
+        raw = self.multipart_forward(
+            "Alex Beispiel <one@example.invalid>", "Alex Beispiel <two@example.invalid>",
+        )
+        parsed = parse_eml(raw)
+        self.assertIsNone(parsed.participant_email)
+        self.assertTrue(parsed.participant_email_ambiguous)
+
+    def test_html_must_describe_same_booked_course_and_person(self):
+        raw = self.multipart_forward(
+            "Alex Beispiel", "Alex Beispiel <alex@example.invalid>",
+            html_body=APPROVAL.replace("Gruppenführer", "Zugführer"),
+        )
+        self.assertIsNone(parse_eml(raw).participant_email)
+
+    def test_reply_with_only_an_attached_booking_does_not_import_it(self):
+        mail = EmailMessage()
+        mail["Subject"] = "AW: Ihre Lehrgangsanmeldung"
+        mail.add_attachment(booking_message("Alex Beispiel <alex@example.invalid>"))
+        result = parse_eml(mail.as_bytes())
+        self.assertEqual(result.event_type, "unknown")
+        self.assertIsNone(result.participant_email)
+
+    def test_named_recipient_can_be_used_for_explicit_approval_subject(self):
+        mail = booking_message("Alex Beispiel <alex@example.invalid>", subject="Lehrgangsgenehmigung")
+        self.assertEqual(parse_eml(mail.as_bytes()).participant_email, "alex@example.invalid")
+
+    @staticmethod
+    def multipart_forward(plain_to, html_to, *, html_body=APPROVAL):
+        def forwarded(to, body):
+            return (
+                "Weiterleitung\n\nVon: Schule <schule@example.invalid>\n"
+                "Datum: Montag, 10. Mai 2027 um 09:00\n"
+                f"An: {to}\nBetreff: Ihre Lehrgangsanmeldung\n\n{body}"
+            )
+
+        mail = booking_message(subject="WG: Ihre Lehrgangsanmeldung", body=forwarded(plain_to, APPROVAL))
+        mail.add_alternative(
+            "<div>" + escape(forwarded(html_to, html_body)).replace("\n", "<br>") + "</div>",
+            subtype="html",
+        )
+        return mail.as_bytes()
+
     def test_forwarded_booking_with_date_header_and_repeated_mailto_extracts_personal_address(self):
         mail = forwarded_approval_with_repeated_mailto()
         result = parse_eml(mail.as_bytes())
@@ -120,16 +170,15 @@ class ParticipantEmailParserTests(TestCase):
         body = APPROVAL + "\nDurchführungsform: Online und Präsenz"
         self.assertFalse(parse_eml(booking_message(body=body).as_bytes()).is_online)
 
-    def test_unlabeled_recipient_requires_configured_functional_addresses(self):
+    def test_unlabeled_recipient_requires_evidence_from_original_to(self):
         message = booking_message("alex@example.invalid")
         self.assertIsNone(parse_eml(message.as_bytes()).participant_email)
         self.assertIsNone(
             parse_eml(message.as_bytes(), functional_addresses=("nur-ein-name",)).participant_email
         )
-        self.assertEqual(
-            parse_eml(message.as_bytes(), functional_addresses=FUNCTIONAL).participant_email,
-            "alex@example.invalid",
-        )
+        self.assertIsNone(parse_eml(message.as_bytes(), functional_addresses=FUNCTIONAL).participant_email)
+        exact = booking_message("alex.beispiel@example.invalid").as_bytes()
+        self.assertEqual(parse_eml(exact).participant_email, "alex.beispiel@example.invalid")
 
     def test_functional_address_is_removed_even_when_display_name_matches(self):
         message = booking_message(
