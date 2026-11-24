@@ -26,10 +26,6 @@ def enrich_contact_from_imported_mail(raw: bytes) -> bool:
         mail = parse_eml(raw, functional_addresses=get_functional_addresses())
     except MailParseError:
         return False
-    if mail.event_type not in ACTIVATION_EVENTS or not mail.participant_email:
-        return False
-    if _parsed_review_reason(mail, mail.event_type):
-        return False
     return _fill_existing_contact(mail)
 
 
@@ -61,6 +57,10 @@ def _history_matches(event, seat) -> bool:
 @sensitive_variables()
 @transaction.atomic
 def _fill_existing_contact(mail: ParsedMail) -> bool:
+    if mail.event_type not in ACTIVATION_EVENTS or not mail.participant_email:
+        return False
+    if _parsed_review_reason(mail, mail.event_type):
+        return False
     _lock_import()
     event = EmailEvent.objects.select_for_update().filter(
         sha256=mail.fingerprint, state=EmailEvent.State.APPLIED,

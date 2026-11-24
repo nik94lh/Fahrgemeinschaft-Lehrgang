@@ -271,6 +271,43 @@ class ParticipantEmailParserTests(TestCase):
         result = parse_eml(mail.as_bytes(), functional_addresses=FUNCTIONAL)
         self.assertEqual(result.participant_email, "alex@example.invalid")
 
+    def test_outlook_html_forward_with_rule_and_no_text_separator(self):
+        mail = booking_message("Alex Beispiel <outer@example.invalid>", subject="WG: Lehrgang")
+        mail.set_content(
+            "<p>Zur Kenntnis</p><hr><div>"
+            "<b>Von:</b> Schule &lt;absender@example.invalid&gt;<br>"
+            "<b>Gesendet:</b> Montag, 10. Mai 2027 09:00<br>"
+            "<b>An:</b> Alex Beispiel &lt;alex@example.invalid&gt;<br>"
+            "<b>Betreff:</b> Ihre Lehrgangsanmeldung</div>"
+            + "".join(f"<p>{line}</p>" for line in APPROVAL.splitlines() if line),
+            subtype="html",
+        )
+        self.assertEqual(parse_eml(mail.as_bytes()).participant_email, "alex@example.invalid")
+
+    def test_resent_booking_uses_original_to(self):
+        mail = booking_message("Alex Beispiel <alex@example.invalid>")
+        mail["Resent-Date"] = "Mon, 10 May 2027 09:00:00 +0200"
+        mail["Resent-From"] = "forwarder@example.invalid"
+        mail["Resent-To"] = "Alex Beispiel <outer@example.invalid>"
+        self.assertEqual(parse_eml(mail.as_bytes()).participant_email, "alex@example.invalid")
+        del mail["To"]
+        self.assertIsNone(parse_eml(mail.as_bytes()).participant_email)
+
+    def test_bare_outlook_header_block_in_reply_does_not_supply_a_contact(self):
+        mail = booking_message(
+            subject="AW: Ihre Lehrgangsanmeldung",
+            body=(
+                "Von: absender@example.invalid\n"
+                "Gesendet: Montag, 10. Mai 2027 09:00\n"
+                "An: Alex Beispiel <alex@example.invalid>\n"
+                "Betreff: Ihre Lehrgangsanmeldung\n\n"
+                + APPROVAL
+            ),
+        )
+        result = parse_eml(mail.as_bytes())
+        self.assertEqual(result.event_type, "unknown")
+        self.assertIsNone(result.participant_email)
+
     def test_malformed_outlook_inline_recipient_list_is_ignored(self):
         mail = booking_message(
             "Alex Beispiel <outer@example.invalid>",

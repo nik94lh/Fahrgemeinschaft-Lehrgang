@@ -82,6 +82,21 @@ class ParticipantIdentityTests(TestCase):
         self.assertEqual(confirmed.seat.status, BookingStatus.CONFIRMED)
         self.assertEqual(confirmed.seat.participant.email, PERSONAL)
 
+    def test_byte_identical_redelivery_fills_missing_contact_without_reapplying_event(self):
+        raw = booking_mail(address=PERSONAL)
+        with patch("bookings.services.get_functional_addresses", return_value=(PERSONAL,)):
+            approval = ingest(raw)
+        confirmation = ingest(booking_mail(kind="confirmation"))
+        self.assertEqual(confirmation.seat.participant.email, "")
+
+        redelivered = ingest(raw)
+        approval.seat.refresh_from_db()
+        self.assertEqual(redelivered.pk, approval.pk)
+        self.assertEqual(EmailEvent.objects.count(), 2)
+        self.assertEqual(approval.seat.history.count(), 2)
+        self.assertEqual(approval.seat.status, BookingStatus.CONFIRMED)
+        self.assertEqual(approval.seat.participant.email, PERSONAL)
+
     def test_provisional_seat_may_link_to_same_name_and_email_with_history(self):
         provisional = ingest(booking_mail())
         owner = ingest(booking_mail(address=PERSONAL, period=JUNE))

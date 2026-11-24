@@ -70,6 +70,14 @@ FORWARD_SEPARATOR = re.compile(
     r"^\s*-{2,}\s*(?:weitergeleitete nachricht|ursprüngliche nachricht|forwarded message|original message)"
     r"\s*-{2,}\s*$", re.IGNORECASE | re.MULTILINE,
 )
+OUTLOOK_FORWARD_HEADERS = re.compile(
+    r"(?:\A|\n\n)(?=[ \t]*(?:von|from) *: *[^\n]+\n"
+    r"[ \t]*(?:gesendet|sent) *: *[^\n]+\n"
+    r"[ \t]*(?:an|to) *: *[^\n]*\n"
+    r"(?:[ \t]*cc *: *[^\n]*\n)?"
+    r"[ \t]*(?:betreff|subject) *: *[^\n]+\n)",
+    re.IGNORECASE,
+)
 TIME_RANGE = re.compile(
     r"(\d{1,2}\.\d{1,2}\.\d{4} \d{1,2}:\d{2})(?: Uhr)?"
     r"\s*(?:[–—-]|bis)\s*"
@@ -218,10 +226,12 @@ def _attached_messages(message: EmailMessage) -> list[EmailMessage]:
     return child_messages
 
 
-def _inline_forward(text: str) -> tuple[str, str, tuple[Address, ...]] | None:
+def _inline_forward(text: str, *, forwarded: bool) -> tuple[str, str, tuple[Address, ...]] | None:
     lines = [re.sub(r"^\s*(?:>\s*)+", "", line) for line in text.splitlines()]
     unfolded = "\n".join(lines)
     separators = list(FORWARD_SEPARATOR.finditer(unfolded))
+    if not separators and forwarded:
+        separators = list(OUTLOOK_FORWARD_HEADERS.finditer(unfolded))
     if not separators:
         return None
     if len(separators) > 1:
@@ -273,7 +283,7 @@ def _original_text(message: EmailMessage) -> tuple[str, str, tuple[Address, ...]
     text = _body_text(body)
     recipients = ()
     if not REPLY_PREFIX.match(subject):
-        original = _inline_forward(text)
+        original = _inline_forward(text, forwarded=forwarded)
         if original:
             subject, text, inline_recipients = original
             if forwarded:

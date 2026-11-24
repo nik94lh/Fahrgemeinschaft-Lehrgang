@@ -76,6 +76,11 @@ def _reconcile(mail: ParsedMail, occurred_at: datetime | None) -> EmailEvent:
         defaults={"kind": mail.event_type, "occurred_at": occurred_at},
     )
     if not new:
+        if event.state == EmailEvent.State.APPLIED and mail.participant_email:
+            # Share the contact replay checks without reapplying the booking event.
+            from .contact_replay import _fill_existing_contact
+
+            _fill_existing_contact(mail)
         return event
 
     referenced_seat = _referenced_seat(mail)
