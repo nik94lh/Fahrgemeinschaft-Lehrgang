@@ -16,6 +16,6 @@ Dieses Repository enthält das Lehrgangs- und Fahrgemeinschaftsmanagement (LFM).
 
 - Im vorhandenen Checkout auf einem eigenen Git-Branch mit nachvollziehbaren Commits arbeiten. Ein Merge erfolgt nach gesonderter Freigabe.
 - Fachliche Änderungen mit automatisierten Tests absichern. Datenbankmigrationen und Beispielkonfiguration auf Aktualität prüfen.
-- Bei einer Testbereitstellung den erwarteten Commit anhand des Serverprotokolls oder des laufenden Dienstes bestätigen. Einen Push auf den Deployment-Branch als Bereitstellung ausweisen, solange der installierte Stand nicht bestätigt ist.
+- Bei angeforderter FFP-Testbereitstellung den lokal geprüften Stand als Fast-Forward auf `feat/bms-foundation` pushen. Bei aktiver FFP-Action den Workflow und den Commitstatus `ffp/deployed` für den gepushten SHA prüfen. Die Installation erst melden, wenn dieser Status, das Serverprotokoll oder der laufende Dienst den erwarteten Commit bestätigt. Die einmalige Einrichtung steht in `docs/FFP-DEPLOYMENT.md`.
 - Fachliche Zeitangaben in `Europe/Berlin` interpretieren. Zeitzonenbewusste Zeitpunkte für Speicherung und Vergleiche verwenden.
 - Neue Importmuster anhand synthetischer oder ausreichend anonymisierter Beispiele testen. Bei mehrdeutigen Buchungszuordnungen einen Klärungsfall vorsehen.
