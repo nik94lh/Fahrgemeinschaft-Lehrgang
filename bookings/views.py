@@ -2,10 +2,11 @@
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.shortcuts import render
+from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_safe
 
-from .models import BookingStatus, CourseSeat, EmailEvent, School
+from .models import BookingStatus, CourseSeat, CourseSession, EmailEvent, School
 
 
 def _seats():
@@ -24,10 +25,14 @@ def overview(request):
             BookingStatus.APPROVED, BookingStatus.AWAITING_CONFIRMATION,
         ])),
     )
+    upcoming_sessions = CourseSession.objects.filter(starts_at__gte=timezone.now()).select_related(
+        "course",
+    ).order_by("starts_at", "pk")[:6]
     return render(request, "workspace/overview.html", {
         "section": "overview",
         "seats": seats,
         "review_count": EmailEvent.objects.filter(state=EmailEvent.State.NEEDS_REVIEW).count(),
+        "upcoming_sessions": upcoming_sessions,
         "recent_events": EmailEvent.objects.select_related("seat__session__course").order_by("-imported_at", "-pk")[:8],
     })
 

@@ -1,6 +1,8 @@
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
+from unittest.mock import patch
 
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from bookings.models import (
@@ -116,3 +118,59 @@ class DashboardTests(TestCase):
         response = self.client.get("/vorschau/")
 
         self.assertContains(response, 'enctype="multipart/form-data"')
+
+
+class CoursePeriodTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.now = datetime(2027, 5, 1, tzinfo=UTC)
+        cls.starts_at = datetime(2027, 5, 10, 7, 45, tzinfo=UTC)
+        cls.ends_at = datetime(2027, 5, 14, 13, tzinfo=UTC)
+        cls.session = CourseSession.objects.create(
+            course=Course.objects.create(name="Synthetischer Lehrgang mit Zeitraum"),
+            school=School.WUERZBURG,
+            starts_at=cls.starts_at,
+            ends_at=cls.ends_at,
+        )
+        for name in ("Kim Testperson", "Leo Beispielperson"):
+            CourseSeat.objects.create(session=cls.session, participant=Participant.objects.create(name=name))
+
+    def test_overview_lists_a_session_once_with_its_calendar_link_and_period(self):
+        with patch.object(timezone, "now", return_value=self.now):
+            response = self.client.get(reverse("overview"))
+
+        self.assertContains(response, "Anstehende Lehrgänge")
+        self.assertContains(response, "Synthetischer Lehrgang mit Zeitraum", count=1)
+        self.assertContains(response, "SFS Würzburg")
+        self.assertContains(response, f'href="{reverse("calendar_detail", args=[self.session.pk])}"', count=1)
+        self.assertContains(response, 'datetime="2027-05-10T09:45:00+02:00"')
+        self.assertContains(response, 'datetime="2027-05-14T15:00:00+02:00"')
+
+    def test_overview_limits_upcoming_sessions_with_stable_order(self):
+        CourseSession.objects.create(
+            course=self.session.course,
+            school=School.GERETSRIED,
+            starts_at=self.now - timedelta(days=2),
+            ends_at=self.now - timedelta(days=1),
+        )
+        expected = [self.session]
+        for position in range(7):
+            created = CourseSession.objects.create(
+                course=self.session.course,
+                school=School.REGENSBURG,
+                starts_at=self.starts_at + timedelta(days=position),
+                ends_at=self.ends_at + timedelta(days=position),
+            )
+            expected.append(created)
+
+        with patch.object(timezone, "now", return_value=self.now):
+            response = self.client.get(reverse("overview"))
+
+        self.assertEqual(list(response.context["upcoming_sessions"]), expected[:6])
+
+    def test_bookings_show_both_ends_of_a_period_in_berlin_time(self):
+        response = self.client.get(reverse("bookings"))
+
+        self.assertContains(response, '<th scope="col">Zeitraum</th>', count=1)
+        self.assertContains(response, "10.05.2027, 09:45 Uhr", count=2)
+        self.assertContains(response, "14.05.2027, 15:00 Uhr", count=2)

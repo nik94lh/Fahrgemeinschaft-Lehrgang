@@ -1,6 +1,6 @@
 # Roadmap
 
-Die Projektgrundstruktur ist vorhanden. Der lokale Parser, der optionale lesende Postfachimport, konservative Buchungsregeln und eine Buchungsübersicht mit Wochen- und Monatskalender decken Teile der Phasen 2 bis 4 ab. Für Phase 6 gibt es einen Vorabvergleich von Zeitfenstern bestätigter Lehrgänge, getrennt nach Hin- und Rückfahrt. Er zeigt mögliche Fahrten in den nächsten 28 Tagen ohne Einladung oder personenbezogene Kontaktfreigabe. Neue Klärungsfälle zeigen den Auslöser der manuellen Prüfung. Der Kalender bietet Zeitbalken, einen Schulfilter, Termindetails mit Buchungen und eine zugängliche Terminliste. Die Tages- und Jahresansicht sowie erweiterte Kalenderfunktionen sind weitere Ziele.
+Die Projektgrundstruktur ist vorhanden. Der lokale Parser, der optionale lesende Postfachimport, konservative Buchungsregeln und eine Buchungsübersicht mit Wochen-, Monats- und Jahreskalender decken Teile der Phasen 2 bis 4 ab. Für Phase 6 gibt es einen Vorabvergleich von Zeitfenstern bestätigter Lehrgänge, getrennt nach Hin- und Rückfahrt. Er zeigt mögliche Fahrten in den nächsten 28 Tagen ohne Einladung oder personenbezogene Kontaktfreigabe. Neue Klärungsfälle zeigen den Auslöser der manuellen Prüfung. Der Kalender bietet Zeitbalken, einen Schulfilter, Termindetails mit Buchungen und eine zugängliche Terminliste. Die Jahresansicht gliedert Lehrgänge nach Monaten. Die Tagesansicht und weitere Kalenderfunktionen sind weitere Ziele.
 
 | Phase | Umfang | Nachweis |
 | --- | --- | --- |

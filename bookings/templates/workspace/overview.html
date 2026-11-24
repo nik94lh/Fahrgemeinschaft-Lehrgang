@@ -8,6 +8,27 @@
         <div><dt>Bestätigung offen</dt><dd>{{ seats.pending }}</dd></div>
         <div><dt>Klärungsbedarf</dt><dd>{{ review_count }}</dd></div>
     </dl>
+    <section class="panel overview-courses" aria-labelledby="upcoming-title">
+        <h2 id="upcoming-title">Anstehende Lehrgänge</h2>
+        {% if upcoming_sessions %}
+            <div class="table-scroll" tabindex="0" role="region" aria-labelledby="upcoming-title">
+                <table class="mobile-table">
+                    <thead><tr><th scope="col">Lehrgang</th><th scope="col">Schule</th><th scope="col">Zeitraum</th></tr></thead>
+                    <tbody>
+                        {% for session in upcoming_sessions %}
+                            <tr>
+                                <td data-label="Lehrgang"><a href="{% url 'calendar_detail' session.pk %}">{{ session.course.name }}</a></td>
+                                <td data-label="Schule">{{ session.get_school_display }}</td>
+                                <td data-label="Zeitraum">{% include "workspace/session_period.html" with session=session only %}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="quiet">Keine anstehenden Lehrgänge vorhanden.</p>
+        {% endif %}
+    </section>
     <section class="panel" aria-labelledby="events-title">
         <h2 id="events-title">Letzte E-Mail-Ereignisse</h2>
         {% include "workspace/events.html" with events=recent_events only %}

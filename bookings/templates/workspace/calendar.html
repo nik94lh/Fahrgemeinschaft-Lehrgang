@@ -7,6 +7,9 @@
         {% if view == 'week' %}
             <input type="hidden" name="view" value="week">
             <label>Woche ab <input type="date" name="day" value="{{ period_start|date:'Y-m-d' }}"></label>
+        {% elif view == 'year' %}
+            <input type="hidden" name="view" value="year">
+            <label>Jahr <input type="number" name="year" min="2" max="9998" step="1" value="{{ year_id }}"></label>
         {% else %}
             <label>Monat <input type="month" name="month" value="{{ month_id }}"></label>
         {% endif %}
@@ -25,6 +28,8 @@
             <h2 id="calendar-period">
                 {% if view == 'week' %}
                     {{ period_start|date:"d.m.Y" }} – {{ period_end|date:"d.m.Y" }}
+                {% elif view == 'year' %}
+                    {{ year_id }}
                 {% else %}
                     {{ month|date:"F Y" }}
                 {% endif %}
@@ -32,12 +37,16 @@
             <nav class="calendar-modes" aria-label="Kalenderansicht">
                 <a href="?{{ week_query }}"{% if view == 'week' %} aria-current="true"{% endif %}>Woche</a>
                 <a href="?{{ month_query }}"{% if view == 'month' %} aria-current="true"{% endif %}>Monat</a>
+                <a href="?{{ year_query }}"{% if view == 'year' %} aria-current="true"{% endif %}>Jahr</a>
             </nav>
         </div>
         <nav class="calendar-dates" aria-label="Zeitraum wechseln">
             {% if view == 'week' %}
                 <a href="?{{ previous_query }}">‹ Vorherige Woche</a>
                 <a href="?{{ next_query }}">Nächste Woche ›</a>
+            {% elif view == 'year' %}
+                <a href="?{{ previous_query }}">‹ Vorheriges Jahr</a>
+                <a href="?{{ next_query }}">Nächstes Jahr ›</a>
             {% else %}
                 <a href="?{{ previous_query }}">‹ Vorheriger Monat</a>
                 <a href="?{{ next_query }}">Nächster Monat ›</a>
@@ -45,15 +54,19 @@
         </nav>
 
         {% if school_groups %}
-            <p class="calendar-hint quiet" id="calendar-hint">Ein Balken zeigt die belegten Kalendertage. Öffne ihn für Uhrzeiten und Buchungen. Den Plan kannst du seitlich verschieben.</p>
+            <p class="calendar-hint quiet" id="calendar-hint">{% if view == 'year' %}Die Balken markieren Monate mit mindestens einem Lehrgangstag.{% else %}Ein Balken zeigt die belegten Kalendertage.{% endif %} Öffne einen Balken für den genauen Zeitraum und die Buchungen. Den Plan kannst du seitlich verschieben.</p>
             <div class="calendar-scroll" tabindex="0" role="region" aria-labelledby="calendar-period" aria-describedby="calendar-hint">
                 <div class="calendar-grid calendar-grid--{{ view }}" style="--days: {{ day_count }};">
                     <div class="calendar-line calendar-axis" aria-hidden="true">
                         <div class="calendar-label">Lehrgang</div>
                         {% for tick in ticks %}
-                            <div class="calendar-tick{% if tick.is_weekend %} is-weekend{% endif %}{% if tick.is_today %} is-today{% endif %}" title="{{ tick.date|date:'l, d.m.Y' }}">
-                                {% if view == 'week' %}<span>{{ tick.date|date:"D" }}</span>{% endif %}
-                                <strong>{{ tick.number }}</strong>
+                            <div class="calendar-tick{% if tick.is_weekend %} is-weekend{% endif %}{% if tick.is_today %} is-today{% endif %}" title="{% if view == 'year' %}{{ tick.date|date:'F Y' }}{% else %}{{ tick.date|date:'l, d.m.Y' }}{% endif %}">
+                                {% if view == 'year' %}
+                                    <strong>{{ tick.date|date:"M" }}</strong>
+                                {% else %}
+                                    {% if view == 'week' %}<span>{{ tick.date|date:"D" }}</span>{% endif %}
+                                    <strong>{{ tick.number }}</strong>
+                                {% endif %}
                             </div>
                         {% endfor %}
                     </div>

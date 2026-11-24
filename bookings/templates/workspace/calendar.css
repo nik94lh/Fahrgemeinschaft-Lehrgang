@@ -10,7 +10,7 @@
 
 .calendar-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: .55rem; }
 .calendar-grid { --label-width: 14rem; --day-minimum: 1.62rem; min-width: calc(var(--label-width) + var(--days) * var(--day-minimum)); }
-.calendar-grid--week { --day-minimum: 2.5rem; }
+.calendar-grid--week, .calendar-grid--year { --day-minimum: 2.5rem; }
 .calendar-line { display: grid; grid-template-columns: var(--label-width) repeat(var(--days), minmax(0, 1fr)); }
 .calendar-axis { background: #f4f7fc; color: var(--muted); font-size: .85rem; }
 .calendar-label { position: sticky; left: 0; z-index: 2; align-self: stretch; padding: .5rem .65rem; background: var(--surface); border-inline-end: 1px solid var(--line); }

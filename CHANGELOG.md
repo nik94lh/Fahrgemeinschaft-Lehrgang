@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.4.0
+
+- Der Kalender bietet eine Jahresansicht mit Lehrgangsterminen nach Monaten.
+- Die Übersicht zeigt anstehende Lehrgänge mit Beginn und Ende.
+- Unter **Buchungen** zeigt die Spalte **Zeitraum** den Beginn und das Ende des Lehrgangs.
+
 ## 0.3.0
 
 - Neue Klärungsfälle zeigen den konkreten Grund, etwa fehlende Buchungsdaten, eine mehrdeutige Zuordnung oder einen Widerspruch zu einer bestehenden Buchung. Bei älteren Fällen bleibt der Grund als nicht erfasst gekennzeichnet.

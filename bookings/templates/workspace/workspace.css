@@ -41,3 +41,4 @@ td { vertical-align: top; }
 .back-link, .detail-times { margin-block-end: 1rem; }
 .review-explanation { margin-block: 0 1rem; }
 .review-form select { max-width: 100%; }
+.overview-courses { margin-block-end: 1rem; }

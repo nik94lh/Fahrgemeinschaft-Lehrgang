@@ -14,11 +14,11 @@
         {% if page_obj %}
             <div class="table-scroll" tabindex="0">
                 <table class="mobile-table">
-                    <thead><tr><th scope="col">Lehrgang</th><th scope="col">Schule</th><th scope="col">Beginn</th><th scope="col">Teilnehmer/in</th><th scope="col">Status</th></tr></thead>
+                    <thead><tr><th scope="col">Lehrgang</th><th scope="col">Schule</th><th scope="col">Zeitraum</th><th scope="col">Teilnehmer/in</th><th scope="col">Status</th></tr></thead>
                     <tbody>{% for seat in page_obj %}
                         <tr>
                             <td data-label="Lehrgang">{{ seat.session.course.name }}</td><td data-label="Schule">{{ seat.session.get_school_display }}</td>
-                            <td data-label="Beginn">{{ seat.session.starts_at|date:"d.m.Y, H:i" }}</td><td data-label="Teilnehmer/in">{{ seat.participant.name|default:"—" }}</td>
+                            <td data-label="Zeitraum">{% include "workspace/session_period.html" with session=seat.session only %}</td><td data-label="Teilnehmer/in">{{ seat.participant.name|default:"—" }}</td>
                             <td data-label="Status">{{ seat.get_status_display }}</td>
                         </tr>
                     {% endfor %}</tbody>

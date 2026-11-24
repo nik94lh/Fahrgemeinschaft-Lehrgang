@@ -1,4 +1,4 @@
-"""Read-only month and week views for the schedule."""
+"""Read-only year, month and week views for the schedule."""
 from collections import defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
@@ -51,7 +51,13 @@ def _next_month(month):
 
 
 def _selected_period(params, today):
-    if params.get("view") == "week":
+    view = params.get("view")
+    if view == "year":
+        value = params.get("year", "")
+        start = _selected_date(f"{value}-01-01", today.replace(month=1, day=1))
+        return _Period("year", start, start.replace(year=start.year + 1), start.replace(year=start.year - 1))
+
+    if view == "week":
         start = _week_start(_selected_date(params.get("day"), today))
         return _Period("week", start, start + WEEK, start - WEEK)
 
@@ -68,6 +74,8 @@ def _selected_school(params):
 def _query_string(view, anchor, school):
     if view == "week":
         parameters = {"view": "week", "day": anchor.isoformat()}
+    elif view == "year":
+        parameters = {"view": "year", "year": anchor.isoformat()[:4]}
     else:
         parameters = {"month": anchor.isoformat()[:7]}
     if school:
@@ -76,6 +84,17 @@ def _query_string(view, anchor, school):
 
 
 def _ticks(period, today):
+    if period.view == "year":
+        return [
+            {
+                "date": period.start.replace(month=month),
+                "number": month,
+                "is_today": today.year == period.start.year and today.month == month,
+                "is_weekend": False,
+            }
+            for month in range(1, 13)
+        ]
+
     ticks = []
     for offset in range((period.stop - period.start).days):
         day = period.start + timedelta(days=offset)
@@ -86,6 +105,12 @@ def _ticks(period, today):
             "is_weekend": day.weekday() >= 5,
         })
     return ticks
+
+
+def _grid_column(day, period):
+    if period.view == "year":
+        return day.month
+    return (day - period.start).days + 1
 
 
 def _timeline_rows(sessions, period, starts, ends):
@@ -100,8 +125,8 @@ def _timeline_rows(sessions, period, starts, ends):
         last_day = min(last_day, period.last_day)
         by_school[session.school].append({
             "session": session,
-            "start_column": (first_day - period.start).days + 1,
-            "end_column": (last_day - period.start).days + 2,
+            "start_column": _grid_column(first_day, period),
+            "end_column": _grid_column(last_day, period) + 1,
             "starts_before": session.starts_at < starts,
             "ends_after": session.ends_at > ends,
         })
@@ -130,22 +155,25 @@ def calendar(request):
         "starts_at", "course__name", "pk"
     ))
 
-    # The Thursday of a cross-month week determines its month in the month zoom.
     month_anchor = period.start
-    if period.view == "week":
-        month_anchor += timedelta(days=3)
     week_anchor = period.start
-    if period.view == "month":
+    if period.view == "week":
+        # The Thursday determines the month and year of an ISO week.
+        month_anchor += timedelta(days=3)
+    else:
         if period.start <= today < period.stop:
             week_anchor = today
         elif sessions:
             week_anchor = max(period.start, timezone.localtime(sessions[0].starts_at).date())
+        if period.view == "year":
+            month_anchor = week_anchor
     ticks = _ticks(period, today)
     return render(request, "workspace/calendar.html", {
         "section": "calendar",
         "view": period.view,
         "month": month_anchor.replace(day=1),
         "month_id": month_anchor.isoformat()[:7],
+        "year_id": month_anchor.isoformat()[:4],
         "day_id": period.start.isoformat(),
         "period_start": period.start,
         "period_end": period.last_day,
@@ -160,6 +188,7 @@ def calendar(request):
         "current_query": _query_string(period.view, period.start, school),
         "month_query": _query_string("month", month_anchor, school),
         "week_query": _query_string("week", _week_start(week_anchor), school),
+        "year_query": _query_string("year", month_anchor, school),
     })
 
 
