@@ -4,7 +4,9 @@ from unittest.mock import patch
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import Client, TestCase
 
+from bookings.models import EmailEvent
 from mailimport.parser import MAX_EML_BYTES
+from tests.test_participant_email_parser import forwarded_approval_with_repeated_mailto
 
 
 def eml_file(html, name="beispiel.eml"):
@@ -59,6 +61,15 @@ class MailPreviewTests(TestCase):
     def test_browser_post_without_csrf_token_is_forbidden(self):
         response = self.client.post("/vorschau/", {"file": eml_file("<p>Simuliert</p>")})
         self.assertEqual(response.status_code, 403)
+
+    def test_forwarded_booking_upload_shows_the_original_participant_address(self):
+        raw = forwarded_approval_with_repeated_mailto().as_bytes()
+        response = self.post_file(SimpleUploadedFile("weiterleitung.eml", raw))
+
+        self.assertContains(response, "alex.beispiel@example.invalid")
+        self.assertContains(response, "An-Feld der zitierten Originalmail")
+        self.assertNotContains(response, "import@example.invalid")
+        self.assertFalse(EmailEvent.objects.exists())
 
     def test_malformed_upload_returns_a_safe_validation_error(self):
         file = SimpleUploadedFile("beispiel.eml", b"<script>raw payload marker</script>")
