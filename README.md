@@ -80,7 +80,9 @@ Der Hintergrunddienst gleicht die Buchungen standardmäßig alle zwei Minuten ab
 
 ## Versionen und Testbereitstellung
 
-Der FFP-Testserver verfolgt `feat/bms-foundation`. Änderungen werden lokal geprüft und erst danach als Fast-Forward auf diesen Branch gepusht. Der beim Einrichten konfigurierte systemd-Timer plant den nächsten Deployment-Lauf zwei Minuten nach Ende des letzten Laufs ein. Findet ein Lauf einen neuen Stand, holt der Server die Änderungen, baut das Image, migriert die Datenbank und startet Webdienst und Postfachdienst. Build, Migration und Neustart dauern zusätzlich zur Wartezeit.
+Der FFP-Testserver verfolgt `feat/bms-foundation`. Änderungen werden lokal geprüft und erst danach als Fast-Forward auf diesen Branch gepusht. Bei aktivierter GitHub-Action startet die Installation nach den PostgreSQL-Tests automatisch. Der Commitstatus `ffp/deployed` bestätigt den installierten Stand. [Einmalige Einrichtung auf GitHub und FFP](docs/FFP-DEPLOYMENT.md)
+
+Der bestehende systemd-Timer bleibt als alternativer Startweg verfügbar. Er plant den nächsten Deployment-Lauf zwei Minuten nach Ende des letzten Laufs ein. Findet ein Lauf einen neuen Stand, holt der Server die Änderungen, baut das Image, migriert die Datenbank und startet Webdienst und Postfachdienst. Build, Migration und Neustart dauern zusätzlich zur Wartezeit.
 
 Für einen aktiven Push führe im Repository `bash scripts/push-ffp.sh` aus (unter Windows in Git Bash). Der Befehl pusht den aktuellen Commit, startet den bestehenden Deployment-Dienst über SSH und wartet auf die Bestätigung desselben Commits im Serverprotokoll. Es gilt der vorhandene SSH- und sudo-Zugang. Mit `bash scripts/push-ffp.sh --deploy-only` startest und prüfst du den bereits auf GitHub liegenden Stand. Ein alternatives SSH-Ziel kannst du als letztes Argument in der Form `Benutzer@Server` angeben.
 

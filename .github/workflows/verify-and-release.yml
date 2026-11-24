@@ -38,6 +38,66 @@ jobs:
           .venv/bin/python manage.py check
           .venv/bin/python manage.py makemigrations --check --dry-run
           .venv/bin/python manage.py test
+  ffp-deploy:
+    name: Install verified BMS revision on FFP
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feat/bms-foundation' && vars.FFP_AUTO_DEPLOY == '1'
+    needs: verify
+    runs-on: ubuntu-24.04
+    environment: ffp-bms
+    timeout-minutes: 15
+    permissions:
+      statuses: write
+    concurrency:
+      group: bms-ffp-deploy
+      cancel-in-progress: false
+    steps:
+      - name: Start the FFP deployment and verify the installed commit
+        id: install
+        env:
+          FFP_SSH_TARGET: ${{ vars.FFP_SSH_TARGET }}
+          FFP_SSH_KNOWN_HOSTS: ${{ vars.FFP_SSH_KNOWN_HOSTS }}
+          FFP_SSH_KEY: ${{ secrets.FFP_SSH_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! $GITHUB_SHA =~ ^[0-9a-f]{40}$ || ! $FFP_SSH_TARGET =~ ^[a-z_][a-z0-9_-]*@[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]]; then
+            echo "The expected commit or FFP SSH target is invalid." >&2
+            exit 1
+          fi
+          : "${FFP_SSH_KNOWN_HOSTS:?Configure the pinned FFP host key}"
+          : "${FFP_SSH_KEY:?Configure the dedicated FFP deployment key}"
+          umask 077
+          ssh_dir=$(mktemp -d)
+          trap 'rm -rf -- "$ssh_dir"' EXIT
+          printf '%s\n' "$FFP_SSH_KEY" > "$ssh_dir/key"
+          printf '%s\n' "$FFP_SSH_KNOWN_HOSTS" > "$ssh_dir/known_hosts"
+          result=$(ssh -F /dev/null -T -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o ClearAllForwardings=yes -o StrictHostKeyChecking=yes -o GlobalKnownHostsFile=/dev/null \
+            -o "UserKnownHostsFile=$ssh_dir/known_hosts" -o ConnectTimeout=15 \
+            -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -i "$ssh_dir/key" \
+            "$FFP_SSH_TARGET" "$GITHUB_SHA")
+          if [[ $result != "FFP-Installation bestätigt: $GITHUB_SHA" ]]; then
+            echo "FFP did not confirm the expected commit." >&2
+            exit 1
+          fi
+          printf '%s\n' "$result"
+      - name: Publish the installation result on the commit
+        if: ${{ always() }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          INSTALL_OUTCOME: ${{ steps.install.outcome }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          result=failure
+          description="FFP did not confirm this revision"
+          if [[ $INSTALL_OUTCOME == success ]]; then
+            result=success
+            description="FFP confirmed the installed revision"
+          fi
+          gh api --method POST "repos/$GITHUB_REPOSITORY/statuses/$GITHUB_SHA" \
+            -f state="$result" -f context=ffp/deployed -f description="$description" \
+            -f target_url="$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" >/dev/null
   release:
     if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/feat/bms-foundation'
     needs: verify
