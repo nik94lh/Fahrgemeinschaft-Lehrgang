@@ -1,11 +1,11 @@
 # Roadmap
 
-Der erste Entwicklungsstand deckt Phase 1 und den lokalen Vorschau-Teil von Phase 2 ab. Spätere Phasen sind fachliche Ziele und werden jeweils separat umgesetzt und geprüft.
+Die Projektgrundstruktur ist vorhanden. Der lokale Parser, der optionale lesende Postfachimport, konservative Buchungsregeln und eine erste Buchungsübersicht mit Monatskalender decken Teile der Phasen 2 bis 4 ab. Für Phase 6 gibt es einen Vorabvergleich von Zeitfenstern bestätigter Lehrgänge, getrennt nach Hin- und Rückfahrt. Er zeigt mögliche Fahrten in den nächsten 28 Tagen ohne Einladung oder personenbezogene Kontaktfreigabe. Die weiteren Ziele werden jeweils separat umgesetzt und geprüft.
 
 | Phase | Umfang | Nachweis |
 | --- | --- | --- |
 | 1. Projektgrundstruktur und Datenbank | Django, PostgreSQL, Compose, Domänenmodell und Migrationen | Anwendung startet, Migrationen und Modelltests laufen |
-| 2. E-Mail-Parser und synthetische Testdaten | Lokale EML-Vorschau für Klartext, HTML und Weiterleitungen. Importmuster anhand anonymisierter Beispiele ergänzen | Synthetische Beispiele, Tests zu Sicherheitsgrenzen, Duplikaten, Fehlern und Importvorschau |
+| 2. E-Mail-Parser und synthetische Testdaten | Lokale EML-Vorschau für Klartext, HTML und Weiterleitungen. Lesender IMAP-Import für ein freigegebenes separates Postfach. Importmuster anhand anonymisierter Beispiele ergänzen | Synthetische Beispiele, Tests zu Sicherheitsgrenzen, Duplikaten, Fehlern und Importvorschau |
 | 3. Buchungszuordnung und Klärungsfälle | Buchungsreferenzen, Ereignisreihenfolge, Platzhistorie, manuelle Auflösung bei Mehrdeutigkeit | Genehmigung und Bestätigung teilen einen Platz. Mehrere Teilnehmer und Termine bleiben getrennt. Eindeutige und uneindeutige Ummeldung sowie Stornierung werden geprüft |
 | 4. Administrationsdashboard und Kalender | Barrierearme deutschsprachige Verwaltung, Statuskennzahlen und interaktiver Belegungsplan | Filter, Detailansichten, Zeitbalken und Korrektur auf verschiedenen Bildschirmgrößen geprüft |
 | 5. Feuerwehr-Stammdaten | Lokale Stammdaten und Koordinaten, sichere Zuordnung der Heimatfeuerwehr | Stammdatenpflege und lokale Distanzberechnung geprüft |

@@ -1,0 +1,12 @@
+<nav class="workspace-nav" aria-label="Hauptnavigation">
+    <div>
+        <a href="{% url 'overview' %}"{% if section == 'overview' %} aria-current="page"{% endif %}>Übersicht</a>
+        <a href="{% url 'bookings' %}"{% if section == 'bookings' %} aria-current="page"{% endif %}>Buchungen</a>
+        <a href="{% url 'calendar' %}"{% if section == 'calendar' %} aria-current="page"{% endif %}>Kalender</a>
+        <a href="{% url 'rides' %}"{% if section == 'rides' %} aria-current="page"{% endif %}>Fahrgemeinschaften</a>
+        <a href="{% url 'brigades' %}"{% if section == 'brigades' %} aria-current="page"{% endif %}>Feuerwehren</a>
+        <a href="{% url 'review' %}"{% if section == 'review' %} aria-current="page"{% endif %}>Klärung</a>
+        <a href="{% url 'preview' %}"{% if section == 'preview' %} aria-current="page"{% endif %}>E-Mail-Vorschau</a>
+        <a href="{% url 'mailbox' %}"{% if section == 'mailbox' %} aria-current="page"{% endif %}>Postfach</a>
+    </div>
+</nav>

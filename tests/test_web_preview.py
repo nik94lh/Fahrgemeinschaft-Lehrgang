@@ -19,12 +19,12 @@ class MailPreviewTests(SimpleTestCase):
         self.client = Client(enforce_csrf_checks=True)
 
     def post_file(self, file):
-        self.client.get("/")
+        self.client.get("/vorschau/")
         token = self.client.cookies["csrftoken"].value
-        return self.client.post("/", {"file": file}, HTTP_X_CSRFTOKEN=token)
+        return self.client.post("/vorschau/", {"file": file}, HTTP_X_CSRFTOKEN=token)
 
     def test_get_renders_a_non_cacheable_form_with_restrictive_csp(self):
-        response = self.client.get("/")
+        response = self.client.get("/vorschau/")
 
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, 'enctype="multipart/form-data"')
@@ -56,7 +56,7 @@ class MailPreviewTests(SimpleTestCase):
         self.assertIn("no-store", response.headers["Cache-Control"])
 
     def test_browser_post_without_csrf_token_is_forbidden(self):
-        response = self.client.post("/", {"file": eml_file("<p>Simuliert</p>")})
+        response = self.client.post("/vorschau/", {"file": eml_file("<p>Simuliert</p>")})
         self.assertEqual(response.status_code, 403)
 
     def test_malformed_upload_returns_a_safe_validation_error(self):

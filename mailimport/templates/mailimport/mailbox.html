@@ -1,0 +1,30 @@
+{% extends "workspace/base.html" %}
+
+{% block title %}Postfach{% endblock %}
+
+{% block content %}
+<h1>Postfach</h1>
+<p class="intro">Verbinde ein separates Postfach für Kopien der Lehrgangs-E-Mails. BMS liest den Ordner über TLS, ohne Nachrichten zu verändern.</p>
+<section class="panel" aria-label="Postfachverbindung" style="max-width: 38rem;">
+  {% if saved %}
+    <p role="status">Postfachkonfiguration gespeichert.</p>
+  {% endif %}
+  {% if configured %}
+    <p class="note">Abruf {% if enabled %}aktiviert{% else %}deaktiviert{% endif %}. {% if password_saved %}Ein Passwort ist hinterlegt.{% endif %}</p>
+    {% if last_sync_at %}
+      <p class="note">
+        {% if last_sync_ok %}Letzter Abruf erfolgreich.{% else %}Letzter Abruf fehlgeschlagen.{% endif %}
+        <time datetime="{{ last_sync_at|date:'c' }}">{{ last_sync_at|date:"d.m.Y, H:i" }} Uhr</time>
+      </p>
+    {% elif enabled %}
+      <p class="note">Für dieses Postfach liegt noch kein Abrufstatus vor.</p>
+    {% endif %}
+  {% endif %}
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Postfach speichern</button>
+  </form>
+  <p class="note">Aktiviere den Abruf nur für ein freigegebenes Postfach. BMS berücksichtigt die Einstellung beim nächsten Abruf.</p>
+</section>
+{% endblock %}

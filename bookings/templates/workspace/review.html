@@ -1,0 +1,10 @@
+{% extends "workspace/base.html" %}
+{% block title %}Klärungsfälle{% endblock %}
+{% block content %}
+    <h1>Klärungsfälle</h1>
+    <p class="intro">E-Mails, deren Zuordnung oder Status geprüft werden muss.</p>
+    <section class="panel">
+        {% include "workspace/events.html" with events=page_obj only %}
+        {% include "workspace/pagination.html" %}
+    </section>
+{% endblock %}

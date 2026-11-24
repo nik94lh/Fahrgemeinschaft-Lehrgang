@@ -98,6 +98,7 @@ class ParsedMail:
     cancellation_date: date | None
     booking_reference: str | None
     warnings: tuple[str, ...]
+    reference_conflict: bool = False
 
 
 def _normalized(value: str) -> str:
@@ -282,7 +283,13 @@ def parse_eml(raw: bytes) -> ParsedMail:
     participant_name = _unique(participant, _name)
     previous_name = _unique(_values(text, "Bisherige[rs]? Teilnehmer(?:in)?"), _name)
     course_name = _unique(_values(text, "Lehrgangsart|Lehrgang"), _course_name)
-    reference = _unique(_values(text, "Buchungsreferenz|Buchungsnummer"), _booking_reference)
+    references = re.findall(
+        r"^(?:Buchungsreferenz|Buchungsnummer) *: *([^\n]*)$",
+        text,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    reference = _unique(references, _booking_reference)
+    reference_conflict = bool(references) and reference is None
     locations = " ".join(_values(text, "Schulungsort|Lehrgangsort|Schule"))
     schools = [code for code, pattern in SCHOOLS.items() if re.search(pattern, locations, re.IGNORECASE)]
     school = schools[0] if len(schools) == 1 else None
@@ -298,6 +305,7 @@ def parse_eml(raw: bytes) -> ParsedMail:
         (course_name is None, "Lehrgangsart fehlt oder ist nicht eindeutig."),
         (school is None, "Schulungsort fehlt oder ist nicht eindeutig."),
         (starts_at is None, "Lehrgangszeitraum fehlt oder ist ungültig."),
+        (reference_conflict, "Die Buchungsreferenz ist ungültig oder nicht eindeutig."),
     )
     return ParsedMail(
         fingerprint=hashlib.sha256(raw).hexdigest(),
@@ -312,4 +320,5 @@ def parse_eml(raw: bytes) -> ParsedMail:
         cancellation_date=cancellation,
         booking_reference=reference,
         warnings=tuple(warning for invalid, warning in checks if invalid),
+        reference_conflict=reference_conflict,
     )

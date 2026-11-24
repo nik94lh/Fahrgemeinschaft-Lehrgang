@@ -233,6 +233,19 @@ class MailParserTests(unittest.TestCase):
         self.assertEqual(result.previous_participant_name, "Robin Muster")
         self.assertEqual(result.booking_reference, "LFM-1234/2027")
 
+    def test_ambiguous_or_invalid_explicit_reference_is_distinguished_from_absence(self):
+        for suffix in (
+            "\nBuchungsreferenz: A-1\nBuchungsnummer: B-2",
+            "\nBuchungsreferenz: https://irrelevant.invalid/",
+            "\nBuchungsreferenz:",
+        ):
+            with self.subTest(suffix=suffix):
+                raw = message("Teilnahmebestätigung", CONFIRMATION + suffix).as_bytes()
+                parsed = parse_eml(raw)
+                self.assertTrue(parsed.reference_conflict)
+                self.assertIsNone(parsed.booking_reference)
+
+        self.assertFalse(parse_eml(message("Teilnahmebestätigung", CONFIRMATION).as_bytes()).reference_conflict)
     def test_leaves_conflicting_structured_values_blank(self):
         body = "Teilnehmer: Alex Beispiel\nTeilnehmer: Robin Muster\n"
         body += "Schulungsort: Würzburg und Geretsried\n"

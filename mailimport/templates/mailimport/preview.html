@@ -1,25 +1,12 @@
-<!doctype html>
-<html lang="de">
-<head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>E-Mail-Vorschau · BMS</title>
-    <style>{% include "mailimport/preview.css" %}</style>
-</head>
-<body>
-    <header class="app-header">
-        <div class="header-inner">
-            <div class="brand"><strong>BMS</strong><span>Lehrgangsverwaltung</span></div>
-            <span class="mode">Simulationsmodus</span>
-        </div>
-    </header>
-    <main>
+{% extends "workspace/base.html" %}
+{% block title %}E-Mail-Vorschau{% endblock %}
+{% block content %}
         <h1>E-Mail-Vorschau</h1>
         <p class="intro">Prüfe, welche Daten BMS in einer Lehrgangsmail erkennt.</p>
         <div class="workspace">
             <section class="panel" aria-labelledby="upload-title">
                 <h2 id="upload-title">Datei auswählen</h2>
-                <form method="post" enctype="multipart/form-data">
+                <form method="post" action="{% url 'preview' %}" enctype="multipart/form-data">
                     {% csrf_token %}
                     {{ form.non_field_errors }}
                     <div class="upload">
@@ -29,7 +16,8 @@
                     </div>
                     {{ form.file.errors }}
                     <button type="submit">Prüfen</button>
-                    <p class="note">Verwende eine synthetische oder anonymisierte Testmail. Die Datei und die erkannten Daten werden nicht gespeichert.</p>
+                    <button class="secondary-button" type="submit" formaction="{% url 'manual_import' %}">Testmail importieren</button>
+                    <p class="note">Verwende eine synthetische oder anonymisierte Testmail. Die Vorschau speichert keine Daten. Der Import speichert erkannte Buchungsdaten ohne die Originaldatei. <a href="{% url 'sample_eml' %}">Beispiel-EML herunterladen</a></p>
                 </form>
             </section>
             <section class="panel" aria-labelledby="results-title">
@@ -67,6 +55,4 @@
                 {% endif %}
             </section>
         </div>
-    </main>
-</body>
-</html>
+{% endblock %}

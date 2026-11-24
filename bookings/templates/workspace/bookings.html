@@ -1,0 +1,32 @@
+{% extends "workspace/base.html" %}
+{% block title %}Buchungen{% endblock %}
+{% block content %}
+    <h1>Buchungen</h1>
+    <p class="intro">Lehrgangsplätze nach Kurs, Teilnehmer und Buchungsstatus durchsuchen.</p>
+    {% if imported %}<p class="notice" role="status">Die Testmail wurde ausgewertet. Nicht eindeutige Ereignisse findest du unter <a href="{% url 'review' %}">Klärung</a>.</p>{% endif %}
+    <form class="panel filters" method="get">
+        <label>Suche<input name="q" type="search" maxlength="100" value="{{ query }}"></label>
+        <label>Schule<select name="school"><option value="">Alle Schulen</option>{% for key, label in school_choices %}<option value="{{ key }}"{% if key == selected_school %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Status<select name="status"><option value="">Alle Status</option>{% for key, label in status_choices %}<option value="{{ key }}"{% if key == selected_status %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+        <button type="submit">Filtern</button>
+    </form>
+    <section class="panel">
+        {% if page_obj %}
+            <div class="table-scroll" tabindex="0">
+                <table class="mobile-table">
+                    <thead><tr><th scope="col">Lehrgang</th><th scope="col">Schule</th><th scope="col">Beginn</th><th scope="col">Teilnehmer/in</th><th scope="col">Status</th></tr></thead>
+                    <tbody>{% for seat in page_obj %}
+                        <tr>
+                            <td data-label="Lehrgang">{{ seat.session.course.name }}</td><td data-label="Schule">{{ seat.session.get_school_display }}</td>
+                            <td data-label="Beginn">{{ seat.session.starts_at|date:"d.m.Y, H:i" }}</td><td data-label="Teilnehmer/in">{{ seat.participant.name|default:"—" }}</td>
+                            <td data-label="Status">{{ seat.get_status_display }}</td>
+                        </tr>
+                    {% endfor %}</tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="quiet">Keine Buchungen gefunden.</p>
+        {% endif %}
+        {% include "workspace/pagination.html" %}
+    </section>
+{% endblock %}

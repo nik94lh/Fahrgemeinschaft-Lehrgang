@@ -1,12 +1,25 @@
 services:
+  db:
+    restart: unless-stopped
   web:
+    restart: unless-stopped
     environment:
       BMS_HTTPS: "1"
+    depends_on:
+      mailbox-worker:
+        condition: service_started
     networks:
       default:
       fpp-web:
         aliases:
           - bms-web
+  mailbox-worker:
+    restart: unless-stopped
+    environment:
+      BMS_HTTPS: "1"
+    depends_on:
+      db:
+        condition: service_healthy
 networks:
   fpp-web:
     external: true

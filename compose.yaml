@@ -1,3 +1,20 @@
+x-app-environment: &app-environment
+  DB_HOST: db
+  DB_NAME: ${DB_NAME:?Set DB_NAME}
+  DB_USER: ${DB_USER:?Set DB_USER}
+  DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
+  BMS_SECRET_KEY: ${BMS_SECRET_KEY:?Set BMS_SECRET_KEY}
+  BMS_ALLOWED_HOSTS: ${BMS_ALLOWED_HOSTS:-localhost,127.0.0.1}
+  BMS_CSRF_TRUSTED_ORIGINS: ${BMS_CSRF_TRUSTED_ORIGINS:-}
+  BMS_HTTPS: ${BMS_HTTPS:-0}
+  BMS_DEBUG: ${BMS_DEBUG:-0}
+  BMS_IMAP_ENABLED: ${BMS_IMAP_ENABLED:-0}
+  BMS_IMAP_HOST: ${BMS_IMAP_HOST:-}
+  BMS_IMAP_PORT: ${BMS_IMAP_PORT:-993}
+  BMS_IMAP_USERNAME: ${BMS_IMAP_USERNAME:-}
+  BMS_IMAP_PASSWORD: ${BMS_IMAP_PASSWORD:-}
+  BMS_IMAP_MAILBOX: ${BMS_IMAP_MAILBOX:-INBOX}
+
 services:
   db:
     image: postgres:17-bookworm
@@ -13,17 +30,18 @@ services:
       timeout: 3s
       retries: 20
   web:
+    image: ${COMPOSE_PROJECT_NAME}-web
     build: .
-    environment:
-      DB_HOST: db
-      DB_NAME: ${DB_NAME:?Set DB_NAME}
-      DB_USER: ${DB_USER:?Set DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD:?Set DB_PASSWORD}
-      BMS_SECRET_KEY: ${BMS_SECRET_KEY:?Set BMS_SECRET_KEY}
-      BMS_ALLOWED_HOSTS: ${BMS_ALLOWED_HOSTS:-localhost,127.0.0.1}
-      BMS_CSRF_TRUSTED_ORIGINS: ${BMS_CSRF_TRUSTED_ORIGINS:-}
-      BMS_HTTPS: ${BMS_HTTPS:-0}
-      BMS_DEBUG: ${BMS_DEBUG:-0}
+    environment: *app-environment
+    depends_on:
+      db:
+        condition: service_healthy
+  mailbox-worker:
+    init: true
+    image: ${COMPOSE_PROJECT_NAME}-web
+    pull_policy: never
+    command: ["python", "manage.py", "sync_mailbox", "--watch"]
+    environment: *app-environment
     depends_on:
       db:
         condition: service_healthy

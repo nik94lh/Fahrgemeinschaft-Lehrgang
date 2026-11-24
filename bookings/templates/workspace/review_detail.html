@@ -1,0 +1,31 @@
+{% extends "workspace/base.html" %}
+{% block title %}Klärungsfall {{ event.pk }}{% endblock %}
+{% block content %}
+    <h1>Klärungsfall {{ event.pk }}</h1>
+    <p class="intro">{{ event.get_kind_display }} · erfasst am {{ event.imported_at|date:"d.m.Y H:i" }}</p>
+    <p><a href="{% url 'review' %}">Zu den Klärungsfällen</a></p>
+    <section class="panel">
+        {% if form %}
+            <p>Vergleiche die Angaben mit der ursprünglichen Nachricht. Deine Entscheidung wird in BMS gespeichert.</p>
+            <form method="post">
+                {% csrf_token %}
+                {{ form.non_field_errors }}
+                <p>{{ form.action.label_tag }} {{ form.action }} {{ form.action.errors }}</p>
+                <p>{{ form.seat.label_tag }} {{ form.seat }} {{ form.seat.errors }}</p>
+                {% if form.replacement %}
+                    <fieldset>
+                        <legend>Personen für eine Ummeldung</legend>
+                        <p>{{ form.previous_participant.label_tag }} {{ form.previous_participant }} {{ form.previous_participant.errors }}</p>
+                        <p>{{ form.replacement.label_tag }} {{ form.replacement }} {{ form.replacement.errors }}</p>
+                    </fieldset>
+                {% endif %}
+                <p>{{ form.reason.label_tag }} {{ form.reason }} {{ form.reason.errors }}</p>
+                <p>{{ form.confirm }} {{ form.confirm.label_tag }} {{ form.confirm.errors }}</p>
+                <button type="submit">Entscheidung speichern</button>
+            </form>
+        {% else %}
+            <p><strong>{{ event.get_state_display }}</strong> · {{ event.get_review_resolution_display }}</p>
+            <p>Gespeichert am {{ event.reviewed_at|date:"d.m.Y H:i" }}.</p>
+        {% endif %}
+    </section>
+{% endblock %}

@@ -1,12 +1,18 @@
+from datetime import timedelta
+from email.message import EmailMessage
 from http import HTTPStatus
 
 from django.core.files.uploadhandler import MemoryFileUploadHandler, StopUpload
-from django.shortcuts import render
+from django.http import HttpResponse
+from django.shortcuts import redirect, render
+from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_http_methods, require_safe
 
 from bookings.models import EmailEvent, School
+from bookings.services import ingest
 
 from .forms import OVERSIZED_FILE, EmlPreviewForm
 from .parser import MAX_EML_BYTES, MailParseError, parse_eml
@@ -48,17 +54,28 @@ class _PreviewUploadHandler(MemoryFileUploadHandler):
 @never_cache
 @require_http_methods(["GET", "HEAD", "POST"])
 def preview(request):
+    return _handle_upload(request, persist=False)
+
+
+@csrf_exempt
+@never_cache
+@require_http_methods(["POST"])
+def manual_import(request):
+    return _handle_upload(request, persist=True)
+
+
+def _handle_upload(request, *, persist):
     handler = _PreviewUploadHandler(request)
     if request.method == "POST":
         # Install the bounded handler before CSRF validation reads the multipart body.
         request.upload_handlers = [handler]
-    response = _render_preview(request, handler)
+    response = _render_preview(request, handler, persist=persist)
     response.headers["Content-Security-Policy"] = CSP
     return response
 
 
 @csrf_protect
-def _render_preview(request, handler):
+def _render_preview(request, handler, *, persist):
     result = None
     status = HTTPStatus.OK
     form = EmlPreviewForm()
@@ -69,15 +86,41 @@ def _render_preview(request, handler):
         else:
             file = form.cleaned_data["file"]
             try:
-                result = parse_eml(file.read(MAX_EML_BYTES + 1))
+                raw = file.read(MAX_EML_BYTES + 1)
+                if persist:
+                    ingest(raw)
+                    return redirect(f"{reverse('bookings')}?importiert=1")
+                result = parse_eml(raw)
             except MailParseError as error:
                 form.add_error("file", str(error))
                 status = HTTPStatus.BAD_REQUEST
 
     context = {
+        "section": "preview",
         "form": form,
         "result": result,
         "event_label": EmailEvent.Kind(result.event_type).label if result else None,
         "school_label": School(result.school).label if result and result.school else None,
     }
     return render(request, "mailimport/preview.html", context, status=status)
+
+
+@never_cache
+@require_safe
+def sample_eml(request):
+    start = timezone.localdate() + timedelta(days=7)
+    end = start + timedelta(days=2)
+    message = EmailMessage()
+    message["Subject"] = "Lehrgangsanmeldung wurde bestätigt"
+    message.set_content(
+        "Teilnehmer: Alex Beispiel\n"
+        "Lehrgangsart: Synthetischer Testlehrgang\n"
+        "Schulungsort: SFS Würzburg\n"
+        f"Lehrgangstermin: {start:%d.%m.%Y} 09:00 Uhr – {end:%d.%m.%Y} 15:00 Uhr\n"
+        f"Buchungsreferenz: DEMO-{start:%Y%m%d}\n"
+    )
+    return HttpResponse(
+        message.as_bytes(),
+        content_type="message/rfc822",
+        headers={"Content-Disposition": 'attachment; filename="bms-testmail.eml"'},
+    )

@@ -1,16 +1,16 @@
 # Pflichtenheft
 
-## Ziel und erster Entwicklungsstand
+## Ziel und Entwicklungsstand
 
 LFM unterstützt die Lehrgangsverwaltung und die freiwillige Fahrgemeinschaftsvermittlung für die Feuerwehren eines Landkreises. Die Schulstandorte sind Würzburg, Regensburg und Geretsried. Das System wertet Kopien der Lehrgangskommunikation aus. Die Bearbeitung beim externen Lehrgangssystem bleibt Aufgabe der zuständigen Personen.
 
-Der erste Entwicklungsstand umfasst ein startfähiges Django-Projekt mit PostgreSQL, das Domänenmodell und eine lokale Vorschau für einzelne EML-Dateien. Für Entwicklung, Tests und eine spätere Serverdemo werden ausschließlich synthetische oder ausreichend anonymisierte Daten verwendet.
+Der Entwicklungsstand umfasst Django mit PostgreSQL, das Domänenmodell, eine Buchungsübersicht, einen Monatskalender, eine Vorschau möglicher Fahrten, eine lokale EML-Vorschau, einen manuellen Testmail-Import und einen optionalen lesenden IMAP-Import. Für Entwicklung und Tests werden ausschließlich synthetische oder ausreichend anonymisierte Daten verwendet. Ein separates echtes Importpostfach darf ausschließlich nach Freigabe auf dem zugriffsgeschützten Server aktiviert werden.
 
 ## Lehrgänge und Buchungen
 
 Ein Lehrgang kann mehrere Termine haben. Zu einem Termin gehören einzelne Plätze. Die Belegung eines Platzes kann sich durch eine Ummeldung ändern. Buchungshistorie und E-Mail-Ereignisse bilden diese Änderungen ab. Der fachliche Status unterscheidet genehmigt, Bestätigung ausstehend, bestätigt, umgemeldet, storniert, abgeschlossen und Klärungsbedarf.
 
-Spätere Verarbeitungsschritte ordnen eine Genehmigung, Bestätigung oder Erinnerung dem bestehenden Platz zu, sobald der Bezug eindeutig ist. Eine vorhandene eindeutige Buchungsreferenz hat Vorrang. Andernfalls kommen Lehrgangsart, Schule, Zeitraum, Teilnehmername und weitere belastbare Angaben infrage. Bei Mehrdeutigkeit entsteht ein Klärungsfall. Betroffene Buchungen bleiben bis zur Klärung für die Vermittlung gesperrt.
+Importregeln ordnen in unterstützten, eindeutigen Fällen eine Genehmigung, Bestätigung oder Erinnerung dem bestehenden Platz zu, sobald der Bezug eindeutig ist. Eine vorhandene eindeutige Buchungsreferenz hat Vorrang. Andernfalls kommen Lehrgangsart, Schule, Zeitraum, Teilnehmername und weitere belastbare Angaben infrage. Bei Mehrdeutigkeit entsteht ein Klärungsfall. Betroffene Buchungen bleiben bis zur Klärung für die Vermittlung gesperrt.
 
 Eine bestätigte Ummeldung ordnet den neuen Teilnehmer dem bestehenden Platz zu und führt die bisherige Belegung in der Historie fort, soweit zulässig. Alte Vermittlungslinks müssen widerrufen und bestehende Vermittlungen überprüft werden. Statusänderungen in LFM sind interne Verwaltungsaktionen.
 

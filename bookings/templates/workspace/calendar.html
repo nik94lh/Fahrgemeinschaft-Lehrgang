@@ -1,0 +1,52 @@
+{% extends "workspace/base.html" %}
+{% block title %}Lehrgangskalender{% endblock %}
+{% block content %}
+    <h1>Lehrgangskalender</h1>
+    <form class="panel filters" method="get">
+        <label>Monat<input type="month" name="month" value="{{ month_id }}"></label>
+        <label>Schule
+            <select name="school">
+                <option value="">Alle Schulen</option>
+                {% for key, label in school_choices %}
+                    <option value="{{ key }}"{% if key == selected_school %} selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button type="submit">Anzeigen</button>
+    </form>
+    <section class="panel" aria-labelledby="calendar-month">
+        <h2 id="calendar-month">{{ month|date:"F Y" }}</h2>
+        {% if sessions %}
+            <div class="table-scroll" tabindex="0" role="region" aria-labelledby="calendar-month">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Lehrgang</th>
+                            <th scope="col">Schule</th>
+                            <th scope="col">Beginn</th>
+                            <th scope="col">Ende</th>
+                            <th scope="col">Plätze</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for session in sessions %}
+                            <tr>
+                                <th scope="row">{{ session.course.name }}</th>
+                                <td>{{ session.get_school_display }}</td>
+                                <td><time datetime="{{ session.starts_at|date:'c' }}">{{ session.starts_at|date:"d.m.Y, H:i" }}</time></td>
+                                <td><time datetime="{{ session.ends_at|date:'c' }}">{{ session.ends_at|date:"d.m.Y, H:i" }}</time></td>
+                                <td>{{ session.seat_count }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="quiet">Keine Lehrgänge in diesem Monat gefunden.</p>
+        {% endif %}
+        <nav class="pagination" aria-label="Monatsnavigation">
+            <a href="?{{ previous_query }}">Vorheriger Monat</a>
+            <a href="?{{ next_query }}">Nächster Monat</a>
+        </nav>
+    </section>
+{% endblock %}

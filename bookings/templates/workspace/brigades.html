@@ -1,0 +1,46 @@
+{% extends "workspace/base.html" %}
+{% block title %}Feuerwehren{% endblock %}
+{% block content %}
+    <h1>Feuerwehren</h1>
+    <nav class="pagination" aria-label="Stammdatenaktionen">
+        <a href="{% url 'brigade_create' %}">Feuerwehr anlegen</a>
+    </nav>
+    <form class="panel filters" method="get">
+        <label>Suche<input type="search" name="q" maxlength="100" value="{{ query }}"></label>
+        <button type="submit">Suchen</button>
+    </form>
+    <section class="panel" aria-labelledby="brigades-list">
+        <h2 id="brigades-list">Stammdaten</h2>
+        {% if page_obj %}
+            <div class="table-scroll" tabindex="0" role="region" aria-labelledby="brigades-list">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Feuerwehr</th>
+                            <th scope="col">Gemeinde</th>
+                            <th scope="col">Ortsteil</th>
+                            <th scope="col">Adresse</th>
+                            <th scope="col">Koordinaten</th>
+                            <th scope="col">Status</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for brigade in page_obj %}
+                            <tr>
+                                <th scope="row"><a href="{% url 'brigade_edit' brigade.pk %}">{{ brigade.name }}</a></th>
+                                <td>{{ brigade.municipality }}</td>
+                                <td>{{ brigade.district|default:"—" }}</td>
+                                <td>{{ brigade.address|default:"—" }}</td>
+                                <td>{% if brigade.latitude is not None %}{{ brigade.latitude }} / {{ brigade.longitude }}{% else %}—{% endif %}</td>
+                                <td>{% if brigade.is_active %}Aktiv{% else %}Inaktiv{% endif %}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="quiet">Keine Feuerwehren gefunden.</p>
+        {% endif %}
+        {% include "workspace/pagination.html" %}
+    </section>
+{% endblock %}

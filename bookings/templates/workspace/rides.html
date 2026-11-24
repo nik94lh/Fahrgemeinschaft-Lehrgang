@@ -1,0 +1,41 @@
+{% extends "workspace/base.html" %}
+{% block title %}Fahrgemeinschaften{% endblock %}
+{% block content %}
+    <h1>Fahrgemeinschaften</h1>
+    <p class="intro">Mögliche gemeinsame Fahrten zu bestätigten Lehrgängen in den nächsten {{ lookahead_days }} Tagen.</p>
+    <section class="panel" aria-labelledby="ride-suggestions">
+        <h2 id="ride-suggestions">Mögliche Fahrten</h2>
+        {% if page_obj %}
+            <div class="table-scroll" tabindex="0" role="region" aria-labelledby="ride-suggestions">
+                <table>
+                    <thead>
+                        <tr>
+                            <th scope="col">Datum</th>
+                            <th scope="col">Richtung</th>
+                            <th scope="col">Schule</th>
+                            <th scope="col">Lehrgangszeiten</th>
+                            <th scope="col">Personen</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in page_obj %}
+                            <tr>
+                                <td>{{ item.earliest|date:"d.m.Y" }}</td>
+                                <td>{{ item.direction.label }}</td>
+                                <td>{{ item.school.label }}</td>
+                                <td>
+                                    {{ item.earliest|date:"H:i" }}{% if item.latest != item.earliest %}–{{ item.latest|date:"H:i" }}{% endif %} Uhr
+                                </td>
+                                <td>{{ item.participant_count }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="quiet">Keine passenden Fahrten im betrachteten Zeitraum.</p>
+        {% endif %}
+        {% include "workspace/pagination.html" %}
+        <p class="quiet">Der Filter prüft Schule, Kalendertag und höchstens {{ tolerance_minutes }} Minuten Zeitunterschied. Abfahrtsort und Teilnahmebereitschaft werden erst mit der späteren Feuerwehrzuordnung und Einwilligung berücksichtigt.</p>
+    </section>
+{% endblock %}

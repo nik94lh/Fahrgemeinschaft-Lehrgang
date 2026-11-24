@@ -2,7 +2,7 @@
 
 ## Lokale Vorschau
 
-Die Startseite bietet dieselbe Vorschau für eine einzelne synthetische oder ausreichend anonymisierte EML-Datei. Sie zeigt erkannte Felder und Hinweise im Browser an. Der Upload wird nur im Arbeitsspeicher verarbeitet. Eingaben bleiben unverändert und es wird kein Buchungsdatensatz angelegt.
+Unter **E-Mail-Vorschau** bietet die Weboberfläche eine Vorschau für eine einzelne synthetische oder ausreichend anonymisierte EML-Datei. Sie zeigt erkannte Felder und Hinweise im Browser an. Der Upload wird im Arbeitsspeicher verarbeitet. Bei **Prüfen** bleibt die Datenbank unverändert. **Testmail importieren** übernimmt aus einer synthetischen oder ausreichend anonymisierten Testdatei ausdrücklich ein Ereignis und verarbeitet eindeutige Buchungen. Unklare Fälle erscheinen im Bereich **Klärung**.
 
 `python manage.py preview_eml DATEI` verarbeitet eine einzelne EML-Datei und gibt eine strukturierte Vorschau in der Konsole aus. Mit `-` liest das Kommando von der Standardeingabe. Der Befehl verarbeitet lokale, synthetische oder ausreichend anonymisierte Dateien bis zu 1 MiB. Er verändert keine Buchungen und speichert keine Originalnachrichten.
 
@@ -12,8 +12,22 @@ Die Vorschau liefert die erkennbaren fachlichen Angaben wie Ereignistyp, Lehrgan
 
 Die ersten inhaltlichen Muster beruhen auf synthetischen Genehmigungs- und Bestätigungsbeispielen. Eine lokale Sichtung der bereitgestellten Ausdrucke zeigt wiederkehrende Betreffmuster mit „Anmeldung“ und „bestätigt“ sowie numerische Zeiträume in Feldern für Lehrgangsart, Lehrgangstermin und Schulungsort. PDF-Ausdrucke zeigen den sichtbaren Text, während EML-Beispiele zusätzlich Header, MIME-Aufbau und Weiterleitungen erkennen lassen. Die Originalausdrucke gehören daher weder zu den Testdaten noch ins Repository. Weitere Ereignisse können nach Bedarf ergänzt werden. Aus einem unbekannten oder unvollständigen Eingang darf keine Buchungsentscheidung abgeleitet werden. Vollständige, ausreichend anonymisierte EML-Beispiele sind für die spätere Prüfung von MIME-Struktur, Weiterleitungen und produktiven Vorlagen erforderlich.
 
-## Geplanter Postfachimport und Versand
+## Lesenden IMAP-Abruf einrichten
 
-Ein separates Importpostfach soll Kopien der Lehrgangskommunikation erhalten. Der geplante IMAP-Import verwendet für dieses Postfach einen ausschließlich lesenden Zugriff, beispielsweise durch schreibgeschützte Ordnerauswahl und `BODY.PEEK`. Er darf keine Nachrichten löschen, verschieben oder als gelesen markieren. Importstatus und Fehler werden datensparsam protokolliert. Für wiederholte Läufe werden Byte-Duplikate und fachlich identische Ereignisse getrennt behandelt. Unklare Zuordnungen gelangen in einen Klärungsworkflow.
+1. Öffne **Postfach** auf dem zugriffsgeschützten BMS-Server per HTTPS.
+2. Gib den öffentlichen IMAP-Hostnamen, den TLS-Port, den Benutzernamen, den Ordner und das Postfachpasswort ein. Üblich sind Port `993` und Ordner `INBOX`. Verwende ein separates Postfach mit Kopien der Lehrgangskommunikation. Falls der Anbieter ein gesondertes App-Passwort verlangt, trage dieses ein.
+3. Aktiviere **Lesenden Postfachabruf aktivieren** erst nach ausdrücklicher Freigabe und speichere. Der Server übernimmt die Einstellung beim nächsten Abruf. Bei Standardeinstellungen wartet er nach einem Abruf zwei Minuten und verarbeitet bis zu 25 Nachrichten pro Lauf. Der letzte Abrufstatus erscheint unter **Postfach**. Prüfe unter **Übersicht**, **Buchungen** und **Klärung**, welche Nachrichten verarbeitet wurden.
 
-Der spätere SMTP-Versand nutzt eine unabhängig konfigurierte Absenderidentität mit eigenen Zugangsdaten. IMAP-Postfach und SMTP-Absender können unterschiedliche Anbieter verwenden. Für diesen Stand sind beide Zugänge unkonfiguriert und es werden keine echten Nachrichten versendet. Die geplanten Betriebsarten sind Entwicklung, Simulation mit lokalen Vorschauen, Testversand nur an ausdrücklich freigegebene Adressen und ausdrücklich freigegebener Produktivbetrieb.
+Das Formular gibt gespeicherte Passwörter nicht aus. Ein leeres Passwortfeld behält den vorhandenen Wert nur bei unverändertem Server, Port, Konto und Ordner. Zum Pausieren deaktiviere den Abruf und speichere. Die gespeicherten Buchungen bleiben erhalten. Benutzernamen, Passwörter und Ordnernamen verwenden derzeit druckbare ASCII-Zeichen.
+
+Administratoren können stattdessen `BMS_IMAP_ENABLED=1` und die Variablen `BMS_IMAP_HOST`, `BMS_IMAP_PORT`, `BMS_IMAP_USERNAME`, `BMS_IMAP_PASSWORD` und `BMS_IMAP_MAILBOX` serverseitig setzen. Die Beispielkonfiguration lässt den Abruf deaktiviert. Halte die serverseitige Datei außerhalb der Versionsverwaltung und beschränke den Dateizugriff. Sobald eine Konfiguration im Browser gespeichert wurde, hat sie Vorrang, auch wenn der Abruf dort deaktiviert ist.
+
+## Ablauf und Grenzen des Imports
+
+Der getrennte Abrufdienst verbindet sich per IMAP über TLS mit Zertifikatsprüfung. Er verwendet einen schreibgeschützt geöffneten Ordner und `BODY.PEEK` und ändert weder Nachrichten noch deren Lesestatus. Bei Konfiguration über den Browser wird ein öffentlicher DNS-Hostname benötigt. Private, lokale und gemischte DNS-Ziele werden abgewiesen. Der Dienst verwendet bei dieser Verbindung geprüfte IP-Adressen. Ein serverseitig konfigurierter Zielhost liegt in der Verantwortung des Betreibers. Der Fortschritt wird anhand von Postfachkennung, `UIDVALIDITY` und letzter bearbeiteter UID gespeichert. Der SHA-256-Fingerabdruck verhindert doppelte Ereignisse bei bytegleichen Nachrichten.
+
+Die Buchungszuordnung verarbeitet zunächst Genehmigungen, Bestätigungen und eindeutige Stornierungen. Sie prüft auch bei vorhandener Buchungsreferenz, ob Person, Lehrgang, Schule und Zeitraum zusammenpassen. Ohne Referenz ist eine einzige vollständige Übereinstimmung erforderlich, um eine bestehende Buchung zu ändern. Bei neuen, ausreichend beschriebenen Genehmigungen oder Bestätigungen kann eine Buchung angelegt werden. Mehrdeutige, unvollständige oder nicht unterstützte Ereignisse erscheinen unter **Klärung**. Dazu zählen derzeit Ummeldungen und Terminänderungen. Ordne einen Klärungsfall erst nach Prüfung der Originalnachricht im separaten Postfach zu. Eine manuelle Ummeldung erfordert die Bestätigung von Platz, bisherigem und neuem Teilnehmer. Die Zuordnung ohne Ummeldung ändert den Buchungsstatus nicht. Eine verspätete Genehmigung setzt eine Bestätigung nicht zurück. Die Importfunktionen speichern keine Roh-Nachrichten.
+
+## Späterer Versand
+
+SMTP-Versand ist technisch deaktiviert. Eine spätere SMTP-Anbindung nutzt eine eigene Absenderidentität mit eigenen Zugangsdaten und kann einen anderen Anbieter verwenden. Vorgesehen sind Entwicklung, Simulation mit lokalen Vorschauen, Testversand nur an ausdrücklich freigegebene Adressen und ausdrücklich freigegebener Produktivbetrieb.

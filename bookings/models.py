@@ -128,6 +128,15 @@ class EmailEvent(models.Model):
         APPLIED = "applied", "Verarbeitet"
         NEEDS_REVIEW = "needs_review", "Klärungsbedarf"
         FAILED = "failed", "Fehler"
+        REVIEWED = "reviewed", "Geklärt"
+        DISMISSED = "dismissed", "Verworfen"
+
+    class ReviewResolution(models.TextChoices):
+        LINKED = "linked", "Einem Lehrgangsplatz zugeordnet"
+        REASSIGNED = "reassigned", "Ummeldung in BMS übernommen"
+        DUPLICATE = "duplicate", "Doppelter Vorgang"
+        INCOMPLETE = "incomplete", "Angaben reichen für die Zuordnung nicht aus"
+        NOT_RELEVANT = "not_relevant", "Für BMS nicht relevant"
 
     sha256 = models.CharField(
         max_length=64,
@@ -145,6 +154,8 @@ class EmailEvent(models.Model):
     )
     occurred_at = models.DateTimeField(null=True, blank=True)
     imported_at = models.DateTimeField(auto_now_add=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    review_resolution = models.CharField(max_length=16, choices=ReviewResolution.choices, blank=True)
 
 
 class BookingHistory(models.Model):
@@ -258,4 +269,13 @@ class Consent(models.Model):
                 condition=Q(purpose="contact_sharing", revoked_at__isnull=True),
                 name="bookings_consent_active_carpool",
             ),
+        ]
+
+
+class ImportLock(models.Model):
+    """A database row that serializes matching when no candidate row exists yet."""
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=Q(pk=1), name="bookings_single_import_lock"),
         ]

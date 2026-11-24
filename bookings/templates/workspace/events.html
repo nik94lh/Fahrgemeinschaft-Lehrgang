@@ -1,0 +1,19 @@
+{% if events %}
+    <div class="table-scroll" tabindex="0">
+        <table class="mobile-table">
+            <thead><tr><th scope="col">Importiert</th><th scope="col">Ereignis</th><th scope="col">Lehrgang</th><th scope="col">Bearbeitung</th></tr></thead>
+            <tbody>
+                {% for event in events %}
+                    <tr>
+                        <td data-label="Importiert">{{ event.imported_at|date:"d.m.Y, H:i" }}</td>
+                        <td data-label="Ereignis">{{ event.get_kind_display }}</td>
+                        <td data-label="Lehrgang">{{ event.seat.session.course.name|default:"—" }}</td>
+                        <td data-label="Bearbeitung"><span>{% if event.state == 'needs_review' %}<a href="{% url 'review_detail' event.pk %}">Fall klären</a>{% else %}{{ event.get_state_display }}{% endif %}{% if event.review_reason %}<br><small>{{ event.review_reason }}</small>{% endif %}</span></td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% else %}
+    <p class="quiet">Keine E-Mail-Ereignisse vorhanden.</p>
+{% endif %}

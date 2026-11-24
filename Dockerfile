@@ -15,4 +15,4 @@ COPY --chown=bms:bms mailimport mailimport
 COPY --chown=bms:bms tests tests
 USER bms
 
-CMD ["gunicorn", "--bind", "0.0.0.0:8000", "config.wsgi:application"]
+CMD ["gunicorn", "--no-control-socket", "--bind", "0.0.0.0:8000", "config.wsgi:application"]
