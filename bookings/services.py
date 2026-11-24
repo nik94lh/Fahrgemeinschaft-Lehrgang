@@ -5,6 +5,7 @@ from itertools import islice
 from unicodedata import normalize
 
 from django.db import transaction
+from django.db.models import Q
 from django.db.models.functions import Lower, Trim
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
@@ -23,6 +24,7 @@ from .models import (
     EmailEvent,
     ImportLock,
     Participant,
+    School,
 )
 
 
@@ -104,12 +106,13 @@ def _reconcile(
 
 def _apply_new_event(event: EmailEvent, mail: ParsedMail, *, receipt: MailReceipt | None) -> EmailEvent:
     referenced_seat = _referenced_seat(mail)
-    reason = _parsed_review_reason(mail, event.kind)
+    allow_partial = referenced_seat is not None and event.kind in ACTIVATION_EVENTS
+    reason = _parsed_review_reason(mail, event.kind, allow_partial=allow_partial)
     if reason:
         return _flag_review(event, mail, reason, referenced_seat)
 
     if referenced_seat is not None:
-        if not _matches(referenced_seat, mail):
+        if not _matches(referenced_seat, mail, allow_partial=allow_partial):
             email = mail.participant_email
             if email:
                 try:
@@ -159,7 +162,9 @@ def _record_receipt(
     receipt.save()
 
 
-def _parsed_review_reason(mail: ParsedMail, event_kind: str) -> EmailEvent.ReviewReason:
+def _parsed_review_reason(
+    mail: ParsedMail, event_kind: str, *, allow_partial: bool = False,
+) -> EmailEvent.ReviewReason:
     reason = EmailEvent.ReviewReason
     if mail.reference_conflict:
         return reason.INVALID_REFERENCE
@@ -171,12 +176,14 @@ def _parsed_review_reason(mail: ParsedMail, event_kind: str) -> EmailEvent.Revie
         }.get(event_kind, reason.UNSUPPORTED_TYPE)
     if not mail.participant_name:
         return reason.PARTICIPANT_UNCLEAR
-    if not mail.course_name:
-        return reason.COURSE_UNCLEAR
-    if not mail.school:
-        return reason.SCHOOL_UNCLEAR
-    if not (mail.starts_at and mail.ends_at):
-        return reason.PERIOD_UNCLEAR
+    session_fields = (
+        ("course_name", mail.course_name, reason.COURSE_UNCLEAR),
+        ("school", mail.school, reason.SCHOOL_UNCLEAR),
+        ("period", mail.starts_at and mail.ends_at, reason.PERIOD_UNCLEAR),
+    )
+    for field, value, review_reason in session_fields:
+        if field in mail.unusable_fields or (not value and not allow_partial):
+            return review_reason
     if mail.participant_email_ambiguous:
         return reason.PARTICIPANT_IDENTITY_UNCLEAR
     return reason.UNKNOWN
@@ -190,16 +197,24 @@ def _referenced_seat(mail: ParsedMail) -> CourseSeat | None:
     ).first()
 
 
-def _matches(seat: CourseSeat, mail: ParsedMail) -> bool:
+def _matches(seat: CourseSeat, mail: ParsedMail, *, allow_partial: bool = False) -> bool:
     session = seat.session
-    return (
-        seat.participant is not None
-        and _normalized_name(seat.participant.name) == _normalized_name(mail.participant_name)
-        and session.course.name.casefold() == mail.course_name.casefold()
-        and session.school == mail.school
-        and session.starts_at == mail.starts_at
-        and session.ends_at == mail.ends_at
+    if seat.participant is None or not mail.participant_name:
+        return False
+    if _normalized_name(seat.participant.name) != _normalized_name(mail.participant_name):
+        return False
+    # An online-only location records the format, with the organizing school still open.
+    same_online_format = session.is_online and mail.is_online
+    school = mail.school
+    if (allow_partial or same_online_format) and School.ONLINE in (session.school, school):
+        school = session.school
+    fields = (
+        (session.course.name.casefold(), mail.course_name.casefold() if mail.course_name else None),
+        (session.school, school),
+        (session.starts_at, mail.starts_at),
+        (session.ends_at, mail.ends_at),
     )
+    return all(stored == received or (allow_partial and received is None) for stored, received in fields)
 
 
 class _IdentityConflict(ValueError):
@@ -248,26 +263,35 @@ def _fill_email(participant: Participant, email: str):
 
 
 def _reconcile_by_details(event: EmailEvent, mail: ParsedMail, *, receipt: MailReceipt | None) -> EmailEvent:
-    sessions = list(CourseSession.objects.filter(
+    schedule = CourseSession.objects.filter(
         course__name__iexact=mail.course_name,
-        school=mail.school,
         starts_at=mail.starts_at,
         ends_at=mail.ends_at,
-    )[:2])
+    )
+    eligible = schedule.filter(school=mail.school)
+    if mail.is_online and event.kind in ACTIVATION_EVENTS:
+        matched = _reconcile_online_follow_up(event, mail, schedule, receipt=receipt)
+        if matched is not None:
+            return matched
+        if mail.school != School.ONLINE:
+            eligible = eligible.filter(is_online=True)
+
+    sessions = list(eligible[:2])
+    name = _normalized_name(mail.participant_name)
     if len(sessions) > 1:
+        formats = set(eligible.order_by().values_list("is_online", flat=True).distinct())
+        if formats == {False, True}:
+            seats = _seats_with_name(eligible, name)
+            if len(seats) == 1:
+                return _apply_matching_seat(event, seats[0], mail, receipt=receipt)
         return _flag_review(event, mail, EmailEvent.ReviewReason.MULTIPLE_SESSIONS)
     session = sessions[0] if sessions else None
     if session is not None:
-        name = _normalized_name(mail.participant_name)
-        candidates = session.seats.select_related("participant").filter(participant__isnull=False).iterator()
-        seats = list(islice((seat for seat in candidates if _normalized_name(seat.participant.name) == name), 2))
+        seats = _seats_with_name(eligible, name)
         if len(seats) > 1:
             return _flag_review(event, mail, EmailEvent.ReviewReason.MULTIPLE_SEATS)
         if seats:
-            seat = seats[0]
-            if mail.booking_reference and seat.external_reference:
-                return _flag_review(event, mail, EmailEvent.ReviewReason.REFERENCE_MISMATCH, candidate_seat_id=seat.pk)
-            return _update_booking(event, seat, mail, receipt=receipt)
+            return _apply_matching_seat(event, seats[0], mail, receipt=receipt)
         previous_names = BookingHistory.objects.filter(
             seat__session=session, previous_participant__isnull=False,
         ).order_by().values_list("previous_participant__name", flat=True).distinct()
@@ -287,12 +311,55 @@ def _reconcile_by_details(event: EmailEvent, mail: ParsedMail, *, receipt: MailR
             return _flag_review(event, mail, EmailEvent.ReviewReason.MULTIPLE_COURSES)
         course = courses[0] if courses else Course.objects.create(name=mail.course_name)
         session = CourseSession.objects.create(
-            course=course, school=mail.school, starts_at=mail.starts_at, ends_at=mail.ends_at,
+            course=course, school=mail.school, is_online=mail.is_online,
+            starts_at=mail.starts_at, ends_at=mail.ends_at,
         )
     # A name on another date alone does not identify the same person.
     if participant is None:
         participant = Participant.objects.create(name=mail.participant_name, email=email)
     return _update_booking(event, CourseSeat(session=session, participant=participant), mail, receipt=receipt)
+
+
+def _seats_with_name(sessions, name: str) -> list[CourseSeat]:
+    candidates = CourseSeat.objects.filter(session__in=sessions, participant__isnull=False).select_related(
+        "participant", "session__course",
+    ).iterator()
+    return list(islice((seat for seat in candidates if _normalized_name(seat.participant.name) == name), 2))
+
+
+def _apply_matching_seat(
+    event: EmailEvent, seat: CourseSeat, mail: ParsedMail, *, receipt: MailReceipt | None,
+) -> EmailEvent:
+    if mail.booking_reference and seat.external_reference:
+        return _flag_review(event, mail, EmailEvent.ReviewReason.REFERENCE_MISMATCH, candidate_seat_id=seat.pk)
+    return _update_booking(event, seat, mail, receipt=receipt)
+
+
+def _reconcile_online_follow_up(
+    event: EmailEvent, mail: ParsedMail, schedule, *, receipt: MailReceipt | None,
+) -> EmailEvent | None:
+    name = _normalized_name(mail.participant_name)
+    if mail.school == School.ONLINE:
+        seats = _seats_with_name(schedule, name)
+    else:
+        # A course can run online and in person at the same time under the same organizer.
+        seats = _seats_with_name(schedule.filter(school=mail.school, is_online=True), name)
+        if not seats:
+            possible = schedule.filter(Q(school=mail.school) | Q(school=School.ONLINE))
+            seats = _seats_with_name(possible, name)
+
+    if len(seats) > 1:
+        return _flag_review(event, mail, EmailEvent.ReviewReason.MULTIPLE_SEATS)
+    if not seats:
+        return None
+
+    seat = seats[0]
+    if mail.school == School.ONLINE and seat.session.school != School.ONLINE and not seat.session.is_online:
+        if not mail.participant_email or normalize_contact_email(seat.participant.email) != mail.participant_email:
+            return _flag_review(
+                event, mail, EmailEvent.ReviewReason.PARTICIPANT_IDENTITY_UNCLEAR, candidate_seat_id=seat.pk,
+            )
+    return _apply_matching_seat(event, seat, mail, receipt=receipt)
 
 
 def _new_status(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> str:
@@ -340,6 +407,7 @@ def _update_booking(
     missing_address = previous_participant is not None and not previous_participant.email
     changed = []
     if allow_enrichment:
+        _update_online_session(seat.session, mail)
         _fill_email(participant, email)
         if receipt is not None and missing_address and email:
             receipt.outcome = MailReceipt.Outcome.ADDRESS_ADDED
@@ -373,6 +441,18 @@ def _update_booking(
     return _record(event, EmailEvent.State.APPLIED, seat)
 
 
+def _update_online_session(session: CourseSession, mail: ParsedMail) -> None:
+    changed = []
+    if not session.is_online and (mail.is_online or session.school == School.ONLINE):
+        session.is_online = True
+        changed.append("is_online")
+    if session.school == School.ONLINE and mail.school and mail.school != School.ONLINE:
+        session.school = mail.school
+        changed.append("school")
+    if changed:
+        session.save(update_fields=changed)
+
+
 def _recognized_booking_fields(mail: ParsedMail, *, include_previous: bool = False) -> dict:
     context = {
         "course_name": mail.course_name,
@@ -384,6 +464,8 @@ def _recognized_booking_fields(mail: ParsedMail, *, include_previous: bool = Fal
     }
     if include_previous:
         context["previous_participant_name"] = mail.previous_participant_name
+    if mail.is_online:
+        context["is_online"] = True
     return {key: value for key, value in context.items() if value is not None}
 
 

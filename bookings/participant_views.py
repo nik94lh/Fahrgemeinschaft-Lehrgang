@@ -18,6 +18,7 @@ def _profile_bookings(participant_id):
     same_term = Q(
         session__course__name__iexact=OuterRef("session__course__name"),
         session__school=OuterRef("session__school"),
+        session__is_online=OuterRef("session__is_online"),
         session__starts_at=OuterRef("session__starts_at"),
         session__ends_at=OuterRef("session__ends_at"),
     )

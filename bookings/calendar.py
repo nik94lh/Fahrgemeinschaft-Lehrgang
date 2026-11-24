@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from urllib.parse import urlencode
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse
 from django.utils import timezone
@@ -184,7 +184,9 @@ def calendar(request):
     sessions = CourseSession.objects.filter(
         starts_at__lt=ends, ends_at__gt=starts, school__in=School.values,
     )
-    if school:
+    if school == School.ONLINE:
+        sessions = sessions.filter(Q(school=School.ONLINE) | Q(is_online=True))
+    elif school:
         sessions = sessions.filter(school=school)
     if period.view == "year":
         sessions = list(sessions.only("starts_at", "ends_at").order_by("starts_at", "pk"))

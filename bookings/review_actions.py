@@ -40,7 +40,7 @@ REASON_GUIDANCE = {
     EmailEvent.ReviewReason.INVALID_REFERENCE: "Vergleiche die Buchungsreferenz in der Originalnachricht mit der Lehrgangsbuchung.",
     EmailEvent.ReviewReason.PARTICIPANT_UNCLEAR: "Suche den vollständigen Namen der angemeldeten Person in der Nachricht.",
     EmailEvent.ReviewReason.COURSE_UNCLEAR: "Prüfe die Bezeichnung in der Zeile „Lehrgangsart“ und wähle den passenden Kurs.",
-    EmailEvent.ReviewReason.SCHOOL_UNCLEAR: "Prüfe den Schulungsort. BMS erwartet eine eindeutige Zuordnung zu Würzburg, Regensburg oder Geretsried.",
+    EmailEvent.ReviewReason.SCHOOL_UNCLEAR: "Prüfe den Schulungsort oder die Durchführungsform. BMS erkennt Würzburg, Regensburg, Geretsried und eindeutig ausgewiesene Online-Lehrgänge.",
     EmailEvent.ReviewReason.PERIOD_UNCLEAR: "Prüfe, ob die Nachricht für Beginn und Ende jeweils ein vollständiges Datum mit Uhrzeit nennt.",
     EmailEvent.ReviewReason.REFERENCE_MISMATCH: "Vergleiche Person, Lehrgang und Zeitraum der Nachricht mit der verknüpften Buchung.",
     EmailEvent.ReviewReason.MULTIPLE_SEATS: "Gleiche die infrage kommenden Buchungen mit Name und Buchungsreferenz in der Nachricht ab.",
@@ -164,6 +164,8 @@ def _recognized(event):
     }
     fields["starts_at"] = _review_time(data.get("starts_at"))
     fields["ends_at"] = _review_time(data.get("ends_at"))
+    if data.get("is_online") is True:
+        fields["is_online"] = True
     if fields.get("school") not in School.values:
         fields.pop("school", None)
     return fields

@@ -76,7 +76,7 @@ def _history_matches(event, seat) -> bool:
 def fill_existing_contact(mail: ParsedMail) -> ContactReplayResult:
     if mail.event_type not in ACTIVATION_EVENTS or not mail.participant_email:
         return ContactReplayResult.INVALID
-    if _parsed_review_reason(mail, mail.event_type):
+    if _parsed_review_reason(mail, mail.event_type, allow_partial=bool(mail.booking_reference)):
         return ContactReplayResult.INVALID
     _lock_import()
     event = EmailEvent.objects.select_for_update().filter(
@@ -90,7 +90,9 @@ def fill_existing_contact(mail: ParsedMail) -> ContactReplayResult:
     ).first()
     if seat is None:
         return ContactReplayResult.NO_ACTIVE_BOOKING
-    if not _matches(seat, mail) or (mail.booking_reference and seat.external_reference != mail.booking_reference):
+    if mail.booking_reference and seat.external_reference != mail.booking_reference:
+        return ContactReplayResult.BOOKING_CHANGED
+    if not _matches(seat, mail, allow_partial=bool(mail.booking_reference)):
         return ContactReplayResult.BOOKING_CHANGED
 
     email = mail.participant_email

@@ -41,6 +41,23 @@ def html_forward(original_headers):
     return message.as_bytes()
 
 
+def forwarded_approval_with_repeated_mailto():
+    mail = booking_message(
+        "Alex Beispiel <import@example.invalid>",
+        subject="Fwd: Ihre Lehrgangsanmeldung",
+        body=(
+            "Hier die Nachricht\n\n"
+            'Von: "schule@example.invalid" <schule@example.invalid<mailto:schule@example.invalid>>\n'
+            "Datum: Montag, 10. Mai 2027 um 09:00\n"
+            'An: "alex.beispiel@example.invalid" <alex.beispiel@example.invalid<mailto:alex.beispiel@example.invalid>>\n'
+            "Cc: Alex Beispiel <cc@example.invalid>\n"
+            "Betreff: Ihre Lehrgangsanmeldung\n\n"
+            + APPROVAL
+        ),
+    )
+    return mail
+
+
 class ParticipantEmailParserTests(TestCase):
     def test_prefers_exact_normalized_display_name_with_multiple_recipients(self):
         message = booking_message(
@@ -50,6 +67,58 @@ class ParticipantEmailParserTests(TestCase):
         result = parse_eml(message.as_bytes())
         self.assertEqual(result.participant_email, "alex.beispiel@example.invalid")
         self.assertNotIn("alex.beispiel@example.invalid", repr(result))
+
+    def test_forwarded_booking_with_date_header_and_repeated_mailto_extracts_personal_address(self):
+        mail = forwarded_approval_with_repeated_mailto()
+        result = parse_eml(mail.as_bytes())
+        self.assertEqual(result.event_type, "approval")
+        self.assertEqual(result.participant_email, "alex.beispiel@example.invalid")
+        self.assertIsNone(
+            parse_eml(mail.as_bytes(), functional_addresses=("alex.beispiel@example.invalid",)).participant_email
+        )
+
+    def test_mailbox_display_is_no_evidence_for_another_name_or_confirmation(self):
+        for candidate, subject, body in (
+            ("andere.person", BOOKING_SUBJECT, APPROVAL),
+            ("alex.beispiel", "Teilnahmebestätigung", CONFIRMATION),
+        ):
+            with self.subTest(subject=subject):
+                address = f"{candidate}@example.invalid"
+                mail = booking_message(f'"{address}" <{address}>', subject=subject, body=body)
+                self.assertIsNone(parse_eml(mail.as_bytes(), functional_addresses=FUNCTIONAL).participant_email)
+
+    def test_mismatching_embedded_mailto_cannot_supply_a_recipient(self):
+        mail = booking_message(
+            subject="Fwd: Ihre Lehrgangsanmeldung",
+            body=(
+                "Von: schule@example.invalid\n"
+                "Datum: Montag, 10. Mai 2027 um 09:00\n"
+                'An: "alex.beispiel@example.invalid" <alex.beispiel@example.invalid<mailto:andere@example.invalid>>\n'
+                "Betreff: Ihre Lehrgangsanmeldung\n\n"
+                + APPROVAL
+            ),
+        )
+        self.assertIsNone(parse_eml(mail.as_bytes()).participant_email)
+
+    def test_explicit_online_format_preserves_provider_or_uses_online_venue(self):
+        for body, school in (
+            (APPROVAL + "\nDurchführungsform: Online (Videokonferenz)", "wuerzburg"),
+            (APPROVAL.replace("SFS Würzburg", "SFS Würzburg (Online)"), "wuerzburg"),
+            (APPROVAL.replace("Gruppenführer", "Gruppenführer (Online)"), "wuerzburg"),
+            (APPROVAL.replace("SFS Würzburg", "Online"), "online"),
+        ):
+            with self.subTest(school=school):
+                parsed = parse_eml(booking_message(body=body).as_bytes())
+                self.assertTrue(parsed.is_online)
+                self.assertEqual(parsed.school, school)
+
+    def test_online_portal_reference_does_not_make_a_class_online(self):
+        body = APPROVAL + "\nDie Unterlagen stehen im Online-Portal."
+        self.assertFalse(parse_eml(booking_message(body=body).as_bytes()).is_online)
+
+    def test_hybrid_class_is_not_marked_as_online_only(self):
+        body = APPROVAL + "\nDurchführungsform: Online und Präsenz"
+        self.assertFalse(parse_eml(booking_message(body=body).as_bytes()).is_online)
 
     def test_unlabeled_recipient_requires_configured_functional_addresses(self):
         message = booking_message("alex@example.invalid")

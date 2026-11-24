@@ -26,6 +26,7 @@
 .school-timeline { --school-ink: #214080; --school-bg: #dce8ff; }
 .school-regensburg { --school-ink: #14553d; --school-bg: #daf0e4; }
 .school-geretsried { --school-ink: #6a440d; --school-bg: #f8ead0; }
+.school-online { --school-ink: #573574; --school-bg: #eee4f8; }
 .calendar-school { background: #edf2fa; border-block: 1px solid var(--rule); }
 .calendar-school h3 { position: sticky; left: 0; width: max-content; padding: .35rem .65rem; color: var(--school-ink); font-size: .875rem; }
 .calendar-session + .calendar-session { border-block-start: 1px solid var(--rule); }

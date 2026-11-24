@@ -11,6 +11,7 @@ from email.headerregistry import Address
 from email.message import EmailMessage
 from email.parser import BytesParser
 from email.utils import parsedate_to_datetime
+from unicodedata import normalize
 from zoneinfo import ZoneInfo
 
 from .email_address import normalize_contact_email
@@ -73,11 +74,25 @@ FORWARD_SEPARATOR = re.compile(
 )
 OUTLOOK_FORWARD_HEADERS = re.compile(
     r"(?:\A|\n\n)(?=[ \t]*(?:von|from) *: *[^\n]+\n"
-    r"[ \t]*(?:gesendet|sent) *: *[^\n]+\n"
+    r"[ \t]*(?:gesendet|sent|datum|date) *: *[^\n]+\n"
     r"[ \t]*(?:an|to) *: *[^\n]*\n"
     r"(?:[ \t]*cc *: *[^\n]*\n)?"
     r"[ \t]*(?:betreff|subject) *: *[^\n]+\n)",
     re.IGNORECASE,
+)
+REPEATED_MAILTO = re.compile(r"<([^<>\s]+)<mailto:([^<>\s]+)>>", re.IGNORECASE)
+LOCATION_LABELS = "Schulungsort|Lehrgangsort|Veranstaltungsort|Schule"
+ONLINE_FORMAT = re.compile(
+    r"^(?:online(?:[-–— ]?(?:lehrgang|seminar|veranstaltung|unterricht|schulung|kurs))?"
+    r"|virtuell|webinar|e[- ]?learning|digital)(?=$|[ (,:])", re.IGNORECASE,
+)
+ONLINE_COURSE = re.compile(
+    r"^(?:online[-–— ]?(?:lehrgang|seminar|veranstaltung|unterricht|schulung|kurs)|webinar|e[- ]?learning)\b",
+    re.IGNORECASE,
+)
+ONLINE_SUFFIX = re.compile(r"\(\s*(?:online|webinar|e[- ]?learning)\s*\)$", re.IGNORECASE)
+IN_PERSON_FORMAT = re.compile(
+    r"\b(?:hybrid\w*|blended learning|präsenz\w*|vor ort)\b", re.IGNORECASE,
 )
 TIME_RANGE = re.compile(
     r"(\d{1,2}\.\d{1,2}\.\d{4} \d{1,2}:\d{2})(?: Uhr)?"
@@ -116,10 +131,12 @@ class ParsedMail:
     participant_email_ambiguous: bool = False
     address_note: str = ""
     sent_at: datetime | None = None
+    is_online: bool = False
+    unusable_fields: tuple[str, ...] = ()
 
 
 def _normalized(value: str) -> str:
-    return " ".join(value.split())
+    return normalize("NFC", " ".join(value.split()))
 
 
 def _unique(values: list[str], validate: Callable[[str], bool]) -> str | None:
@@ -166,6 +183,7 @@ def _header_addresses(values: list[str]) -> tuple[Address, ...]:
 
 def _inline_addresses(envelope: str, labels: str, *, outlook_recipients: bool = False) -> tuple[Address, ...]:
     values = re.findall(rf"^(?:{labels}) *: *([^\n]*)$", envelope, re.IGNORECASE | re.MULTILINE)
+    values = [REPEATED_MAILTO.sub(_collapse_repeated_mailto, value) for value in values]
     addresses = _header_addresses(values)
     if addresses or not outlook_recipients or len(values) != 1 or ";" not in values[0]:
         return addresses
@@ -177,13 +195,20 @@ def _inline_addresses(envelope: str, labels: str, *, outlook_recipients: bool = 
     return ()
 
 
+def _collapse_repeated_mailto(match: re.Match) -> str:
+    visible, repeated = match.groups()
+    if visible.casefold() == repeated.casefold():
+        return f"<{visible}>"
+    return match[0]
+
+
 def _contact_subject(subject: str) -> bool:
     return subject.casefold() == BOOKING_SUBJECT or bool(re.match(CONFIRMATION_SUBJECT, subject, re.IGNORECASE))
 
 
 def _participant_email(
     recipients: tuple[Address, ...], participant_name: str, functional_addresses: Iterable[str],
-    *, allow_unlabeled: bool,
+    *, allow_unlabeled: bool, allow_mailbox_display: bool,
 ) -> tuple[str | None, bool]:
     excluded = {email for address in functional_addresses if (email := normalize_contact_email(address))}
     remaining = []
@@ -203,6 +228,13 @@ def _participant_email(
         return match, False
     if len(named_matches) > 1:
         return None, True
+    if allow_mailbox_display and len(remaining) == 1:
+        display_name, email = remaining[0]
+        name_parts = target.split()
+        # Some forwards render the original recipient address as its own display name.
+        # Use only an explicit, sole address whose dotted local part spells the full name.
+        if len(name_parts) >= 2 and display_name == email and email.rsplit("@", 1)[0] == ".".join(name_parts):
+            return email, False
     if allow_unlabeled:
         if len({email for _, email in remaining}) > 1:
             return None, True
@@ -391,7 +423,8 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
     if is_reply:
         subject, text = "", ""
     event_type = _classify(subject, text)
-    participant = _values(text, "Teilnehmer(?:in)?|Neue[rs]? Teilnehmer(?:in)?")
+    participant_labels = "Teilnehmer(?:in)?|Neue[rs]? Teilnehmer(?:in)?"
+    participant = _values(text, participant_labels)
     if not participant:
         pattern = CONFIRMED_PARTICIPANT if event_type == "confirmation" else GREETING
         participant = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
@@ -401,6 +434,7 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
         participant_email, participant_email_ambiguous = _participant_email(
             recipients, participant_name, functional_addresses,
             allow_unlabeled=subject.casefold() == BOOKING_SUBJECT,
+            allow_mailbox_display=event_type == "approval" and subject.casefold() == BOOKING_SUBJECT,
         )
     address_note = ""
     if is_reply:
@@ -425,10 +459,30 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
     )
     reference = _unique(references, _booking_reference)
     reference_conflict = bool(references) and reference is None
-    locations = " ".join(_values(text, "Schulungsort|Lehrgangsort|Schule"))
+    venues = _values(text, LOCATION_LABELS)
+    formats = _values(text, "Durchführungsform|Teilnahmeform|Unterrichtsform|Veranstaltungsform|Format")
+    explicit_format = (*venues, *formats)
+    title = course_name or ""
+    is_online = not any(IN_PERSON_FORMAT.search(value) for value in (*explicit_format, title)) and (
+        any(ONLINE_FORMAT.match(value) or ONLINE_SUFFIX.search(value) for value in explicit_format)
+        or bool(ONLINE_COURSE.match(title) or ONLINE_SUFFIX.search(title))
+    )
+    locations = " ".join(venues)
     schools = [code for code, pattern in SCHOOLS.items() if re.search(pattern, locations, re.IGNORECASE)]
     school = schools[0] if len(schools) == 1 else None
+    if is_online and not schools:
+        school = "online"
     starts_at, ends_at = _period(text)
+    expected_fields = (
+        ("participant_name", participant_labels, participant_name),
+        ("course_name", "Lehrgangsart|Lehrgang", course_name),
+        ("school", LOCATION_LABELS, school),
+        ("period", "Lehrgangstermin|Zeitraum", starts_at),
+    )
+    unusable_fields = tuple(
+        label for label, pattern, value in expected_fields
+        if value is None and re.search(rf"^(?:{pattern}) *:", text, re.IGNORECASE | re.MULTILINE)
+    )
     deadline = _date_from_match(r"spätestens am (?:[a-zäöü]+, )?" + DATE_PATTERN, text)
     cancellation = _date_from_match(
         r"andernfalls erfolgt am (?:[a-zäöü]+, )?" + DATE_PATTERN + r" die stornierung", text,
@@ -461,4 +515,6 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
         participant_email_ambiguous=participant_email_ambiguous,
         address_note=address_note,
         sent_at=_sent_at(message),
+        is_online=is_online,
+        unusable_fields=unusable_fields,
     )

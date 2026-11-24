@@ -27,6 +27,7 @@
                         <div><dt>Ereignis</dt><dd>{{ event_label|default:"—" }}</dd></div>
                         <div><dt>Lehrgang</dt><dd>{{ result.course_name|default:"—" }}</dd></div>
                         <div><dt>Schulungsort</dt><dd>{{ school_label|default:"—" }}</dd></div>
+                        {% if result.is_online %}<div><dt>Durchführung</dt><dd>Online</dd></div>{% endif %}
                         <div><dt>Beginn</dt><dd>{{ result.starts_at|date:"d.m.Y, H:i"|default:"—" }}</dd></div>
                         <div><dt>Ende</dt><dd>{{ result.ends_at|date:"d.m.Y, H:i"|default:"—" }}</dd></div>
                         <div><dt>Teilnehmer/in</dt><dd>{{ result.participant_name|default:"—" }}</dd></div>

@@ -3,7 +3,7 @@
 {% block content %}
     <p class="back-link"><a href="{{ back_href }}">‹ Zurück zum Kalender</a></p>
     <h1>{{ session.course.name }}</h1>
-    <p class="intro">{{ session.get_school_display }}</p>
+    <p class="intro">{{ session.get_venue_display }}</p>
     <section class="panel detail-times" aria-label="Termin">
         <dl class="details">
             <div><dt>Beginn</dt><dd><time datetime="{{ session.starts_at|date:'c' }}">{{ session.starts_at|date:"d.m.Y, H:i" }} Uhr</time></dd></div>

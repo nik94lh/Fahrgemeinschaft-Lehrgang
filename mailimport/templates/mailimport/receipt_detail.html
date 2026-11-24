@@ -28,6 +28,7 @@
                     <div><dt>Teilnehmeradresse</dt><dd>{{ fields.participant_email|default:"Nicht erkannt" }}</dd></div>
                     <div><dt>Lehrgang</dt><dd>{{ fields.course_name|default:"Nicht eindeutig erkannt" }}</dd></div>
                     <div><dt>Schule</dt><dd>{{ school_name|default:"Nicht eindeutig erkannt" }}</dd></div>
+                    {% if fields.is_online %}<div><dt>Durchführung</dt><dd>Online</dd></div>{% endif %}
                     <div><dt>Beginn</dt><dd>{{ fields.starts_at|date:"d.m.Y, H:i"|default:"Nicht eindeutig erkannt" }}</dd></div>
                     <div><dt>Ende</dt><dd>{{ fields.ends_at|date:"d.m.Y, H:i"|default:"Nicht eindeutig erkannt" }}</dd></div>
                     <div><dt>Buchungsreferenz</dt><dd>{{ fields.booking_reference|default:"Keine erkannt" }}</dd></div>

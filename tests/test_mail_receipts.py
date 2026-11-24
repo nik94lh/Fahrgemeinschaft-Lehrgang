@@ -1,17 +1,19 @@
 from contextlib import nullcontext
 from email import policy
 from email.parser import BytesParser
+from dataclasses import replace
 from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from bookings.models import BookingStatus, CourseSeat, EmailEvent
-from bookings.services import ingest
+from bookings.services import _reconcile, ingest
 from mailimport.imap_sync import ImapConfig, sync_mailbox
 from mailimport.models import MailReceipt, MailboxCursor
-from mailimport.parser import MAX_EML_BYTES
+from mailimport.parser import MAX_EML_BYTES, parse_eml
 from tests.test_imap_sync import body_result, mock_mailbox
+from tests.test_participant_email_parser import forwarded_approval_with_repeated_mailto
 from tests.test_participant_identity import PERSONAL, booking_mail
 
 
@@ -61,6 +63,24 @@ class MailReceiptTests(TestCase):
         first.seat.refresh_from_db()
         self.assertEqual(first.seat.participant.email, PERSONAL)
         self.assertEqual(first.seat.status, BookingStatus.CONFIRMED)
+
+    def test_replays_previously_addressless_forward_and_keeps_the_confirmed_booking(self):
+        raw = forwarded_approval_with_repeated_mailto().as_bytes()
+        original = _reconcile(replace(parse_eml(raw), participant_email=None), occurred_at=None)
+        confirmation = ingest(booking_mail(kind="confirmation"))
+        self.assertEqual(confirmation.seat_id, original.seat_id)
+
+        self.sync({1: raw})
+
+        receipt = MailReceipt.objects.get()
+        self.assertEqual(receipt.outcome, MailReceipt.Outcome.ADDRESS_ADDED)
+        self.assertEqual(receipt.event_id, original.pk)
+        self.assertEqual(receipt.fields["participant_email"], "alex.beispiel@example.invalid")
+        self.assertEqual(EmailEvent.objects.count(), 2)
+        seat = CourseSeat.objects.get()
+        self.assertEqual(seat.status, BookingStatus.CONFIRMED)
+        self.assertEqual(seat.participant_id, original.seat.participant_id)
+        self.assertEqual(seat.participant.email, "alex.beispiel@example.invalid")
 
     def test_resent_headers_are_a_new_delivery_and_report_an_address_added_to_existing_booking(self):
         first = ingest(booking_mail())

@@ -3,7 +3,7 @@
 {% block content %}
     <p class="back-link"><a href="{% url 'bookings' %}">‹ Zurück zu den Buchungen</a></p>
     <h1>Teilnehmer zur Buchung</h1>
-    <p class="intro">{{ seat.session.course.name }} · {% include "workspace/session_period.html" with session=seat.session only %}</p>
+    <p class="intro">{{ seat.session.course.name }} · {{ seat.session.get_venue_display }} · {% include "workspace/session_period.html" with session=seat.session only %}</p>
     <section class="panel participant-profile" aria-label="Teilnehmerprofil">
         <dl class="details">
             <div><dt>Name</dt><dd>{{ seat.participant.name }}</dd></div>
@@ -23,7 +23,7 @@
     </section>
     <section class="panel" aria-labelledby="profile-bookings-title">
         <h2 id="profile-bookings-title">Lehrgangsbuchungen dieses Profils</h2>
-        <p class="note booking-comparison-note">Ein möglicher Doppeleintrag betrifft denselben Lehrgang an derselben Schule zur gleichen Zeit. Eine Überschneidung betrifft zwei verschiedene Termine. BMS markiert diese Buchungen zur Prüfung.</p>
+        <p class="note booking-comparison-note">Ein möglicher Doppeleintrag betrifft denselben Lehrgang am selben Schulungsort zur gleichen Zeit. Eine Überschneidung betrifft zwei verschiedene Termine. BMS markiert diese Buchungen zur Prüfung.</p>
         <div class="table-scroll" tabindex="0" role="region" aria-labelledby="profile-bookings-title">
             <table class="mobile-table">
                 <thead><tr><th scope="col">Lehrgangsbuchung</th><th scope="col">Zeitraum</th><th scope="col">Status</th><th scope="col">Hinweis</th></tr></thead>
@@ -33,7 +33,7 @@
                             <td data-label="Lehrgangsbuchung">
                                 <span>
                                     <a href="{% url 'booking_participant' booking.pk %}"{% if booking.pk == seat.pk %} aria-current="page"{% endif %}>{{ booking.session.course.name }}</a><br>
-                                    <small>{{ booking.session.get_school_display }} · Buchung {{ booking.pk }}{% if booking.external_reference %} · {{ booking.external_reference }}{% endif %}</small>
+                                    <small>{{ booking.session.get_venue_display }} · Buchung {{ booking.pk }}{% if booking.external_reference %} · {{ booking.external_reference }}{% endif %}</small>
                                 </span>
                             </td>
                             <td data-label="Zeitraum">{% include "workspace/session_period.html" with session=booking.session only %}</td>

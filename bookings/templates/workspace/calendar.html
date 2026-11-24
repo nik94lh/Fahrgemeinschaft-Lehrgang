@@ -31,9 +31,9 @@
             </div>
         {% endif %}
         <div class="calendar-school-filter">
-            <label for="calendar-school">Schule</label>
+            <label for="calendar-school">Schulungsort</label>
             <select name="school" id="calendar-school">
-                <option value="">Alle Schulen</option>
+                <option value="">Alle Schulungsorte</option>
                 {% for key, label in school_choices %}
                     <option value="{{ key }}"{% if key == selected_school %} selected{% endif %}>{{ label }}</option>
                 {% endfor %}
@@ -99,6 +99,7 @@
                                     <div class="calendar-label">
                                         <span class="calendar-course">{{ row.session.course.name }}</span>
                                         <span class="calendar-time">{{ row.session.starts_at|date:"d.m." }} – {{ row.session.ends_at|date:"d.m." }}</span>
+                                        {% if row.session.is_online and group.school != 'online' %}<span class="calendar-time">Online</span>{% endif %}
                                     </div>
                                     <div class="calendar-days">
                                         {% for tick in ticks %}
@@ -107,7 +108,7 @@
                                         <a class="calendar-bar{% if row.starts_before %} continues-before{% endif %}{% if row.ends_after %} continues-after{% endif %}"
                                            style="grid-column: {{ row.start_column }} / {{ row.end_column }};"
                                            href="{% url 'calendar_detail' row.session.pk %}?{{ current_query }}"
-                                           aria-label="{{ row.session.course.name }}, {{ group.label }}, {{ row.session.starts_at|date:'d.m.Y, H:i' }} bis {{ row.session.ends_at|date:'d.m.Y, H:i' }}"
+                                           aria-label="{{ row.session.course.name }}, {{ row.session.get_venue_display }}, {{ row.session.starts_at|date:'d.m.Y, H:i' }} bis {{ row.session.ends_at|date:'d.m.Y, H:i' }}"
                                            title="{{ row.session.course.name }} · {{ row.session.starts_at|date:'d.m.Y, H:i' }} – {{ row.session.ends_at|date:'d.m.Y, H:i' }}">
                                             {% if row.starts_before %}<span class="continuation" aria-hidden="true">‹</span>{% endif %}
                                             <span class="calendar-bar-text" aria-hidden="true">{{ row.session.course.name }}</span>
@@ -125,12 +126,12 @@
                 <summary>Terminliste mit Uhrzeiten</summary>
                 <div class="table-scroll" tabindex="0" role="region" aria-label="Lehrgänge mit Uhrzeiten">
                     <table class="mobile-table">
-                        <thead><tr><th scope="col">Lehrgang</th><th scope="col">Schule</th><th scope="col">Beginn</th><th scope="col">Ende</th><th scope="col">Plätze</th></tr></thead>
+                        <thead><tr><th scope="col">Lehrgang</th><th scope="col">Schulungsort</th><th scope="col">Beginn</th><th scope="col">Ende</th><th scope="col">Plätze</th></tr></thead>
                         <tbody>
                             {% for session in sessions %}
                                 <tr>
                                     <td data-label="Lehrgang"><a href="{% url 'calendar_detail' session.pk %}?{{ current_query }}">{{ session.course.name }}</a></td>
-                                    <td data-label="Schule">{{ session.get_school_display }}</td>
+                                    <td data-label="Schulungsort">{{ session.get_venue_display }}</td>
                                     <td data-label="Beginn"><time datetime="{{ session.starts_at|date:'c' }}">{{ session.starts_at|date:"d.m.Y, H:i" }}</time></td>
                                     <td data-label="Ende"><time datetime="{{ session.ends_at|date:'c' }}">{{ session.ends_at|date:"d.m.Y, H:i" }}</time></td>
                                     <td data-label="Plätze">{{ session.seat_count }}</td>

@@ -54,6 +54,7 @@
                         {% if recognized.previous_participant_name %}<div><dt>Bisheriger Teilnehmer laut Nachricht</dt><dd>{{ recognized.previous_participant_name }}</dd></div>{% endif %}
                         <div><dt>Lehrgang</dt><dd>{{ recognized.course_name|default:"Nicht eindeutig erkannt" }}</dd></div>
                         <div><dt>Schule</dt><dd>{{ school_name|default:"Nicht eindeutig erkannt" }}</dd></div>
+                        {% if recognized.is_online %}<div><dt>Durchführung</dt><dd>Online</dd></div>{% endif %}
                         <div><dt>Beginn</dt><dd>{{ recognized.starts_at|date:"d.m.Y H:i"|default:"Nicht eindeutig erkannt" }}</dd></div>
                         <div><dt>Ende</dt><dd>{{ recognized.ends_at|date:"d.m.Y H:i"|default:"Nicht eindeutig erkannt" }}</dd></div>
                         <div><dt>Buchungsreferenz</dt><dd>{{ recognized.booking_reference|default:"Keine erkannt" }}</dd></div>
@@ -74,7 +75,7 @@
                         <div><dt>Aktueller Teilnehmer</dt><dd>{{ comparison_seat.participant.name|default:"Ohne Zuordnung" }}</dd></div>
                         <div><dt>Aktueller Status</dt><dd><span class="status-label status-{{ comparison_seat.status }}">{{ comparison_seat.get_status_display }}</span></dd></div>
                         <div><dt>Lehrgang</dt><dd>{{ comparison_seat.session.course.name }}</dd></div>
-                        <div><dt>Schule</dt><dd>{{ comparison_seat.session.get_school_display }}</dd></div>
+                        <div><dt>Schulungsort</dt><dd>{{ comparison_seat.session.get_venue_display }}</dd></div>
                         <div><dt>Beginn</dt><dd>{{ comparison_seat.session.starts_at|date:"d.m.Y H:i" }}</dd></div>
                         <div><dt>Ende</dt><dd>{{ comparison_seat.session.ends_at|date:"d.m.Y H:i" }}</dd></div>
                     </dl>

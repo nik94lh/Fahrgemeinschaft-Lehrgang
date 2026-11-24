@@ -5,6 +5,8 @@
 - **Mail-Eingang** zeigt die abgerufenen Nachrichten, erkannte Buchungsdaten, Importergebnisse und Gründe für fehlende Teilnehmeradressen.
 - **Klärung** stellt erkannte Angaben und Felder der Buchung gegenüber und verweist auf den zugehörigen Mail-Eingang.
 - Die gemeinsame Kopfzeile zeigt die installierte BMS-Version neben dem Hinweis auf den Testbetrieb.
+- Der Import erkennt weitergeleitete Genehmigungen mit „Datum“ und wiederholten Empfängeradressen. Eindeutige Folgemails ergänzen die bestehende Buchung.
+- Online-Lehrgänge erscheinen in Buchungen und Kalender und bleiben bei der Fahrgemeinschaftssuche außen vor.
 
 ## 0.8.0
 

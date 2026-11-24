@@ -46,7 +46,9 @@ def bookings(request):
     seats = _seats()
     if selected_status in BookingStatus.values:
         seats = seats.filter(status=selected_status)
-    if selected_school in School.values:
+    if selected_school == School.ONLINE:
+        seats = seats.filter(Q(session__school=School.ONLINE) | Q(session__is_online=True))
+    elif selected_school in School.values:
         seats = seats.filter(session__school=selected_school)
     if query:
         seats = seats.filter(

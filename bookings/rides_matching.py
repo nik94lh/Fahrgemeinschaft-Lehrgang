@@ -8,7 +8,7 @@ from zoneinfo import ZoneInfo
 from django.db import transaction
 from django.utils import timezone
 
-from .models import BookingStatus, CourseSeat, EmailEvent, RideCase, School
+from .models import IN_PERSON_SCHOOL_CHOICES, BookingStatus, CourseSeat, EmailEvent, RideCase
 from .services import _lock_import
 
 
@@ -36,7 +36,8 @@ def _round_trip_matches(now: datetime):
         session__starts_at__gte=now,
         status=BookingStatus.CONFIRMED,
         participant__isnull=False,
-        session__school__in=School.values,
+        session__school__in=[code for code, _ in IN_PERSON_SCHOOL_CHOICES],
+        session__is_online=False,
     ).exclude(email_events__state=EmailEvent.State.NEEDS_REVIEW).values_list(
         "session__school", "session__starts_at", "session__ends_at", "participant_id", "id",
     )

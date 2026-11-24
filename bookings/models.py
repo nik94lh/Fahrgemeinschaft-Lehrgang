@@ -11,6 +11,10 @@ class School(models.TextChoices):
     WUERZBURG = "wuerzburg", "SFS Würzburg"
     REGENSBURG = "regensburg", "SFS Regensburg"
     GERETSRIED = "geretsried", "SFS Geretsried"
+    ONLINE = "online", "Online"
+
+
+IN_PERSON_SCHOOL_CHOICES = [choice for choice in School.choices if choice[0] != School.ONLINE]
 
 
 class BookingStatus(models.TextChoices):
@@ -96,6 +100,7 @@ class Course(models.Model):
 class CourseSession(models.Model):
     course = models.ForeignKey(Course, on_delete=models.PROTECT, related_name="sessions")
     school = models.CharField(max_length=16, choices=School.choices)
+    is_online = models.BooleanField(default=False, db_default=False)
     starts_at = models.DateTimeField()
     ends_at = models.DateTimeField()
 
@@ -107,6 +112,12 @@ class CourseSession(models.Model):
             ),
         ]
         indexes = [models.Index(fields=["school", "starts_at"], name="bookings_session_school_time")]
+
+    def get_venue_display(self):
+        school = self.get_school_display()
+        if self.is_online and self.school != School.ONLINE:
+            return f"Online · {school}"
+        return school
 
 
 class CourseSeat(models.Model):
@@ -248,7 +259,7 @@ class Carpool(models.Model):
         OUTBOUND = "outbound", "Hinfahrt"
         RETURN = "return", "Rückfahrt"
 
-    school = models.CharField(max_length=16, choices=School.choices)
+    school = models.CharField(max_length=16, choices=IN_PERSON_SCHOOL_CHOICES)
     direction = models.CharField(max_length=8, choices=Direction.choices)
     travel_at = models.DateTimeField(null=True, blank=True)
 
@@ -262,7 +273,7 @@ class RideCase(models.Model):
         CLOSED = "closed", "Abgeschlossen"
 
     match_key = models.CharField(max_length=96, unique=True)
-    school = models.CharField(max_length=16, choices=School.choices)
+    school = models.CharField(max_length=16, choices=IN_PERSON_SCHOOL_CHOICES)
     direction = models.CharField(max_length=9, choices=[*Carpool.Direction.choices, (ROUND_TRIP, "Hin- und Rückfahrt")])
     travel_date = models.DateField()
     earliest = models.DateTimeField()
