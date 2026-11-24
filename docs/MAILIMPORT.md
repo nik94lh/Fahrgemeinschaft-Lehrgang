@@ -2,6 +2,8 @@
 
 ## Lokale Vorschau
 
+Die Startseite bietet dieselbe Vorschau für eine einzelne synthetische oder ausreichend anonymisierte EML-Datei. Sie zeigt erkannte Felder und Hinweise im Browser an. Der Upload wird nur im Arbeitsspeicher verarbeitet. Eingaben bleiben unverändert und es wird kein Buchungsdatensatz angelegt.
+
 `python manage.py preview_eml DATEI` verarbeitet eine einzelne EML-Datei und gibt eine strukturierte Vorschau in der Konsole aus. Mit `-` liest das Kommando von der Standardeingabe. Der Befehl verarbeitet lokale, synthetische oder ausreichend anonymisierte Dateien bis zu 1 MiB. Er verändert keine Buchungen und speichert keine Originalnachrichten.
 
 Der Parser bevorzugt Klartext. Falls nur HTML vorhanden ist, extrahiert er Text aus der HTML-Struktur. Attribute und Inhalte von Elementen wie `script`, `style` oder `iframe` werden ignoriert. CSS wird dabei nicht ausgewertet. Der Parser führt kein HTML aus und ruft keine URLs, eingebetteten Ressourcen, Trackingpixel oder Anhänge ab. Er unterstützt einzelne als EML angehängte und einfache eingebettete Weiterleitungen. Mehrere als Originalnachrichten angehängte E-Mails werden als mehrdeutig zurückgewiesen.

@@ -1,0 +1,184 @@
+:root {
+    color-scheme: light;
+    --background: #e9eef7;
+    --surface: #fff;
+    --ink: #111b33;
+    --muted: #46536a;
+    --line: #b9c5d8;
+    --rule: #d1dbe8;
+    --navy: #10213b;
+    --accent: #293ba8;
+    font: 100%/1.5 system-ui, sans-serif;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    margin: 0;
+    min-width: 280px;
+    color: var(--ink);
+    background: var(--background);
+}
+
+.app-header {
+    color: white;
+    background: var(--navy);
+}
+
+.header-inner, main {
+    max-width: 74rem;
+    margin-inline: auto;
+    padding-inline: clamp(1rem, 4vw, 2.25rem);
+}
+
+.header-inner {
+    min-height: 4.25rem;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: .25rem 1rem;
+    padding-block: .75rem;
+}
+
+.brand { display: flex; align-items: center; gap: 1rem; }
+.brand strong { font-size: 1.6rem; line-height: 1; }
+.brand span, .mode { color: #e0e7f5; }
+.mode { font-size: .875rem; }
+
+main { padding-block: clamp(1.5rem, 4vw, 2.75rem) 3rem; }
+
+h1, h2, h3, p { margin: 0; }
+
+h1 {
+    font-size: clamp(1.85rem, 4vw, 2.65rem);
+    line-height: 1.15;
+    letter-spacing: -.035em;
+}
+
+.intro {
+    margin-block: .5rem 1.85rem;
+    color: var(--muted);
+    font-size: clamp(1rem, 2vw, 1.12rem);
+}
+
+.workspace {
+    display: grid;
+    grid-template-columns: minmax(0, 4fr) minmax(0, 5fr);
+    gap: 1.25rem;
+}
+
+.panel {
+    min-width: 0;
+    padding: clamp(1rem, 2.4vw, 1.5rem);
+    border: 1px solid var(--line);
+    border-radius: .75rem;
+    background: var(--surface);
+}
+
+h2 {
+    margin-block-end: 1.1rem;
+    font-size: clamp(1.25rem, 2.4vw, 1.5rem);
+    line-height: 1.2;
+    letter-spacing: -.025em;
+}
+
+.upload, .empty {
+    min-height: 10rem;
+    display: grid;
+    place-content: center;
+    gap: .65rem;
+    padding: 1rem;
+    border: 1px dashed #607ac5;
+    border-radius: .55rem;
+    background: #edf2ff;
+    text-align: center;
+}
+
+.upload input {
+    width: min(100%, 17rem);
+    justify-self: center;
+    font: inherit;
+    font-size: .9rem;
+    color: var(--muted);
+}
+
+.upload input::file-selector-button {
+    margin-inline-end: .55rem;
+    padding: .5rem .65rem;
+    border: 1px solid var(--accent);
+    border-radius: .4rem;
+    color: var(--accent);
+    background: white;
+    font: inherit;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.upload p, .note, .empty p { color: var(--muted); font-size: .9rem; }
+
+button {
+    display: block;
+    width: 100%;
+    margin-block: 1.2rem 1rem;
+    padding: .65rem 1rem;
+    border: 1px solid transparent;
+    border-radius: .5rem;
+    color: white;
+    background: var(--accent);
+    font: inherit;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+button:hover { background: #202f89; }
+:focus-visible { outline: 3px solid #4163cb; outline-offset: 4px; }
+
+.empty { border-color: var(--line); background: #f5f7fc; }
+.empty h3, .warnings h3 { font-size: 1rem; }
+
+.details { margin: 0; }
+
+.details div {
+    display: grid;
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    gap: .75rem;
+    padding-block: .65rem;
+    border-block-end: 1px solid var(--rule);
+}
+
+.details div:last-child { border-block-end: 0; }
+dt { color: var(--muted); overflow-wrap: anywhere; }
+dd { margin: 0; overflow-wrap: anywhere; font-weight: 530; }
+
+.warnings, .errorlist {
+    margin: 1rem 0 0;
+    padding: .7rem 1rem;
+    border: 1px solid #e2bc79;
+    border-radius: .45rem;
+    color: #70440e;
+    background: #fff6e4;
+}
+
+.warnings ul { margin-block: .35rem 0; padding-inline-start: 1.15rem; }
+.errorlist { padding-inline-start: 2rem; }
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+@media (max-width: 680px) {
+    .workspace { grid-template-columns: 1fr; gap: 1rem; }
+    .brand { gap: .6rem; }
+    .brand strong { font-size: 1.3rem; }
+    .brand span, .mode { font-size: .8rem; }
+    .intro { margin-block-end: 1.25rem; }
+    .upload, .empty { min-height: 7rem; }
+    .details div { grid-template-columns: minmax(0, 47fr) minmax(0, 53fr); }
+}

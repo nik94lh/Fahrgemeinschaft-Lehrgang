@@ -1,6 +1,6 @@
 # Lehrgangs- und Fahrgemeinschaftsmanagement
 
-LFM verwaltet Lehrgänge und Buchungen für die Feuerwehren eines Landkreises. Die freiwillige Fahrgemeinschaftsvermittlung folgt in späteren Entwicklungsphasen. Der erste Stand enthält die Django-Grundstruktur, das Datenmodell und eine lokale EML-Vorschau für synthetische Beispiele.
+LFM verwaltet Lehrgänge und Buchungen für die Feuerwehren eines Landkreises. Die freiwillige Fahrgemeinschaftsvermittlung folgt in späteren Entwicklungsphasen. Der erste Stand enthält die Django-Grundstruktur, das Datenmodell und eine EML-Vorschau für synthetische Beispiele im Browser und in der Konsole.
 
 ## Lokaler Start mit Docker Compose
 
@@ -13,7 +13,7 @@ docker compose -f compose.yaml -f compose.dev.yaml exec web python manage.py mig
 curl --fail http://127.0.0.1:8000/health/
 ```
 
-Der Start lässt sich über den technischen Statusendpunkt prüfen. Eine Verwaltungsoberfläche folgt in einer späteren Phase. [Statusendpunkt](http://127.0.0.1:8000/health/) Der Entwicklungsport ist nur lokal gebunden. PostgreSQL bleibt im Docker-Netz des Projekts.
+Die Web-Vorschau erreichst du unter http://127.0.0.1:8000/. Über `/health/` kannst du den Start technisch prüfen. Der Entwicklungsport ist nur lokal gebunden. PostgreSQL bleibt im Docker-Netz des Projekts.
 
 Führe die Tests und die Prüfung auf fehlende Migrationen aus:
 
@@ -24,7 +24,7 @@ docker compose -f compose.yaml -f compose.dev.yaml exec web python manage.py mak
 
 ## Lokale EML-Vorschau
 
-Verwende eine synthetische oder ausreichend anonymisierte Datei. Die Umleitung liest sie vom lokalen Rechner ein:
+Öffne die Startseite, wähle eine synthetische oder ausreichend anonymisierte `.eml`-Datei bis 1 MiB und klicke auf **Prüfen**. BMS zeigt erkannte Felder und Hinweise an, ohne die Datei oder Buchungsdaten zu speichern. Alternativ liest dieser Befehl die Datei vom lokalen Rechner ein:
 
 ```bash
 docker compose -f compose.yaml -f compose.dev.yaml exec -T web python manage.py preview_eml - < beispiel.eml

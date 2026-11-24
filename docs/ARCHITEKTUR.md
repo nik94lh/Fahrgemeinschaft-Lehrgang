@@ -2,7 +2,7 @@
 
 ## Komponenten des ersten Stands
 
-Django stellt den Statusendpunkt unter `/health/`, das ORM und die Migrationen bereit. Gunicorn betreibt den Webdienst. PostgreSQL hält die relationalen Daten. Compose startet den Webdienst `web` und die Datenbank `db`. Die Konfiguration kommt aus Umgebungsvariablen. Die Anwendung verwendet Deutsch und `Europe/Berlin`. Außerhalb von Compose nutzt Django ohne gesetzten `DB_HOST` eine lokale SQLite-Datenbank. Die isolierte EML-Vorschau nutzt die Python-Standardbibliothek und benötigt weder Datenbank noch Netzwerk.
+Django stellt die EML-Vorschau unter `/`, den Statusendpunkt unter `/health/`, das ORM und die Migrationen bereit. Gunicorn betreibt den Webdienst. PostgreSQL hält die relationalen Daten. Compose startet den Webdienst `web` und die Datenbank `db`. Die Konfiguration kommt aus Umgebungsvariablen. Die Anwendung verwendet Deutsch und `Europe/Berlin`. Außerhalb von Compose nutzt Django ohne gesetzten `DB_HOST` eine lokale SQLite-Datenbank. Die isolierte EML-Vorschau nutzt die Python-Standardbibliothek und benötigt weder Datenbank noch Netzwerk.
 
 IMAP, SMTP, Celery und Redis sind für spätere Phasen vorgesehen. Hintergrundaufgaben für einen künftigen Import und die Vermittlung werden getrennt geplant. Insbesondere muss die Lehrgangsverwaltung unabhängig von der Vermittlung und ihren Einladungsfristen laufen.
 

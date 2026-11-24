@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>E-Mail-Vorschau · BMS</title>
+    <style>{% include "mailimport/preview.css" %}</style>
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-inner">
+            <div class="brand"><strong>BMS</strong><span>Lehrgangsverwaltung</span></div>
+            <span class="mode">Simulationsmodus</span>
+        </div>
+    </header>
+    <main>
+        <h1>E-Mail-Vorschau</h1>
+        <p class="intro">Prüfe, welche Daten BMS in einer Lehrgangsmail erkennt.</p>
+        <div class="workspace">
+            <section class="panel" aria-labelledby="upload-title">
+                <h2 id="upload-title">Datei auswählen</h2>
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    {{ form.non_field_errors }}
+                    <div class="upload">
+                        <label class="visually-hidden" for="{{ form.file.id_for_label }}">EML-Datei</label>
+                        {{ form.file }}
+                        <p id="eml-hint">.eml · bis 1 MiB</p>
+                    </div>
+                    {{ form.file.errors }}
+                    <button type="submit">Prüfen</button>
+                    <p class="note">Verwende eine synthetische oder anonymisierte Testmail. Die Datei und die erkannten Daten werden nicht gespeichert.</p>
+                </form>
+            </section>
+            <section class="panel" aria-labelledby="results-title">
+                <h2 id="results-title">Erkannte Daten</h2>
+                {% if result %}
+                    <dl class="details">
+                        <div><dt>Ereignis</dt><dd>{{ event_label|default:"—" }}</dd></div>
+                        <div><dt>Lehrgang</dt><dd>{{ result.course_name|default:"—" }}</dd></div>
+                        <div><dt>Schulungsort</dt><dd>{{ school_label|default:"—" }}</dd></div>
+                        <div><dt>Beginn</dt><dd>{{ result.starts_at|date:"d.m.Y, H:i"|default:"—" }}</dd></div>
+                        <div><dt>Ende</dt><dd>{{ result.ends_at|date:"d.m.Y, H:i"|default:"—" }}</dd></div>
+                        <div><dt>Teilnehmer/in</dt><dd>{{ result.participant_name|default:"—" }}</dd></div>
+                        {% if result.previous_participant_name %}
+                            <div><dt>Bisherige/r Teilnehmer/in</dt><dd>{{ result.previous_participant_name }}</dd></div>
+                        {% endif %}
+                        <div><dt>Buchungsreferenz</dt><dd>{{ result.booking_reference|default:"—" }}</dd></div>
+                        {% if result.confirmation_deadline %}
+                            <div><dt>Bestätigungsfrist</dt><dd>{{ result.confirmation_deadline|date:"d.m.Y" }}</dd></div>
+                        {% endif %}
+                        {% if result.cancellation_date %}
+                            <div><dt>Stornierungsdatum</dt><dd>{{ result.cancellation_date|date:"d.m.Y" }}</dd></div>
+                        {% endif %}
+                    </dl>
+                    {% if result.warnings %}
+                        <aside class="warnings" aria-labelledby="warnings-title">
+                            <h3 id="warnings-title">Bitte prüfen</h3>
+                            <ul>{% for warning in result.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+                        </aside>
+                    {% endif %}
+                {% else %}
+                    <div class="empty">
+                        <h3>Noch keine Vorschau</h3>
+                        <p>Wähle eine EML-Datei und klicke auf „Prüfen“.</p>
+                    </div>
+                {% endif %}
+            </section>
+        </div>
+    </main>
+</body>
+</html>
