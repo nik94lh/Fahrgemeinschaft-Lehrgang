@@ -37,3 +37,7 @@ td { vertical-align: top; }
     .mobile-table td { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: .65rem; padding: .35rem 0; border: 0; overflow-wrap: anywhere; }
     .mobile-table td::before { content: attr(data-label); color: var(--muted); font-size: .9rem; }
 }
+
+.back-link, .detail-times { margin-block-end: 1rem; }
+.review-explanation { margin-block: 0 1rem; }
+.review-form select { max-width: 100%; }

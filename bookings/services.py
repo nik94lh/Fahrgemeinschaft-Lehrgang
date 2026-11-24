@@ -44,20 +44,36 @@ def _reconcile(mail: ParsedMail, occurred_at: datetime | None) -> EmailEvent:
         return event
 
     referenced_seat = _referenced_seat(mail)
-    supported = event.kind in ACTIVATION_EVENTS | CANCELLATION_EVENTS
-    complete = all((mail.course_name, mail.participant_name, mail.school, mail.starts_at, mail.ends_at))
-    if not supported or not complete or mail.reference_conflict:
-        return _record(event, EmailEvent.State.NEEDS_REVIEW, referenced_seat)
+    reason = _parsed_review_reason(mail, event.kind)
+    if reason:
+        return _flag_review(event, reason, referenced_seat)
 
     if referenced_seat is not None:
         if not _matches(referenced_seat, mail):
-            return _record(event, EmailEvent.State.NEEDS_REVIEW, referenced_seat)
-        seat = referenced_seat
-    else:
-        seat = _resolve_by_details(mail, allow_create=event.kind in ACTIVATION_EVENTS)
-    if seat is None:
-        return _record(event, EmailEvent.State.NEEDS_REVIEW)
-    return _update_booking(event, seat, mail)
+            return _flag_review(event, EmailEvent.ReviewReason.REFERENCE_MISMATCH, referenced_seat)
+        return _update_booking(event, referenced_seat, mail)
+    return _reconcile_by_details(event, mail)
+
+
+def _parsed_review_reason(mail: ParsedMail, event_kind: str) -> EmailEvent.ReviewReason:
+    reason = EmailEvent.ReviewReason
+    if mail.reference_conflict:
+        return reason.INVALID_REFERENCE
+    if event_kind not in ACTIVATION_EVENTS | CANCELLATION_EVENTS:
+        return {
+            EmailEvent.Kind.UNKNOWN: reason.UNRECOGNIZED_TYPE,
+            EmailEvent.Kind.REASSIGNMENT: reason.REASSIGNMENT,
+            EmailEvent.Kind.SCHEDULE_CHANGE: reason.SCHEDULE_CHANGE,
+        }.get(event_kind, reason.UNSUPPORTED_TYPE)
+    if not mail.participant_name:
+        return reason.PARTICIPANT_UNCLEAR
+    if not mail.course_name:
+        return reason.COURSE_UNCLEAR
+    if not mail.school:
+        return reason.SCHOOL_UNCLEAR
+    if not (mail.starts_at and mail.ends_at):
+        return reason.PERIOD_UNCLEAR
+    return reason.UNKNOWN
 
 
 def _referenced_seat(mail: ParsedMail) -> CourseSeat | None:
@@ -80,7 +96,7 @@ def _matches(seat: CourseSeat, mail: ParsedMail) -> bool:
     )
 
 
-def _resolve_by_details(mail: ParsedMail, *, allow_create: bool) -> CourseSeat | None:
+def _reconcile_by_details(event: EmailEvent, mail: ParsedMail) -> EmailEvent:
     sessions = list(CourseSession.objects.filter(
         course__name__iexact=mail.course_name,
         school=mail.school,
@@ -88,35 +104,36 @@ def _resolve_by_details(mail: ParsedMail, *, allow_create: bool) -> CourseSeat |
         ends_at=mail.ends_at,
     )[:2])
     if len(sessions) > 1:
-        return None
-    if sessions:
-        session = sessions[0]
+        return _flag_review(event, EmailEvent.ReviewReason.MULTIPLE_SESSIONS)
+    session = sessions[0] if sessions else None
+    if session is not None:
         seats = list(session.seats.select_related("participant").filter(
             participant__name__iexact=mail.participant_name,
         )[:2])
+        if len(seats) > 1:
+            return _flag_review(event, EmailEvent.ReviewReason.MULTIPLE_SEATS)
         if seats:
             seat = seats[0]
-            if len(seats) > 1 or (mail.booking_reference and seat.external_reference):
-                return None
-            return seat
+            if mail.booking_reference and seat.external_reference:
+                return _flag_review(event, EmailEvent.ReviewReason.REFERENCE_MISMATCH)
+            return _update_booking(event, seat, mail)
         if BookingHistory.objects.filter(seat__session=session).filter(
             previous_participant__name__iexact=mail.participant_name,
         ).exists():
-            return None
-    elif allow_create:
+            return _flag_review(event, EmailEvent.ReviewReason.PREVIOUS_PARTICIPANT)
+    if event.kind not in ACTIVATION_EVENTS:
+        return _flag_review(event, EmailEvent.ReviewReason.NO_MATCHING_BOOKING)
+    if session is None:
         courses = list(Course.objects.filter(name__iexact=mail.course_name)[:2])
         if len(courses) > 1:
-            return None
+            return _flag_review(event, EmailEvent.ReviewReason.MULTIPLE_COURSES)
         course = courses[0] if courses else Course.objects.create(name=mail.course_name)
         session = CourseSession.objects.create(
             course=course, school=mail.school, starts_at=mail.starts_at, ends_at=mail.ends_at,
         )
-    if not allow_create:
-        return None
-
     # A name on another date alone does not identify the same person.
     participant = Participant.objects.create(name=mail.participant_name)
-    return CourseSeat(session=session, participant=participant)
+    return _update_booking(event, CourseSeat(session=session, participant=participant), mail)
 
 
 def _new_status(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> str:
@@ -145,9 +162,9 @@ def _update_booking(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> Em
                 event.occurred_at == latest_timestamp
                 or (event.occurred_at is None and event.kind in CANCELLATION_EVENTS)
             ):
-                return _record(event, EmailEvent.State.NEEDS_REVIEW, seat)
+                return _flag_review(event, EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR, seat)
         if seat.status not in ACTIVE_STATUSES and status != seat.status:
-            return _record(event, EmailEvent.State.NEEDS_REVIEW, seat)
+            return _flag_review(event, EmailEvent.ReviewReason.PROTECTED_STATUS, seat)
 
     previous_status = "" if new else seat.status
     previous_participant = None if new else seat.participant
@@ -178,8 +195,17 @@ def _update_booking(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> Em
     return _record(event, EmailEvent.State.APPLIED, seat)
 
 
+def _flag_review(
+    event: EmailEvent,
+    reason: EmailEvent.ReviewReason,
+    seat: CourseSeat | None = None,
+) -> EmailEvent:
+    event.review_reason = reason
+    return _record(event, EmailEvent.State.NEEDS_REVIEW, seat)
+
+
 def _record(event: EmailEvent, state: str, seat: CourseSeat | None = None) -> EmailEvent:
     event.state = state
     event.seat = seat
-    event.save(update_fields=["state", "seat"])
+    event.save(update_fields=["state", "seat", "review_reason"])
     return event

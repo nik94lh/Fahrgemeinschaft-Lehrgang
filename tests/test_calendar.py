@@ -1,8 +1,8 @@
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 
 from django.test import TestCase
 
-from bookings.models import Course, CourseSession, School
+from bookings.models import BookingStatus, Course, CourseSeat, CourseSession, Participant, School
 
 
 class CalendarTests(TestCase):
@@ -59,3 +59,80 @@ class CalendarTests(TestCase):
         self.assertContains(default_response, "Lehrgangskalender")
         self.assertContains(invalid_response, "Lehrgangskalender")
         self.assertEqual(invalid_response.context["month_id"], default_response.context["month_id"])
+
+    def test_month_rows_use_local_day_columns_and_clip_overlapping_courses(self):
+        self.add_session(
+            "Abschluss um Mitternacht", School.WUERZBURG,
+            datetime(2031, 5, 13, 18, tzinfo=UTC), datetime(2031, 5, 13, 22, tzinfo=UTC),
+        )
+        self.add_session(
+            "Monatswechsel am Ende", School.WUERZBURG,
+            datetime(2031, 5, 30, 15, tzinfo=UTC), datetime(2031, 6, 2, 10, tzinfo=UTC),
+        )
+
+        response = self.client.get("/kalender/", {"month": "2031-05"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context["day_count"], 31)
+        self.assertEqual(response.context["ticks"][0]["date"], date(2031, 5, 1))
+        self.assertEqual(response.context["ticks"][-1]["date"], date(2031, 5, 31))
+
+        groups = response.context["school_groups"]
+        self.assertEqual([group["school"] for group in groups], [School.WUERZBURG, School.REGENSBURG])
+        rows = {row["session"].course.name: row for row in groups[0]["rows"]}
+
+        overlapping = rows["Übergreifender Musterlehrgang"]
+        self.assertEqual((overlapping["start_column"], overlapping["end_column"]), (1, 3))
+        self.assertTrue(overlapping["starts_before"])
+        self.assertFalse(overlapping["ends_after"])
+
+        midnight = rows["Abschluss um Mitternacht"]
+        self.assertEqual((midnight["start_column"], midnight["end_column"]), (13, 14))
+
+        month_end = rows["Monatswechsel am Ende"]
+        self.assertEqual((month_end["start_column"], month_end["end_column"]), (30, 32))
+        self.assertTrue(month_end["ends_after"])
+
+    def test_week_shows_an_iso_week_and_retains_school_in_zoom_links(self):
+        response = self.client.get("/kalender/", {
+            "view": "week", "day": "2031-05-14", "school": School.REGENSBURG
+        })
+
+        self.assertContains(response, "Musterlehrgang Regensburg")
+        self.assertNotContains(response, "Übergreifender Musterlehrgang")
+        self.assertEqual(response.context["period_start"], date(2031, 5, 12))
+        self.assertEqual(response.context["period_end"], date(2031, 5, 18))
+        self.assertEqual(response.context["day_count"], 7)
+        self.assertEqual(response.context["month_query"], "month=2031-05&school=regensburg")
+        self.assertEqual(response.context["previous_query"], "view=week&day=2031-05-05&school=regensburg")
+        self.assertEqual(response.context["current_query"], "view=week&day=2031-05-12&school=regensburg")
+
+    def test_course_detail_shows_booking_seats_and_preserves_calendar_view(self):
+        session = CourseSession.objects.get(course__name="Musterlehrgang Regensburg")
+        CourseSeat.objects.create(
+            session=session,
+            participant=Participant.objects.create(name="Jana Kalenderbeispiel"),
+            status=BookingStatus.CONFIRMED,
+        )
+
+        response = self.client.get(f"/kalender/{session.pk}/", {
+            "view": "week", "day": "2031-05-14", "school": School.REGENSBURG
+        })
+
+        self.assertContains(response, "Musterlehrgang Regensburg")
+        self.assertContains(response, "Jana Kalenderbeispiel")
+        self.assertContains(response, "Bestätigt")
+        self.assertIn("no-store", response.headers["Cache-Control"])
+        self.assertEqual(
+            response.context["back_href"],
+            "/kalender/?view=week&day=2031-05-12&school=regensburg",
+        )
+        self.assertEqual(self.client.post(f"/kalender/{session.pk}/").status_code, 405)
+
+    def test_switching_from_another_month_to_week_uses_first_scheduled_week(self):
+        self.add_session(
+            "Später im September", School.GERETSRIED,
+            datetime(2032, 9, 13, 8, tzinfo=UTC), datetime(2032, 9, 14, 11, tzinfo=UTC),
+        )
+        response = self.client.get("/kalender/", {"month": "2032-09", "school": School.GERETSRIED})
+        self.assertEqual(response.context["week_query"], "view=week&day=2032-09-13&school=geretsried")

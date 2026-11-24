@@ -131,6 +131,26 @@ class EmailEvent(models.Model):
         REVIEWED = "reviewed", "Geklärt"
         DISMISSED = "dismissed", "Verworfen"
 
+    class ReviewReason(models.TextChoices):
+        UNKNOWN = "", "Grund nicht erfasst"
+        UNRECOGNIZED_TYPE = "unrecognized_type", "E-Mail-Typ konnte nicht bestimmt werden"
+        UNSUPPORTED_TYPE = "unsupported_type", "E-Mail-Typ wird manuell geprüft"
+        REASSIGNMENT = "reassignment", "Ummeldung manuell zuordnen"
+        SCHEDULE_CHANGE = "schedule_change", "Terminänderung manuell prüfen"
+        INVALID_REFERENCE = "invalid_reference", "Buchungsreferenz ist ungültig oder mehrdeutig"
+        PARTICIPANT_UNCLEAR = "participant_unclear", "Teilnehmerangabe fehlt oder ist mehrdeutig"
+        COURSE_UNCLEAR = "course_unclear", "Lehrgangsangabe fehlt oder ist mehrdeutig"
+        SCHOOL_UNCLEAR = "school_unclear", "Schulungsort fehlt oder ist mehrdeutig"
+        PERIOD_UNCLEAR = "period_unclear", "Lehrgangszeitraum fehlt oder ist ungültig"
+        REFERENCE_MISMATCH = "reference_mismatch", "Buchungsreferenz widerspricht der Zuordnung"
+        MULTIPLE_SESSIONS = "multiple_sessions", "Mehrere passende Lehrgangstermine"
+        MULTIPLE_SEATS = "multiple_seats", "Mehrere passende Lehrgangsplätze"
+        MULTIPLE_COURSES = "multiple_courses", "Mehrere passende Lehrgänge"
+        PREVIOUS_PARTICIPANT = "previous_participant", "Teilnehmer steht in der Buchungshistorie"
+        NO_MATCHING_BOOKING = "no_matching_booking", "Kein passender Lehrgangsplatz vorhanden"
+        EVENT_ORDER_UNCLEAR = "event_order_unclear", "Reihenfolge der Statusmeldungen ist unklar"
+        PROTECTED_STATUS = "protected_status", "Vorhandener Buchungsstatus erfordert manuelle Prüfung"
+
     class ReviewResolution(models.TextChoices):
         LINKED = "linked", "Einem Lehrgangsplatz zugeordnet"
         REASSIGNED = "reassigned", "Ummeldung in BMS übernommen"
@@ -154,6 +174,7 @@ class EmailEvent(models.Model):
     )
     occurred_at = models.DateTimeField(null=True, blank=True)
     imported_at = models.DateTimeField(auto_now_add=True)
+    review_reason = models.CharField(max_length=24, choices=ReviewReason.choices, blank=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
     review_resolution = models.CharField(max_length=16, choices=ReviewResolution.choices, blank=True)
 

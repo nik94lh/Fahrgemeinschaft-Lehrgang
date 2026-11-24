@@ -1,3 +1,4 @@
+import hashlib
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
 from threading import Barrier
@@ -5,7 +6,7 @@ from threading import Barrier
 from django.db import connections
 from django.test import TestCase, TransactionTestCase, skipUnlessDBFeature
 
-from bookings.models import BookingStatus, CourseSeat, CourseSession, EmailEvent, Participant
+from bookings.models import BookingHistory, BookingStatus, Course, CourseSeat, CourseSession, EmailEvent, Participant
 from bookings.services import ingest
 from mailimport.parser import MailParseError
 from tests.test_mail_parser import message
@@ -45,6 +46,7 @@ class ReconciliationTests(TestCase):
         self.assertEqual(result, ingest(raw))
         self.assertEqual(EmailEvent.objects.count(), 1)
         self.assertEqual(CourseSeat.objects.count(), 1)
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.UNKNOWN)
 
     def test_approval_and_confirmation_use_same_seat(self):
         approval = ingest(eml(
@@ -84,6 +86,7 @@ class ReconciliationTests(TestCase):
         result = ingest(eml("Teilnahmebestätigung"))
 
         self.assertEqual(result.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.MULTIPLE_SEATS)
         self.assertIsNone(result.seat)
         self.assertEqual(CourseSeat.objects.get(pk=existing.seat_id).status, BookingStatus.APPROVED)
         self.assertEqual(CourseSeat.objects.get(pk=other.pk).status, BookingStatus.NEEDS_REVIEW)
@@ -93,6 +96,7 @@ class ReconciliationTests(TestCase):
         result = ingest(eml("Teilnahmebestätigung", reference="TEST-17", period=JUNE))
 
         self.assertEqual(result.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.REFERENCE_MISMATCH)
         self.assertEqual(CourseSeat.objects.count(), 1)
         self.assertEqual(CourseSession.objects.count(), 1)
         self.assertEqual(CourseSeat.objects.get(pk=existing.seat_id).status, BookingStatus.APPROVED)
@@ -109,6 +113,7 @@ class ReconciliationTests(TestCase):
         result = ingest(eml("Teilnahmebestätigung", reference="TEST-18"))
 
         self.assertEqual(result.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.REFERENCE_MISMATCH)
         self.assertEqual(CourseSeat.objects.count(), 1)
 
     def test_multiple_explicit_references_cannot_fall_back_to_other_fields(self):
@@ -118,6 +123,7 @@ class ReconciliationTests(TestCase):
         ))
 
         self.assertEqual(result.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.INVALID_REFERENCE)
         self.assertIsNone(result.seat_id)
         self.assertEqual(CourseSeat.objects.get(pk=existing.seat_id).status, BookingStatus.APPROVED)
 
@@ -144,13 +150,22 @@ class ReconciliationTests(TestCase):
 
         self.assertEqual(cancellation.seat.status, BookingStatus.CANCELLED)
         self.assertEqual(confirmation.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(confirmation.review_reason, EmailEvent.ReviewReason.PROTECTED_STATUS)
         self.assertEqual(CourseSeat.objects.get(pk=cancellation.seat_id).history.count(), 2)
 
     def test_followup_events_without_known_booking_go_to_review(self):
-        for subject in ("Stornierung", "Ummeldung", "Terminänderung"):
+        cases = {
+            "Stornierung": EmailEvent.ReviewReason.NO_MATCHING_BOOKING,
+            "Ummeldung": EmailEvent.ReviewReason.REASSIGNMENT,
+            "Terminänderung": EmailEvent.ReviewReason.SCHEDULE_CHANGE,
+            "Teilnehmerinformation": EmailEvent.ReviewReason.UNRECOGNIZED_TYPE,
+            "Einladung": EmailEvent.ReviewReason.UNSUPPORTED_TYPE,
+        }
+        for subject, reason in cases.items():
             with self.subTest(subject=subject):
                 result = ingest(eml(subject))
                 self.assertEqual(result.state, EmailEvent.State.NEEDS_REVIEW)
+                self.assertEqual(result.review_reason, reason)
                 self.assertIsNone(result.seat)
 
         self.assertEqual(CourseSeat.objects.count(), 0)
@@ -161,6 +176,7 @@ class ReconciliationTests(TestCase):
         result = ingest(eml("Ummeldung", reference="TEST-17", participant="Toni Testperson"))
 
         self.assertEqual(result.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.REASSIGNMENT)
         self.assertEqual(result.seat, existing.seat)
         self.assertEqual(result.seat.participant.name, "Alex Beispiel")
 
@@ -170,8 +186,91 @@ class ReconciliationTests(TestCase):
         result = ingest(eml("Teilnahmebestätigung", participant="?"))
 
         self.assertEqual(result.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.PARTICIPANT_UNCLEAR)
         self.assertEqual(EmailEvent.objects.count(), 1)
         self.assertEqual(CourseSeat.objects.count(), 0)
+
+    def test_undated_cancellation_against_dated_confirmation_records_unclear_order(self):
+        instant = datetime(2027, 4, 25, tzinfo=UTC)
+        ingest(eml("Teilnahmebestätigung"), occurred_at=instant)
+        result = ingest(eml("Stornierung"))
+
+        self.assertEqual(result.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR)
+        self.assertEqual(result.seat.status, BookingStatus.CONFIRMED)
+
+    def test_incomplete_fields_have_distinct_safe_reasons(self):
+        reasons = {
+            "course": EmailEvent.ReviewReason.COURSE_UNCLEAR,
+            "school": EmailEvent.ReviewReason.SCHOOL_UNCLEAR,
+            "period": EmailEvent.ReviewReason.PERIOD_UNCLEAR,
+        }
+        for field, reason in reasons.items():
+            with self.subTest(field=field):
+                raw = eml("Teilnahmebestätigung", **{field: ""})
+                result = ingest(raw)
+                result.refresh_from_db()
+                self.assertEqual(result.review_reason, reason)
+        self.assertFalse(CourseSeat.objects.exists())
+
+    def test_duplicate_sessions_require_review_without_inserting_a_seat(self):
+        current = ingest(eml("Lehrgangsgenehmigung")).seat.session
+        CourseSession.objects.create(
+            course=current.course,
+            school=current.school,
+            starts_at=current.starts_at,
+            ends_at=current.ends_at,
+        )
+
+        result = ingest(eml("Teilnahmebestätigung"))
+
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.MULTIPLE_SESSIONS)
+        self.assertEqual(CourseSeat.objects.count(), 1)
+
+    def test_duplicate_course_labels_require_review_without_creating_session(self):
+        Course.objects.create(name="Gruppenführer")
+        Course.objects.create(name="Gruppenführer")
+
+        result = ingest(eml("Teilnahmebestätigung"))
+
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.MULTIPLE_COURSES)
+        self.assertFalse(CourseSession.objects.exists())
+
+    def test_previous_participant_is_not_automatically_rebooked(self):
+        event = ingest(eml("Lehrgangsgenehmigung"))
+        seat = event.seat
+        previous = seat.participant
+        seat.participant = Participant.objects.create(name="Toni Testperson")
+        seat.save(update_fields=["participant"])
+        BookingHistory.objects.create(
+            seat=seat,
+            previous_participant=previous,
+            participant=seat.participant,
+            previous_status=BookingStatus.APPROVED,
+            status=BookingStatus.REASSIGNED,
+        )
+
+        result = ingest(eml("Teilnahmebestätigung"))
+
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.PREVIOUS_PARTICIPANT)
+        self.assertEqual(CourseSeat.objects.count(), 1)
+
+    def test_legacy_reason_is_never_reconstructed_from_a_duplicate(self):
+        raw = eml("Teilnahmebestätigung", participant="?")
+        legacy = EmailEvent.objects.create(
+            sha256=hashlib.sha256(raw).hexdigest(),
+            kind=EmailEvent.Kind.CONFIRMATION,
+            state=EmailEvent.State.NEEDS_REVIEW,
+        )
+
+        result = ingest(raw)
+
+        self.assertEqual(result.pk, legacy.pk)
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.UNKNOWN)
+        self.assertEqual(result.get_review_reason_display(), "Grund nicht erfasst")
+        legacy.refresh_from_db()
+        self.assertEqual(legacy.review_reason, EmailEvent.ReviewReason.UNKNOWN)
+        self.assertFalse(CourseSeat.objects.exists())
 
 
 class ConcurrentImportTests(TransactionTestCase):

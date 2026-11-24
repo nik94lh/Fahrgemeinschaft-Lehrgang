@@ -1,9 +1,15 @@
 {% extends "workspace/base.html" %}
 {% block title %}Lehrgangskalender{% endblock %}
+{% block page_styles %}{% include "workspace/calendar.css" %}{% endblock %}
 {% block content %}
     <h1>Lehrgangskalender</h1>
-    <form class="panel filters" method="get">
-        <label>Monat<input type="month" name="month" value="{{ month_id }}"></label>
+    <form class="panel filters calendar-filters" method="get">
+        {% if view == 'week' %}
+            <input type="hidden" name="view" value="week">
+            <label>Woche ab <input type="date" name="day" value="{{ period_start|date:'Y-m-d' }}"></label>
+        {% else %}
+            <label>Monat <input type="month" name="month" value="{{ month_id }}"></label>
+        {% endif %}
         <label>Schule
             <select name="school">
                 <option value="">Alle Schulen</option>
@@ -14,39 +20,96 @@
         </label>
         <button type="submit">Anzeigen</button>
     </form>
-    <section class="panel" aria-labelledby="calendar-month">
-        <h2 id="calendar-month">{{ month|date:"F Y" }}</h2>
-        {% if sessions %}
-            <div class="table-scroll" tabindex="0" role="region" aria-labelledby="calendar-month">
-                <table>
-                    <thead>
-                        <tr>
-                            <th scope="col">Lehrgang</th>
-                            <th scope="col">Schule</th>
-                            <th scope="col">Beginn</th>
-                            <th scope="col">Ende</th>
-                            <th scope="col">Plätze</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for session in sessions %}
-                            <tr>
-                                <th scope="row">{{ session.course.name }}</th>
-                                <td>{{ session.get_school_display }}</td>
-                                <td><time datetime="{{ session.starts_at|date:'c' }}">{{ session.starts_at|date:"d.m.Y, H:i" }}</time></td>
-                                <td><time datetime="{{ session.ends_at|date:'c' }}">{{ session.ends_at|date:"d.m.Y, H:i" }}</time></td>
-                                <td>{{ session.seat_count }}</td>
-                            </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-            </div>
-        {% else %}
-            <p class="quiet">Keine Lehrgänge in diesem Monat gefunden.</p>
-        {% endif %}
-        <nav class="pagination" aria-label="Monatsnavigation">
-            <a href="?{{ previous_query }}">Vorheriger Monat</a>
-            <a href="?{{ next_query }}">Nächster Monat</a>
+    <section class="panel calendar-panel" aria-labelledby="calendar-period">
+        <div class="calendar-toolbar">
+            <h2 id="calendar-period">
+                {% if view == 'week' %}
+                    {{ period_start|date:"d.m.Y" }} – {{ period_end|date:"d.m.Y" }}
+                {% else %}
+                    {{ month|date:"F Y" }}
+                {% endif %}
+            </h2>
+            <nav class="calendar-modes" aria-label="Kalenderansicht">
+                <a href="?{{ week_query }}"{% if view == 'week' %} aria-current="true"{% endif %}>Woche</a>
+                <a href="?{{ month_query }}"{% if view == 'month' %} aria-current="true"{% endif %}>Monat</a>
+            </nav>
+        </div>
+        <nav class="calendar-dates" aria-label="Zeitraum wechseln">
+            {% if view == 'week' %}
+                <a href="?{{ previous_query }}">‹ Vorherige Woche</a>
+                <a href="?{{ next_query }}">Nächste Woche ›</a>
+            {% else %}
+                <a href="?{{ previous_query }}">‹ Vorheriger Monat</a>
+                <a href="?{{ next_query }}">Nächster Monat ›</a>
+            {% endif %}
         </nav>
+
+        {% if school_groups %}
+            <p class="calendar-hint quiet" id="calendar-hint">Ein Balken zeigt die belegten Kalendertage. Öffne ihn für Uhrzeiten und Buchungen. Den Plan kannst du seitlich verschieben.</p>
+            <div class="calendar-scroll" tabindex="0" role="region" aria-labelledby="calendar-period" aria-describedby="calendar-hint">
+                <div class="calendar-grid calendar-grid--{{ view }}" style="--days: {{ day_count }};">
+                    <div class="calendar-line calendar-axis" aria-hidden="true">
+                        <div class="calendar-label">Lehrgang</div>
+                        {% for tick in ticks %}
+                            <div class="calendar-tick{% if tick.is_weekend %} is-weekend{% endif %}{% if tick.is_today %} is-today{% endif %}" title="{{ tick.date|date:'l, d.m.Y' }}">
+                                {% if view == 'week' %}<span>{{ tick.date|date:"D" }}</span>{% endif %}
+                                <strong>{{ tick.number }}</strong>
+                            </div>
+                        {% endfor %}
+                    </div>
+                    {% for group in school_groups %}
+                        <section class="school-timeline school-{{ group.school }}" aria-labelledby="school-{{ group.school }}">
+                            <div class="calendar-school">
+                                <h3 id="school-{{ group.school }}">{{ group.label }}</h3>
+                            </div>
+                            {% for row in group.rows %}
+                                <div class="calendar-line calendar-session">
+                                    <div class="calendar-label">
+                                        <span class="calendar-course">{{ row.session.course.name }}</span>
+                                        <span class="calendar-time">{{ row.session.starts_at|date:"d.m." }} – {{ row.session.ends_at|date:"d.m." }}</span>
+                                    </div>
+                                    <div class="calendar-days">
+                                        {% for tick in ticks %}
+                                            <span class="calendar-day{% if tick.is_weekend %} is-weekend{% endif %}{% if tick.is_today %} is-today{% endif %}" style="grid-column: {{ forloop.counter }};" aria-hidden="true"></span>
+                                        {% endfor %}
+                                        <a class="calendar-bar{% if row.starts_before %} continues-before{% endif %}{% if row.ends_after %} continues-after{% endif %}"
+                                           style="grid-column: {{ row.start_column }} / {{ row.end_column }};"
+                                           href="{% url 'calendar_detail' row.session.pk %}?{{ current_query }}"
+                                           aria-label="{{ row.session.course.name }}, {{ group.label }}, {{ row.session.starts_at|date:'d.m.Y, H:i' }} bis {{ row.session.ends_at|date:'d.m.Y, H:i' }}"
+                                           title="{{ row.session.course.name }} · {{ row.session.starts_at|date:'d.m.Y, H:i' }} – {{ row.session.ends_at|date:'d.m.Y, H:i' }}">
+                                            {% if row.starts_before %}<span class="continuation" aria-hidden="true">‹</span>{% endif %}
+                                            <span class="calendar-bar-text" aria-hidden="true">{{ row.session.course.name }}</span>
+                                            {% if row.ends_after %}<span class="continuation" aria-hidden="true">›</span>{% endif %}
+                                        </a>
+                                    </div>
+                                </div>
+                            {% endfor %}
+                        </section>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <details class="calendar-list">
+                <summary>Terminliste mit Uhrzeiten</summary>
+                <div class="table-scroll" tabindex="0" role="region" aria-label="Lehrgänge mit Uhrzeiten">
+                    <table class="mobile-table">
+                        <thead><tr><th scope="col">Lehrgang</th><th scope="col">Schule</th><th scope="col">Beginn</th><th scope="col">Ende</th><th scope="col">Plätze</th></tr></thead>
+                        <tbody>
+                            {% for session in sessions %}
+                                <tr>
+                                    <td data-label="Lehrgang"><a href="{% url 'calendar_detail' session.pk %}?{{ current_query }}">{{ session.course.name }}</a></td>
+                                    <td data-label="Schule">{{ session.get_school_display }}</td>
+                                    <td data-label="Beginn"><time datetime="{{ session.starts_at|date:'c' }}">{{ session.starts_at|date:"d.m.Y, H:i" }}</time></td>
+                                    <td data-label="Ende"><time datetime="{{ session.ends_at|date:'c' }}">{{ session.ends_at|date:"d.m.Y, H:i" }}</time></td>
+                                    <td data-label="Plätze">{{ session.seat_count }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </details>
+        {% else %}
+            <p class="quiet">Keine Lehrgänge in diesem Zeitraum gefunden.</p>
+        {% endif %}
     </section>
 {% endblock %}

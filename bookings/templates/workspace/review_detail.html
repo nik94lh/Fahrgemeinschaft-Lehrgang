@@ -5,9 +5,12 @@
     <p class="intro">{{ event.get_kind_display }} · erfasst am {{ event.imported_at|date:"d.m.Y H:i" }}</p>
     <p><a href="{% url 'review' %}">Zu den Klärungsfällen</a></p>
     <section class="panel">
+        {% if form or event.review_reason %}
+            <p class="review-explanation"><strong>Grund für Klärung</strong><br>{{ event.get_review_reason_display }}</p>
+        {% endif %}
         {% if form %}
             <p>Vergleiche die Angaben mit der ursprünglichen Nachricht. Deine Entscheidung wird in BMS gespeichert.</p>
-            <form method="post">
+            <form class="review-form" method="post">
                 {% csrf_token %}
                 {{ form.non_field_errors }}
                 <p>{{ form.action.label_tag }} {{ form.action }} {{ form.action.errors }}</p>

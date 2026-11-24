@@ -1,6 +1,6 @@
 # Lehrgangs- und Fahrgemeinschaftsmanagement
 
-LFM verwaltet Lehrgänge und Buchungen für die Feuerwehren eines Landkreises. Die Anwendung enthält eine Buchungsübersicht, einen Monatskalender, eine EML-Vorschau und einen optionalen lesenden IMAP-Import. Sie zeigt mögliche Hin- und Rückfahrten anhand bestätigter Lehrgänge. Einladung, Teilnahme und Kontaktfreigabe folgen in späteren Entwicklungsphasen.
+LFM verwaltet Lehrgänge und Buchungen für die Feuerwehren eines Landkreises. Die Anwendung enthält eine Buchungsübersicht, einen Wochen- und Monatskalender, eine EML-Vorschau und einen optionalen lesenden IMAP-Import. Sie zeigt mögliche Hin- und Rückfahrten anhand bestätigter Lehrgänge. Einladung, Teilnahme und Kontaktfreigabe folgen in späteren Entwicklungsphasen.
 
 ## Lokaler Start mit Docker Compose
 
@@ -35,11 +35,11 @@ In einer Python-Umgebung mit den Projektabhängigkeiten funktioniert auch `pytho
 
 ## Automatischer Postfachimport
 
-Auf dem zugriffsgeschützten HTTPS-Testhost richtest du unter **Postfach** eine separate IMAP-Adresse ein. Das Passwort wird verschlüsselt gespeichert. Aktiviere den Abruf nur für ein freigegebenes Postfach, das Kopien der Lehrgangskommunikation erhält. **Postfach** zeigt den letzten Abrufstatus. Unter **Übersicht**, **Buchungen** und **Klärung** siehst du die verarbeiteten Ereignisse, Buchungen und offenen Fälle. **Kalender**, **Feuerwehren** und **Fahrgemeinschaften** ergänzen die Übersicht. SMTP-Versand ist technisch deaktiviert. [Mailimport](docs/MAILIMPORT.md)
+Auf dem zugriffsgeschützten HTTPS-Testhost richtest du unter **Postfach** eine separate IMAP-Adresse ein. Das Passwort wird verschlüsselt gespeichert. Aktiviere den Abruf nur für ein freigegebenes Postfach, das Kopien der Lehrgangskommunikation erhält. **Postfach** zeigt den letzten Abrufstatus. Unter **Übersicht**, **Buchungen** und **Klärung** siehst du die verarbeiteten Ereignisse, Buchungen und offenen Fälle. Bei neu importierten Klärungsfällen siehst du, weshalb BMS die Nachricht nicht automatisch zuordnen oder anwenden konnte. Für ältere Fälle wurde dieser Grund noch nicht erfasst. SMTP-Versand ist technisch deaktiviert. [Mailimport](docs/MAILIMPORT.md)
 
 ## Kalender und mögliche Fahrten
 
-Im **Lehrgangskalender** kannst du Monat und Schule auswählen. Unter **Fahrgemeinschaften** erscheinen mögliche Hin- oder Rückfahrten in den nächsten 28 Tagen, wenn mindestens zwei bestätigte Teilnehmer zur selben Schule fahren und ihre Lehrgangszeiten am selben Tag höchstens 60 Minuten auseinanderliegen. Diese Übersicht zeigt Zeitraum und Anzahl der Personen. Sie sendet keine Einladungen und gibt keine Kontaktdaten frei.
+Im **Kalender** kannst du zwischen Woche und Monat wechseln und nach Schule filtern. Die Zeitbalken zeigen, wann die Lehrgänge stattfinden. Wähle einen Termin, um Beginn, Ende und die zugehörigen Buchungen zu sehen. Eine zugängliche Liste enthält dieselben Termine. Unter **Fahrgemeinschaften** erscheinen mögliche Hin- oder Rückfahrten in den nächsten 28 Tagen, wenn mindestens zwei bestätigte Teilnehmer zur selben Schule fahren und ihre Lehrgangszeiten am selben Tag höchstens 60 Minuten auseinanderliegen. Diese Übersicht zeigt Zeitraum und Anzahl der Personen. Sie sendet keine Einladungen und gibt keine Kontaktdaten frei.
 
 ## Dokumentation
 

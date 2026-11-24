@@ -1,0 +1,34 @@
+{% extends "workspace/base.html" %}
+{% block title %}{{ session.course.name }}{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{{ back_href }}">‹ Zurück zum Kalender</a></p>
+    <h1>{{ session.course.name }}</h1>
+    <p class="intro">{{ session.get_school_display }}</p>
+    <section class="panel detail-times" aria-label="Termin">
+        <dl class="details">
+            <div><dt>Beginn</dt><dd><time datetime="{{ session.starts_at|date:'c' }}">{{ session.starts_at|date:"d.m.Y, H:i" }} Uhr</time></dd></div>
+            <div><dt>Ende</dt><dd><time datetime="{{ session.ends_at|date:'c' }}">{{ session.ends_at|date:"d.m.Y, H:i" }} Uhr</time></dd></div>
+        </dl>
+    </section>
+    <section class="panel" aria-labelledby="seat-title">
+        <h2 id="seat-title">Buchungen zum Termin</h2>
+        {% if seats %}
+            <div class="table-scroll" tabindex="0" role="region" aria-labelledby="seat-title">
+                <table class="mobile-table">
+                    <thead><tr><th scope="col">Teilnehmer/in</th><th scope="col">Status</th><th scope="col">Buchungsreferenz</th></tr></thead>
+                    <tbody>
+                        {% for seat in seats %}
+                            <tr>
+                                <td data-label="Teilnehmer/in">{{ seat.participant.name|default:"—" }}</td>
+                                <td data-label="Status">{{ seat.get_status_display }}</td>
+                                <td data-label="Buchungsreferenz">{{ seat.external_reference|default:"—" }}</td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% else %}
+            <p class="quiet">Für diesen Termin sind keine Buchungen gespeichert.</p>
+        {% endif %}
+    </section>
+{% endblock %}
