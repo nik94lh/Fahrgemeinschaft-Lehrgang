@@ -47,7 +47,7 @@ class RideSuggestionTests(TestCase):
         self.assertIn("no-store", response.headers["Cache-Control"])
         suggestions = list(response.context["page_obj"])
         self.assertEqual([s.direction for s in suggestions], [Carpool.Direction.OUTBOUND, Carpool.Direction.RETURN])
-        self.assertEqual([s.participant_count for s in suggestions], [2, 2])
+        self.assertEqual([s.participant_count for s in suggestions], [2, 3])
 
     def test_duplicate_participants_different_schools_and_unresolved_seats_do_not_form_groups(self):
         self.seat(self.first, self.date, self.date + timedelta(hours=4))
@@ -74,7 +74,7 @@ class RideSuggestionTests(TestCase):
 
         self.assertContains(response, "Noch keine Fahrgemeinschaftsfälle")
 
-    def test_outbound_groups_same_day_starts_from_eight_to_eleven(self):
+    def test_both_directions_group_same_day_without_hour_limit(self):
         beginning = timezone.localtime(self.date).replace(hour=8)
         for participant, start_offset, end_offset in (
             (self.first, 0, 0), (self.second, 1, 50), (self.third, 3, 100),
@@ -95,12 +95,12 @@ class RideSuggestionTests(TestCase):
         self.assertEqual(outbound[0].participant_count, 3)
         self.assertEqual(outbound[0].earliest, beginning)
         self.assertEqual(outbound[0].latest, beginning + timedelta(hours=3))
-        self.assertEqual([item.participant_count for item in returns], [2, 2])
+        self.assertEqual([item.participant_count for item in returns], [3])
 
     def test_close_appointments_on_different_local_days_do_not_match(self):
         beginning = timezone.localtime(self.date).replace(hour=23, minute=50)
         self.seat(self.first, beginning, beginning + timedelta(hours=4))
-        self.seat(self.second, beginning + timedelta(minutes=20), beginning + timedelta(hours=8))
+        self.seat(self.second, beginning + timedelta(minutes=20), beginning + timedelta(days=1, hours=8))
 
         sync_ride_cases()
         response = self.client.get("/fahrgemeinschaften/")

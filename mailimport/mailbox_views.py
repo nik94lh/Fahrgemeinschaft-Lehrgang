@@ -8,9 +8,10 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.decorators.http import require_http_methods
 
+from .contact_replay import ContactReplayError, queue_contact_replay
 from .imap_sync import mailbox_source_id
 from .mailbox_forms import FunctionalAddressesForm, MailboxForm
-from .models import MailboxConfiguration, MailboxCursor, ParticipantRecognitionConfiguration
+from .models import ContactReplayJob, MailboxConfiguration, MailboxCursor, ParticipantRecognitionConfiguration
 from .participant_settings import get_functional_addresses
 
 
@@ -24,8 +25,19 @@ def mailbox_view(request):
         raise Http404
 
     is_post = request.method == "POST"
-    saving_addresses = is_post and request.POST.get("action") == "save-functional-addresses"
-    if is_post and not saving_addresses:
+    action = request.POST.get("action", "") if is_post else ""
+    saving_addresses = action == "save-functional-addresses"
+    starting_replay = action == "start-contact-replay"
+    replay_error = ""
+    if starting_replay:
+        try:
+            queue_contact_replay()
+        except ContactReplayError as error:
+            replay_error = str(error)
+        else:
+            return redirect("mailbox")
+
+    if is_post and not (saving_addresses or starting_replay):
         with transaction.atomic():
             record = MailboxConfiguration.objects.select_for_update().first()
             form = MailboxForm(request.POST, configuration=record)
@@ -62,6 +74,8 @@ def mailbox_view(request):
         if status is not None:
             last_sync_at, last_sync_ok = status
 
+    replay_job = ContactReplayJob.objects.order_by("-created_at", "-pk").first()
+    active_replay_statuses = (ContactReplayJob.Status.QUEUED, ContactReplayJob.Status.RUNNING)
     return render(request, "mailimport/mailbox.html", {
         "form": form,
         "addresses_form": addresses_form,
@@ -73,4 +87,7 @@ def mailbox_view(request):
         "last_sync_at": last_sync_at,
         "last_sync_ok": last_sync_ok,
         "saved": request.method == "GET" and request.GET.get("gespeichert") == "1",
-    })
+        "replay_job": replay_job,
+        "replay_error": replay_error,
+        "replay_active": replay_job is not None and replay_job.status in active_replay_statuses,
+    }, status=400 if replay_error else 200)

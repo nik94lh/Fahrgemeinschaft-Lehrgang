@@ -5,6 +5,7 @@ from django.db import DatabaseError
 
 from bookings.rides_matching import sync_ride_cases
 
+from mailimport.contact_replay import process_contact_replay
 from mailimport.imap_sync import (
     DEFAULT_BATCH_SIZE,
     MAX_BATCH_SIZE,
@@ -36,6 +37,10 @@ class Command(BaseCommand):
                     sync_ride_cases()
                 except DatabaseError:
                     self.stderr.write("Der Abgleich der Fahrgemeinschaften ist fehlgeschlagen.")
+                try:
+                    process_contact_replay()
+                except DatabaseError:
+                    self.stderr.write("Der Adressabgleich konnte nicht fortgesetzt werden.")
                 sleep(interval)
         except KeyboardInterrupt:
             return

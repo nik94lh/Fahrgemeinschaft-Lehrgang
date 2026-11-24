@@ -6,6 +6,7 @@ import json
 import os
 import re
 import ssl
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 
 from django.db import DatabaseError, transaction
@@ -126,6 +127,14 @@ def _require_ok(response):
     return payload
 
 
+@contextmanager
+def _connect_readonly(config: ImapConfig):
+    with _open_mailbox(config) as client:
+        _require_ok(client.login(_quoted(config.username), config.password))
+        _require_ok(client.select(_quoted(config.mailbox), readonly=True))
+        yield client
+
+
 def _response_number(client, name: str) -> int:
     _, data = client.response(name)
     if not data or not isinstance(data[0], bytes) or not _NUMBER.fullmatch(data[0]):
@@ -186,11 +195,15 @@ def _fetch_body(client, uid: int, expected_size: int) -> bytes | None:
     return raw
 
 
-def _import_uid(client, uid: int) -> bool:
+def _read_uid(client, uid: int) -> bytes | None:
     size = _fetch_size(client, uid)
     if size is None or size == 0 or size > MAX_EML_BYTES:
-        return False
-    raw = _fetch_body(client, uid, size)
+        return None
+    return _fetch_body(client, uid, size)
+
+
+def _import_uid(client, uid: int) -> bool:
+    raw = _read_uid(client, uid)
     if raw is None:
         return False
     try:
@@ -230,9 +243,7 @@ def sync_mailbox(config: ImapConfig, *, limit: int = DEFAULT_BATCH_SIZE) -> Sync
     if not 1 <= limit <= MAX_BATCH_SIZE:
         raise ImapSyncError("Das Abruflimit muss zwischen 1 und 100 liegen.")
     try:
-        with _open_mailbox(config) as client:
-            _require_ok(client.login(_quoted(config.username), config.password))
-            _require_ok(client.select(_quoted(config.mailbox), readonly=True))
+        with _connect_readonly(config) as client:
             return _sync_selected(client, config, limit)
     except (ImapSyncError, OSError, imaplib.IMAP4.error, DatabaseError) as error:
         try:

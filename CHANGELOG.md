@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.7.1
+
+- Mögliche Rückfahrten werden wie Hinfahrten nach Schule und Kalendertag ermittelt. Hin- und Rückrichtung bleiben getrennt.
+- Im **Postfach** lässt sich einmalig ein Adressnachtrag für bereits verarbeitete Nachrichten starten. Der lesende Abgleich ergänzt ausschließlich fehlende Teilnehmeradressen bei eindeutiger Zuordnung und zeigt den Fortschritt an.
+
 ## 0.7.0
 
 - Mögliche Hinfahrten werden bei bestätigten Lehrgängen an derselben Schule und mit Beginn am selben Kalendertag auch bei unterschiedlichen Startzeiten angezeigt. Für Rückfahrten dürfen die Endzeiten am selben Tag höchstens 60 Minuten auseinanderliegen.

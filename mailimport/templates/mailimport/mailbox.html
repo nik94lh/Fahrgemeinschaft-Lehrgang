@@ -52,4 +52,29 @@
     <button type="submit">Funktionsadressen speichern</button>
   </form>
 </section>
+<section class="panel participant-profile" aria-labelledby="contact-replay-heading" style="max-width: 38rem; margin-block-start: 1rem;">
+  <h2 id="contact-replay-heading">Einmaliger Adressabgleich</h2>
+  <p class="note">BMS liest frühere Mails im Importpostfach erneut und ergänzt eindeutig belegte, fehlende Teilnehmeradressen. Der normale Postfachimport läuft getrennt weiter.</p>
+  {% if replay_error %}
+    <p class="errorlist" role="alert">{{ replay_error }}</p>
+  {% endif %}
+  {% if replay_job %}
+    <dl class="details" style="margin-block-start: .75rem;">
+      <div><dt>Status</dt><dd>{{ replay_job.get_status_display }}</dd></div>
+      <div><dt>Geprüfte Nachrichten</dt><dd>{{ replay_job.scanned_count }}</dd></div>
+      <div><dt>Ergänzte Adressen</dt><dd>{{ replay_job.enriched_count }}</dd></div>
+      {% if replay_job.finished_at %}<div><dt>Beendet</dt><dd>{{ replay_job.finished_at|date:"d.m.Y, H:i" }} Uhr</dd></div>{% endif %}
+    </dl>
+    {% if replay_job.error_message %}<p class="note" role="status">{{ replay_job.error_message }}</p>{% endif %}
+  {% endif %}
+  {% if replay_active %}
+    <p class="note">Lade die Seite neu, um den Stand zu sehen.</p>
+  {% else %}
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="start-contact-replay">
+      <button type="submit">Adressabgleich starten</button>
+    </form>
+  {% endif %}
+</section>
 {% endblock %}

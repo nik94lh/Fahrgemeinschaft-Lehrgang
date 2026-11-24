@@ -1,0 +1,125 @@
+from django.test import TestCase
+
+from bookings.contact_replay import enrich_contact_from_imported_mail
+from bookings.models import BookingHistory, BookingStatus, CourseSeat, EmailEvent, Participant
+from bookings.services import ingest
+from mailimport.models import ParticipantRecognitionConfiguration
+from tests.test_participant_identity import PERSONAL, booking_mail
+
+
+class ContactReplayTests(TestCase):
+    def setUp(self):
+        self.raw = booking_mail(to=PERSONAL)
+        self.event = ingest(self.raw)
+        self.seat = self.event.seat
+        self.participant = self.seat.participant
+        self.addresses = ParticipantRecognitionConfiguration.objects.create(
+            functional_addresses=["lehrgaenge@example.invalid"],
+        )
+
+    def replay(self, raw=None):
+        return enrich_contact_from_imported_mail(self.raw if raw is None else raw)
+
+    def test_exact_legacy_approval_adds_address_once_without_reimporting(self):
+        self.assertEqual(self.participant.email, "")
+        self.assertEqual(self.event.state, EmailEvent.State.APPLIED)
+        self.assertTrue(self.event.booking_changes.exists())
+
+        self.assertTrue(self.replay())
+        self.assertFalse(self.replay())
+
+        self.participant.refresh_from_db()
+        self.seat.refresh_from_db()
+        self.event.refresh_from_db()
+        self.assertEqual(self.participant.email, PERSONAL)
+        self.assertEqual(self.seat.status, BookingStatus.APPROVED)
+        self.assertEqual(self.seat.participant_id, self.participant.pk)
+        self.assertEqual(self.event.state, EmailEvent.State.APPLIED)
+        self.assertEqual(EmailEvent.objects.count(), 1)
+        self.assertEqual(BookingHistory.objects.count(), 1)
+        self.assertEqual(CourseSeat.objects.count(), 1)
+
+    def test_new_digest_or_invalid_message_has_no_effect(self):
+        self.assertFalse(self.replay(self.raw + b"\n"))
+        self.assertFalse(self.replay(b"malformed"))
+        self.participant.refresh_from_db()
+        self.assertEqual(self.participant.email, "")
+        self.assertEqual(EmailEvent.objects.count(), 1)
+
+    def test_needs_review_event_and_inactive_or_unresolved_seat_have_no_effect(self):
+        self.event.state = EmailEvent.State.NEEDS_REVIEW
+        self.event.save(update_fields=["state"])
+        self.assertFalse(self.replay())
+
+        self.event.state = EmailEvent.State.APPLIED
+        self.event.save(update_fields=["state"])
+        self.seat.status = BookingStatus.CANCELLED
+        self.seat.save(update_fields=["status"])
+        self.assertFalse(self.replay())
+
+        self.seat.status = BookingStatus.CONFIRMED
+        self.seat.save(update_fields=["status"])
+        EmailEvent.objects.create(
+            sha256="b" * 64, state=EmailEvent.State.NEEDS_REVIEW, seat=self.seat,
+        )
+        self.assertFalse(self.replay())
+        self.participant.refresh_from_db()
+        self.assertEqual(self.participant.email, "")
+
+    def test_functional_address_and_conflicting_profile_are_ignored(self):
+        self.addresses.functional_addresses = [PERSONAL]
+        self.addresses.save(update_fields=["functional_addresses"])
+        self.assertFalse(self.replay())
+        self.addresses.functional_addresses = ["lehrgaenge@example.invalid"]
+        self.addresses.save(update_fields=["functional_addresses"])
+
+        Participant.objects.create(name="Andere Testperson", email=PERSONAL)
+        self.assertFalse(self.replay())
+        self.participant.refresh_from_db()
+        self.assertEqual(self.participant.email, "")
+        self.assertEqual(self.seat.participant_id, self.participant.pk)
+
+    def test_later_reassignment_is_rejected_even_with_an_identical_name(self):
+        replacement = Participant.objects.create(name=self.participant.name)
+        self.seat.participant = replacement
+        self.seat.save(update_fields=["participant"])
+        BookingHistory.objects.create(
+            seat=self.seat, previous_participant=self.participant, participant=replacement,
+            previous_status=self.seat.status, status=self.seat.status,
+        )
+
+        self.assertFalse(self.replay())
+        replacement.refresh_from_db()
+        self.participant.refresh_from_db()
+        self.assertEqual(replacement.email, "")
+        self.assertEqual(self.participant.email, "")
+
+    def test_existing_address_is_never_overwritten(self):
+        self.participant.email = "verifiziert@example.invalid"
+        self.participant.save(update_fields=["email"])
+
+        self.assertFalse(self.replay())
+        self.participant.refresh_from_db()
+        self.assertEqual(self.participant.email, "verifiziert@example.invalid")
+
+    def test_unchanged_status_mail_can_use_unambiguous_earlier_history(self):
+        later_mail = self.raw + b"\n"
+        self.addresses.functional_addresses = []
+        self.addresses.save(update_fields=["functional_addresses"])
+        later_event = ingest(later_mail)
+        self.assertEqual(later_event.state, EmailEvent.State.APPLIED)
+        self.assertFalse(later_event.booking_changes.exists())
+        self.addresses.functional_addresses = ["lehrgaenge@example.invalid"]
+        self.addresses.save(update_fields=["functional_addresses"])
+
+        self.assertTrue(self.replay(later_mail))
+        self.participant.refresh_from_db()
+        self.assertEqual(self.participant.email, PERSONAL)
+        self.assertEqual(BookingHistory.objects.count(), 1)
+
+    def test_missing_history_has_no_effect(self):
+        self.event.booking_changes.all().delete()
+
+        self.assertFalse(self.replay())
+        self.participant.refresh_from_db()
+        self.assertEqual(self.participant.email, "")

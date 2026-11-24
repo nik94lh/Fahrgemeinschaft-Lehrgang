@@ -1,5 +1,4 @@
 """Operator views for persisted ride matches."""
-from datetime import timedelta
 from urllib.parse import urlencode
 
 from django import forms
@@ -12,7 +11,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
 from .models import RideCase
-from .rides_matching import LOOKAHEAD, RETURN_TOLERANCE, set_ride_case_status, sync_ride_cases
+from .rides_matching import LOOKAHEAD, set_ride_case_status, sync_ride_cases
 
 
 class RideCaseStatusForm(forms.Form):
@@ -49,7 +48,6 @@ def rides(request):
         "querystring": urlencode({"status": selected_status}) if selected_status else "",
         "synced": request.GET.get("abgleich") == "1",
         "lookahead_days": LOOKAHEAD.days,
-        "return_tolerance_minutes": RETURN_TOLERANCE // timedelta(minutes=1),
     })
 
 

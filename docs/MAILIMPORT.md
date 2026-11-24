@@ -36,6 +36,12 @@ Bevorzugt wird eine An-Adresse, deren Anzeigename eindeutig zum erkannten Teilne
 
 Stimmen eine nicht leere normalisierte E-Mail-Adresse und der Name überein, kann ein vorhandenes Teilnehmerprofil für weitere Buchungen wiederverwendet werden. Derselbe Name allein reicht für die Wiederverwendung eines Profils nicht aus. Bestehende Profile werden weder pauschal zusammengeführt noch werden alte E-Mail-Ereignisse automatisch erneut eingelesen. Fehlt die Adresse, öffne unter **Buchungen** über den Teilnehmernamen die Ansicht **Teilnehmer zur Buchung**. Prüfe die Originalnachricht und wähle **Adresse speichern**. Wenn exakt dieselbe Adresse bereits für ein eindeutig passendes Profil hinterlegt ist, kann die Buchung diesem Profil zugeordnet werden. Bestehende Adressen und andere Buchungen bleiben erhalten. Die Aktion löst keinen Versand aus.
 
+## Fehlende Teilnehmeradressen nachtragen
+
+Unter **Postfach → Einmaliger Adressabgleich** kannst du mit **Adressabgleich starten** einen Auftrag vormerken. Auf bms.planspielplatte.de merkt das Update 0.7.1 den angeforderten Auftrag einmalig vor, wenn das Importpostfach aktiv ist und bereits ein regulärer Importfortschritt vorliegt. Der Auftrag liest die dort noch verfügbaren Nachrichten per IMAP bis zum gespeicherten Stand des regulären Abrufs. Der reguläre Import verarbeitet neuere Nachrichten wie gewohnt. Der Nachtrag läuft nur auf ausdrücklichen Auftrag und liest die Historie nicht bei jedem Abruf erneut.
+
+BMS ergänzt eine Adresse ausschließlich, wenn der SHA-256-Fingerabdruck zu einem bereits angewendeten Ereignis passt und die aktuellen Zuordnungsregeln dieselbe Person im bestehenden Teilnehmerprofil eindeutig identifizieren. Die Ausschlüsse für Funktionsadressen gelten auch hier. Bereits hinterlegte Adressen, Buchungsstatus und Zuordnungen bleiben unverändert. Die Aktion sendet keine E-Mail. Fortschritt und Ergebnis stehen unter **Postfach**.
+
 ## Späterer Versand
 
 SMTP-Versand ist technisch deaktiviert. Eine spätere SMTP-Anbindung nutzt eine eigene Absenderidentität mit eigenen Zugangsdaten und kann einen anderen Anbieter verwenden. Vorgesehen sind Entwicklung, Simulation mit lokalen Vorschauen, Testversand nur an ausdrücklich freigegebene Adressen und ausdrücklich freigegebener Produktivbetrieb.

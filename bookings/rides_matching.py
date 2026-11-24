@@ -1,8 +1,8 @@
 """Persist potential rides separately from the operator's workflow decisions."""
 
-from collections import Counter, defaultdict
+from collections import defaultdict
 from dataclasses import dataclass
-from datetime import UTC, date, datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
@@ -14,8 +14,8 @@ from .services import _lock_import
 
 
 LOOKAHEAD = timedelta(days=28)
-RETURN_TOLERANCE = timedelta(minutes=60)
 BERLIN = ZoneInfo("Europe/Berlin")
+_LEGACY_STATUS_PRIORITY = {RideCase.Status.IN_REVIEW: 2, RideCase.Status.CLOSED: 1}
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,10 +29,7 @@ class _Match:
 
     @property
     def key(self) -> str:
-        day_key = f"{self.school}:{self.direction}:{self.travel_date.isoformat()}"
-        if self.direction == Carpool.Direction.OUTBOUND:
-            return day_key
-        return f"{day_key}:{self.earliest.astimezone(UTC).isoformat()}"
+        return f"{self.school}:{self.direction}:{self.travel_date.isoformat()}"
 
 
 def _trip_groups(now: datetime):
@@ -55,32 +52,51 @@ def _trip_groups(now: datetime):
     return groups
 
 
-def _matches_for_group(school, direction, travel_date, trips):
-    ordered = sorted(trips)
-    if direction == Carpool.Direction.OUTBOUND:
-        if len({participant for _, participant, _ in ordered}) >= 2:
-            yield _Match(
-                school, direction, travel_date, ordered[0][0], ordered[-1][0],
-                frozenset(seat_id for _, _, seat_id in ordered),
-            )
+def _seat_links(cases):
+    links = defaultdict(set)
+    associations = RideCase.seats.through.objects.filter(ridecase_id__in=[case.pk for case in cases])
+    for case_id, seat_id in associations.values_list("ridecase_id", "courseseat_id").iterator():
+        links[case_id].add(seat_id)
+    return links
+
+
+def _adopt_legacy_return_cases(matches, cases):
+    pending = {
+        (match.school, match.travel_date): match
+        for key, match in matches.items()
+        if key not in cases and match.direction == Carpool.Direction.RETURN
+    }
+    if not pending:
         return
 
-    counts = Counter()
-    right = 0
-    for left, (earliest, participant, _) in enumerate(ordered):
-        previous_right = right
-        while right < len(ordered) and ordered[right][0] - earliest <= RETURN_TOLERANCE:
-            counts[ordered[right][1]] += 1
-            right += 1
-        # Later left bounds with the same right bound only repeat subsets.
-        if right > previous_right and len(counts) >= 2:
-            yield _Match(
-                school, direction, travel_date, earliest, ordered[right - 1][0],
-                frozenset(seat_id for _, _, seat_id in ordered[left:right]),
-            )
-        counts[participant] -= 1
-        if not counts[participant]:
-            del counts[participant]
+    legacy = RideCase.objects.select_for_update().filter(
+        school__in={school for school, _ in pending},
+        direction=Carpool.Direction.RETURN,
+        travel_date__in={day for _, day in pending},
+    )
+    options = []
+    for case in legacy:
+        match = pending.get((case.school, case.travel_date))
+        if match and case.match_key.startswith(f"{match.key}:"):
+            options.append((match, case))
+
+    links = _seat_links(case for _, case in options)
+    candidates = defaultdict(list)
+    for match, case in options:
+        shared = len(links[case.pk] & match.seat_ids)
+        if shared:
+            priority = _LEGACY_STATUS_PRIORITY.get(case.status, 0)
+            candidates[match.key].append((priority, shared, -case.pk, case))
+
+    adopted = []
+    for key, choices in candidates.items():
+        # Preserve work in progress and closed decisions before adopting an open case.
+        case = max(choices, key=lambda choice: choice[:3])[3]
+        case.match_key = key
+        cases[key] = case
+        adopted.append(case)
+    if adopted:
+        RideCase.objects.bulk_update(adopted, ["match_key"])
 
 
 @transaction.atomic
@@ -88,12 +104,18 @@ def sync_ride_cases(*, now: datetime | None = None) -> int:
     """Refresh qualifying seats while preserving each case's workflow status."""
     _lock_import()
     groups = _trip_groups(now or timezone.now())
-    matches = {
-        match.key: match
-        for (school, direction, travel_date), trips in groups.items()
-        for match in _matches_for_group(school, direction, travel_date, trips)
-    }
+    matches = {}
+    for (school, direction, travel_date), trips in groups.items():
+        if len({participant for _, participant, _ in trips}) < 2:
+            continue
+        times = [instant for instant, _, _ in trips]
+        match = _Match(
+            school, direction, travel_date, min(times), max(times),
+            frozenset(seat_id for _, _, seat_id in trips),
+        )
+        matches[match.key] = match
     cases = RideCase.objects.in_bulk(matches, field_name="match_key")
+    _adopt_legacy_return_cases(matches, cases)
     new = []
     changed = []
     for key, match in matches.items():
@@ -114,10 +136,7 @@ def sync_ride_cases(*, now: datetime | None = None) -> int:
     if changed:
         RideCase.objects.bulk_update(changed, ["currently_matches", "earliest", "latest"])
 
-    links = defaultdict(set)
-    associations = RideCase.seats.through.objects.filter(ridecase_id__in=[case.pk for case in cases.values()])
-    for case_id, seat_id in associations.values_list("ridecase_id", "courseseat_id").iterator():
-        links[case_id].add(seat_id)
+    links = _seat_links(cases.values())
     for key, match in matches.items():
         case = cases[key]
         if links[case.pk] != match.seat_ids:

@@ -14,11 +14,13 @@ class RideWorkerTests(SimpleTestCase):
         with (
             patch(f"{COMMAND}.load_configuration", return_value=None),
             patch(f"{COMMAND}.sync_ride_cases") as reconcile,
+            patch(f"{COMMAND}.process_contact_replay") as replay,
             patch(f"{COMMAND}.sleep", side_effect=KeyboardInterrupt),
         ):
             call_command("sync_mailbox", watch=True, stdout=StringIO())
 
         reconcile.assert_called_once_with()
+        replay.assert_called_once_with()
 
 
     def test_watch_retries_a_failed_ride_sync_without_exposing_error_details(self):
@@ -26,6 +28,7 @@ class RideWorkerTests(SimpleTestCase):
         with (
             patch(f"{COMMAND}.load_configuration", return_value=None),
             patch(f"{COMMAND}.sync_ride_cases", side_effect=[DatabaseError("internal detail"), None]) as reconcile,
+            patch(f"{COMMAND}.process_contact_replay"),
             patch(f"{COMMAND}.sleep", side_effect=[None, KeyboardInterrupt]),
         ):
             call_command("sync_mailbox", watch=True, stderr=errors)
