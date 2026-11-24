@@ -1,5 +1,6 @@
 """Read-only year, month and week views for the schedule."""
-from collections import defaultdict
+from calendar import Calendar
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from urllib.parse import urlencode
@@ -16,6 +17,7 @@ from .models import CourseSession, School
 
 DAY = timedelta(days=1)
 WEEK = timedelta(days=7)
+MONTH_CHOICES = tuple(date(2000, month, 1) for month in range(1, 13))
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +64,9 @@ def _selected_period(params, today):
         return _Period("week", start, start + WEEK, start - WEEK)
 
     value = params.get("month", "")
+    month_number = params.get("month_number", "")
+    if not value and len(month_number) in (1, 2) and month_number.isascii() and month_number.isdigit():
+        value = f"{params.get('year', '')}-{month_number.zfill(2)}"
     start = _selected_date(f"{value}-01", today.replace(day=1))
     return _Period("month", start, _next_month(start), (start - DAY).replace(day=1))
 
@@ -84,17 +89,6 @@ def _query_string(view, anchor, school):
 
 
 def _ticks(period, today):
-    if period.view == "year":
-        return [
-            {
-                "date": period.start.replace(month=month),
-                "number": month,
-                "is_today": today.year == period.start.year and today.month == month,
-                "is_weekend": False,
-            }
-            for month in range(1, 13)
-        ]
-
     ticks = []
     for offset in range((period.stop - period.start).days):
         day = period.start + timedelta(days=offset)
@@ -107,26 +101,57 @@ def _ticks(period, today):
     return ticks
 
 
-def _grid_column(day, period):
-    if period.view == "year":
-        return day.month
-    return (day - period.start).days + 1
+def _occupied_dates(session, period):
+    starts_on = timezone.localtime(session.starts_at).date()
+    ends_at = timezone.localtime(session.ends_at)
+    last_day = ends_at.date() - DAY if ends_at.time() == time.min else ends_at.date()
+    return max(starts_on, period.start), min(last_day, period.last_day)
+
+
+def _month_overview(sessions, period, today, school):
+    day_deltas = Counter()
+    month_counts = Counter()
+    for session in sessions:
+        start, end = _occupied_dates(session, period)
+        day_deltas[start] += 1
+        day_deltas[end + DAY] -= 1
+        for month in range(start.month, end.month + 1):
+            month_counts[month] += 1
+
+    months = []
+    running_count = 0
+    calendar = Calendar()
+    for month_number in range(1, 13):
+        start = period.start.replace(month=month_number)
+        days = []
+        occupied_days = []
+        for number in calendar.itermonthdays(start.year, month_number):
+            if number == 0:
+                days.append(None)
+                continue
+            day = start.replace(day=number)
+            running_count += day_deltas[day]
+            days.append({"date": day, "count": running_count, "is_today": day == today})
+            if running_count:
+                occupied_days.append(number)
+        months.append({
+            "start": start,
+            "query": _query_string("month", start, school),
+            "days": days,
+            "occupied_days": occupied_days,
+            "session_count": month_counts[month_number],
+        })
+    return months
 
 
 def _timeline_rows(sessions, period, starts, ends):
     by_school = defaultdict(list)
     for session in sessions:
-        start = timezone.localtime(session.starts_at)
-        end = timezone.localtime(session.ends_at)
-        first_day = max(start.date(), period.start)
-        last_day = end.date()
-        if end.time() == time.min:
-            last_day -= DAY
-        last_day = min(last_day, period.last_day)
+        first_day, last_day = _occupied_dates(session, period)
         by_school[session.school].append({
             "session": session,
-            "start_column": _grid_column(first_day, period),
-            "end_column": _grid_column(last_day, period) + 1,
+            "start_column": (first_day - period.start).days + 1,
+            "end_column": (last_day - period.start).days + 2,
             "starts_before": session.starts_at < starts,
             "ends_after": session.ends_at > ends,
         })
@@ -151,9 +176,12 @@ def calendar(request):
     )
     if school:
         sessions = sessions.filter(school=school)
-    sessions = list(sessions.select_related("course").annotate(seat_count=Count("seats")).order_by(
-        "starts_at", "course__name", "pk"
-    ))
+    if period.view == "year":
+        sessions = list(sessions.only("starts_at", "ends_at").order_by("starts_at", "pk"))
+    else:
+        sessions = list(sessions.select_related("course").annotate(seat_count=Count("seats")).order_by(
+            "starts_at", "course__name", "pk"
+        ))
 
     month_anchor = period.start
     week_anchor = period.start
@@ -167,20 +195,19 @@ def calendar(request):
             week_anchor = max(period.start, timezone.localtime(sessions[0].starts_at).date())
         if period.view == "year":
             month_anchor = week_anchor
-    ticks = _ticks(period, today)
-    return render(request, "workspace/calendar.html", {
+    context = {
         "section": "calendar",
         "view": period.view,
         "month": month_anchor.replace(day=1),
         "month_id": month_anchor.isoformat()[:7],
+        "month_choices": MONTH_CHOICES,
         "year_id": month_anchor.isoformat()[:4],
         "day_id": period.start.isoformat(),
         "period_start": period.start,
         "period_end": period.last_day,
-        "ticks": ticks,
-        "day_count": len(ticks),
-        "school_groups": _timeline_rows(sessions, period, starts, ends),
-        "sessions": sessions,
+        "today_query": _query_string(
+            period.view, _week_start(today) if period.view == "week" else today, school,
+        ),
         "selected_school": school,
         "school_choices": School.choices,
         "previous_query": _query_string(period.view, period.previous, school),
@@ -189,7 +216,18 @@ def calendar(request):
         "month_query": _query_string("month", month_anchor, school),
         "week_query": _query_string("week", _week_start(week_anchor), school),
         "year_query": _query_string("year", month_anchor, school),
-    })
+    }
+    if period.view == "year":
+        context["months"] = _month_overview(sessions, period, today, school)
+    else:
+        ticks = _ticks(period, today)
+        context.update({
+            "ticks": ticks,
+            "day_count": len(ticks),
+            "school_groups": _timeline_rows(sessions, period, starts, ends),
+            "sessions": sessions,
+        })
+    return render(request, "workspace/calendar.html", context)
 
 
 @never_cache

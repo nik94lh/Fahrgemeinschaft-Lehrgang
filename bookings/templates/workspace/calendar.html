@@ -3,24 +3,42 @@
 {% block page_styles %}{% include "workspace/calendar.css" %}{% endblock %}
 {% block content %}
     <h1>Lehrgangskalender</h1>
-    <form class="panel filters calendar-filters" method="get">
+    <form class="panel filters calendar-filters calendar-filters--{{ view }}" method="get">
         {% if view == 'week' %}
             <input type="hidden" name="view" value="week">
-            <label>Woche ab <input type="date" name="day" value="{{ period_start|date:'Y-m-d' }}"></label>
+            <div>
+                <label for="calendar-day">Woche ab</label>
+                <input id="calendar-day" type="date" name="day" value="{{ period_start|date:'Y-m-d' }}">
+            </div>
         {% elif view == 'year' %}
             <input type="hidden" name="view" value="year">
-            <label>Jahr <input type="number" name="year" min="2" max="9998" step="1" value="{{ year_id }}"></label>
+            <div>
+                <label for="calendar-year">Jahr</label>
+                <input id="calendar-year" type="text" name="year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" value="{{ year_id }}">
+            </div>
         {% else %}
-            <label>Monat <input type="month" name="month" value="{{ month_id }}"></label>
+            <div>
+                <label for="calendar-month-number">Monat</label>
+                <select name="month_number" id="calendar-month-number">
+                    {% for choice in month_choices %}
+                        <option value="{{ choice|date:'m' }}"{% if choice.month == month.month %} selected{% endif %}>{{ choice|date:"F" }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div>
+                <label for="calendar-year">Jahr</label>
+                <input id="calendar-year" type="text" name="year" inputmode="numeric" pattern="[0-9]{4}" maxlength="4" value="{{ year_id }}">
+            </div>
         {% endif %}
-        <label>Schule
-            <select name="school">
+        <div class="calendar-school-filter">
+            <label for="calendar-school">Schule</label>
+            <select name="school" id="calendar-school">
                 <option value="">Alle Schulen</option>
                 {% for key, label in school_choices %}
                     <option value="{{ key }}"{% if key == selected_school %} selected{% endif %}>{{ label }}</option>
                 {% endfor %}
             </select>
-        </label>
+        </div>
         <button type="submit">Anzeigen</button>
     </form>
     <section class="panel calendar-panel" aria-labelledby="calendar-period">
@@ -43,30 +61,31 @@
         <nav class="calendar-dates" aria-label="Zeitraum wechseln">
             {% if view == 'week' %}
                 <a href="?{{ previous_query }}">‹ Vorherige Woche</a>
+                <a href="?{{ today_query }}">Diese Woche</a>
                 <a href="?{{ next_query }}">Nächste Woche ›</a>
             {% elif view == 'year' %}
                 <a href="?{{ previous_query }}">‹ Vorheriges Jahr</a>
+                <a href="?{{ today_query }}">Dieses Jahr</a>
                 <a href="?{{ next_query }}">Nächstes Jahr ›</a>
             {% else %}
                 <a href="?{{ previous_query }}">‹ Vorheriger Monat</a>
+                <a href="?{{ today_query }}">Dieser Monat</a>
                 <a href="?{{ next_query }}">Nächster Monat ›</a>
             {% endif %}
         </nav>
 
-        {% if school_groups %}
-            <p class="calendar-hint quiet" id="calendar-hint">{% if view == 'year' %}Die Balken markieren Monate mit mindestens einem Lehrgangstag.{% else %}Ein Balken zeigt die belegten Kalendertage.{% endif %} Öffne einen Balken für den genauen Zeitraum und die Buchungen. Den Plan kannst du seitlich verschieben.</p>
+        {% if view == 'year' %}
+            {% include "workspace/calendar_year.html" %}
+        {% elif school_groups %}
+            <p class="calendar-hint quiet" id="calendar-hint">Ein Balken zeigt die belegten Kalendertage. Öffne ihn für Uhrzeiten und Buchungen. Den Plan kannst du seitlich verschieben.</p>
             <div class="calendar-scroll" tabindex="0" role="region" aria-labelledby="calendar-period" aria-describedby="calendar-hint">
                 <div class="calendar-grid calendar-grid--{{ view }}" style="--days: {{ day_count }};">
                     <div class="calendar-line calendar-axis" aria-hidden="true">
                         <div class="calendar-label">Lehrgang</div>
                         {% for tick in ticks %}
-                            <div class="calendar-tick{% if tick.is_weekend %} is-weekend{% endif %}{% if tick.is_today %} is-today{% endif %}" title="{% if view == 'year' %}{{ tick.date|date:'F Y' }}{% else %}{{ tick.date|date:'l, d.m.Y' }}{% endif %}">
-                                {% if view == 'year' %}
-                                    <strong>{{ tick.date|date:"M" }}</strong>
-                                {% else %}
-                                    {% if view == 'week' %}<span>{{ tick.date|date:"D" }}</span>{% endif %}
-                                    <strong>{{ tick.number }}</strong>
-                                {% endif %}
+                            <div class="calendar-tick{% if tick.is_weekend %} is-weekend{% endif %}{% if tick.is_today %} is-today{% endif %}" title="{{ tick.date|date:'l, d.m.Y' }}">
+                                <span class="calendar-weekday">{{ tick.date|date:"D" }}</span>
+                                <strong>{{ tick.number }}</strong>
                             </div>
                         {% endfor %}
                     </div>

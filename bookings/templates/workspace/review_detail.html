@@ -1,34 +1,151 @@
 {% extends "workspace/base.html" %}
 {% block title %}Klärungsfall {{ event.pk }}{% endblock %}
+{% block page_styles %}
+    .review-layout { display: grid; gap: 1rem; }
+    .review-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .review-next { border-inline-start: .3rem solid var(--accent); }
+    .review-next p + p { margin-block-start: .4rem; }
+    .review-actions { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 13rem), 1fr)); gap: .8rem; }
+    .review-action { display: grid; align-content: start; gap: .4rem; padding: .85rem; border: 1px solid var(--line); border-radius: .5rem; text-decoration: none; color: var(--ink); }
+    .review-action span { color: var(--muted); font-size: .92rem; }
+    .review-action:hover, .review-action[aria-current] { border-color: var(--accent); background: #edf2ff; }
+    .review-action strong { color: var(--accent); }
+    .review-decision { border-block-start: 1px solid var(--rule); margin-block-start: 1.25rem; padding-block-start: 1rem; scroll-margin-block-start: 1rem; }
+    .review-decision h3 { margin-block-end: 1rem; }
+    .review-fields { max-width: 42rem; }
+    .review-field { margin-block: .8rem; }
+    .review-field label, .review-search label { display: block; font-weight: 650; }
+    .review-field select { display: block; width: 100%; min-width: 0; margin-block-start: .25rem; padding: .5rem; font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: .45rem; background: white; }
+    .review-search > div { display: flex; align-items: end; flex-wrap: wrap; gap: .65rem; }
+    .review-search > div > div { flex: 1 1 12rem; }
+    .review-search button, .review-form button { width: auto; margin-block: 0; }
+    .review-info { margin-block: .65rem 1rem; }
+    .review-confirm { margin-block: 1rem; }
+    .review-confirm label { display: flex; align-items: baseline; gap: .5rem; }
+    .review-confirm input { margin: 0; }
+    @media (max-width: 680px) { .review-facts { grid-template-columns: 1fr; } }
+{% endblock %}
 {% block content %}
+    <p class="back-link"><a href="{% url 'review' %}">Zu den Klärungsfällen</a></p>
     <h1>Klärungsfall {{ event.pk }}</h1>
-    <p class="intro">{{ event.get_kind_display }} · erfasst am {{ event.imported_at|date:"d.m.Y H:i" }}</p>
-    <p><a href="{% url 'review' %}">Zu den Klärungsfällen</a></p>
-    <section class="panel">
-        {% if form or event.review_reason %}
-            <p class="review-explanation"><strong>Grund für Klärung</strong><br>{{ event.get_review_reason_display }}</p>
-        {% endif %}
-        {% if form %}
-            <p>Vergleiche die Angaben mit der ursprünglichen Nachricht. Deine Entscheidung wird in BMS gespeichert.</p>
-            <form class="review-form" method="post">
-                {% csrf_token %}
-                {{ form.non_field_errors }}
-                <p>{{ form.action.label_tag }} {{ form.action }} {{ form.action.errors }}</p>
-                <p>{{ form.seat.label_tag }} {{ form.seat }} {{ form.seat.errors }}</p>
-                {% if form.replacement %}
-                    <fieldset>
-                        <legend>Personen für eine Ummeldung</legend>
-                        <p>{{ form.previous_participant.label_tag }} {{ form.previous_participant }} {{ form.previous_participant.errors }}</p>
-                        <p>{{ form.replacement.label_tag }} {{ form.replacement }} {{ form.replacement.errors }}</p>
-                    </fieldset>
+    <p class="intro">{{ event.get_kind_display }} · Importiert am {{ event.imported_at|date:"d.m.Y H:i" }}</p>
+
+    <div class="review-layout">
+        <section class="panel review-next" aria-labelledby="review-next">
+            {% if actions %}
+                <h2 id="review-next">Grund und nächster Schritt</h2>
+                <p><strong>{{ event.get_review_reason_display }}</strong></p>
+                <p>{{ guidance }}</p>
+            {% else %}
+                <h2 id="review-next">Entscheidung</h2>
+                <p><strong>{{ event.get_state_display }}</strong> · {{ event.get_review_resolution_display }}</p>
+                {% if event.reviewed_at %}<p>Gespeichert am {{ event.reviewed_at|date:"d.m.Y H:i" }}.</p>{% endif %}
+                {% if event.review_reason %}<p>{{ event.get_review_reason_display }}</p>{% endif %}
+            {% endif %}
+        </section>
+
+        <div class="review-facts">
+            <section class="panel" aria-labelledby="review-recognized">
+                <h2 id="review-recognized">Erkannte Angaben</h2>
+                {% if has_recognized_data or event.occurred_at %}
+                    <dl class="details">
+                        {% if recognized.participant_name %}<div><dt>Teilnehmer</dt><dd>{{ recognized.participant_name }}</dd></div>{% endif %}
+                        {% if recognized.previous_participant_name %}<div><dt>Bisheriger Teilnehmer laut Nachricht</dt><dd>{{ recognized.previous_participant_name }}</dd></div>{% endif %}
+                        {% if recognized.course_name %}<div><dt>Lehrgang</dt><dd>{{ recognized.course_name }}</dd></div>{% endif %}
+                        {% if school_name %}<div><dt>Schule</dt><dd>{{ school_name }}</dd></div>{% endif %}
+                        {% if recognized.starts_at %}<div><dt>Beginn</dt><dd>{{ recognized.starts_at|date:"d.m.Y H:i" }}</dd></div>{% endif %}
+                        {% if recognized.ends_at %}<div><dt>Ende</dt><dd>{{ recognized.ends_at|date:"d.m.Y H:i" }}</dd></div>{% endif %}
+                        {% if recognized.booking_reference %}<div><dt>Buchungsreferenz</dt><dd>{{ recognized.booking_reference }}</dd></div>{% endif %}
+                        {% if event.occurred_at %}<div><dt>Meldungszeit</dt><dd>{{ event.occurred_at|date:"d.m.Y H:i" }}</dd></div>{% endif %}
+                    </dl>
                 {% endif %}
-                <p>{{ form.reason.label_tag }} {{ form.reason }} {{ form.reason.errors }}</p>
-                <p>{{ form.confirm }} {{ form.confirm.label_tag }} {{ form.confirm.errors }}</p>
-                <button type="submit">Entscheidung speichern</button>
-            </form>
-        {% else %}
-            <p><strong>{{ event.get_state_display }}</strong> · {{ event.get_review_resolution_display }}</p>
-            <p>Gespeichert am {{ event.reviewed_at|date:"d.m.Y H:i" }}.</p>
+                {% if not has_recognized_data %}
+                    <p>Zu diesem Import sind keine erkannten Angaben hinterlegt. Suche die Originalnachricht im Postfach. Der oben angegebene Importzeitpunkt grenzt den Abruf ein. Das Versanddatum kann früher liegen.</p>
+                {% endif %}
+            </section>
+
+            <section class="panel" aria-labelledby="review-linked">
+                <h2 id="review-linked">Verknüpfte Lehrgangsbuchung</h2>
+                {% if event.seat %}
+                    <dl class="details">
+                        <div><dt>Buchung</dt><dd>Nr. {{ event.seat_id }}{% if event.seat.external_reference %} · {{ event.seat.external_reference }}{% endif %}</dd></div>
+                        <div><dt>Aktueller Teilnehmer</dt><dd>{{ event.seat.participant.name|default:"Ohne Zuordnung" }}</dd></div>
+                        <div><dt>Aktueller Status</dt><dd>{{ event.seat.get_status_display }}</dd></div>
+                        <div><dt>Lehrgang</dt><dd>{{ event.seat.session.course.name }}</dd></div>
+                        <div><dt>Schule</dt><dd>{{ event.seat.session.get_school_display }}</dd></div>
+                        <div><dt>Beginn</dt><dd>{{ event.seat.session.starts_at|date:"d.m.Y H:i" }}</dd></div>
+                        <div><dt>Ende</dt><dd>{{ event.seat.session.ends_at|date:"d.m.Y H:i" }}</dd></div>
+                    </dl>
+                    {% if actions and event.seat.status == "confirmed" %}
+                        <p class="quiet review-info">Eine bestätigte Buchung kann nach Abschluss aller zugeordneten Klärungsfälle wieder für Fahrgemeinschaften berücksichtigt werden.</p>
+                    {% endif %}
+                {% else %}
+                    <p>Keine Zuordnung</p>
+                {% endif %}
+            </section>
+        </div>
+
+        {% if actions %}
+            <section class="panel" aria-labelledby="review-actions">
+                <h2 id="review-actions">Aktion wählen</h2>
+                <div class="review-actions">
+                    {% for key, details in actions.items %}
+                        <a class="review-action" href="?aktion={{ key }}#entscheidung"{% if key == action %} aria-current="true"{% endif %}>
+                            <strong>{{ details.0 }}</strong>
+                            <span>{{ details.1 }}</span>
+                        </a>
+                    {% endfor %}
+                </div>
+                {% if form %}
+                    <div id="entscheidung" class="review-decision">
+                        <h3>{{ action_details.0|default:"Entscheidung korrigieren" }}</h3>
+                        <div class="review-fields">
+                            {% if seat_search_available %}
+                                <form class="review-search" method="get" action="#entscheidung">
+                                    <input type="hidden" name="aktion" value="{{ action }}">
+                                    <div>
+                                        <div>
+                                            <label for="platzsuche">Buchung suchen</label>
+                                            <input type="search" id="platzsuche" name="platzsuche" value="{{ search }}" maxlength="80" aria-describedby="review-search-help">
+                                        </div>
+                                        <button type="submit">Suchen</button>
+                                    </div>
+                                    <p id="review-search-help" class="note review-info">Suche nach Buchungsnummer, Referenz, Name oder Lehrgang.</p>
+                                </form>
+                            {% endif %}
+                            <form class="review-form" method="post">
+                                {% csrf_token %}
+                                {{ form.action }}
+                                {{ form.action.errors }}
+                                {{ form.non_field_errors }}
+                                {% if action == "link" or action == "reassign" %}
+                                    {% if not has_candidate_seats %}
+                                        {% if search %}
+                                            <p class="quiet review-info">Keine Buchung zu diesem Suchbegriff gefunden.</p>
+                                        {% else %}
+                                            <p class="quiet review-info">Aus den erkannten Angaben ergibt sich kein Vorschlag. Suche nach der Lehrgangsbuchung.</p>
+                                        {% endif %}
+                                    {% elif results_capped %}
+                                        <p class="quiet review-info">Die ersten 20 Buchungen werden angezeigt. Grenze die Suche weiter ein.</p>
+                                    {% endif %}
+                                    <div class="review-field">{{ form.seat.label_tag }} {{ form.seat }} {{ form.seat.errors }}</div>
+                                {% endif %}
+                                {% if action == "reassign" %}
+                                    <div class="review-field">{{ form.previous_participant.label_tag }} {{ form.previous_participant }} {{ form.previous_participant.errors }}</div>
+                                    <div class="review-field">{{ form.replacement.label_tag }} {{ form.replacement }} {{ form.replacement.errors }}</div>
+                                {% elif action == "dismiss" %}
+                                    <div class="review-field">{{ form.reason.label_tag }} {{ form.reason }} {{ form.reason.errors }}</div>
+                                {% endif %}
+                                <div class="review-confirm">
+                                    <label for="{{ form.confirm.id_for_label }}">{{ form.confirm }} <span>{{ form.confirm.label }}</span></label>
+                                    {{ form.confirm.errors }}
+                                </div>
+                                <button type="submit">Entscheidung speichern</button>
+                            </form>
+                        </div>
+                    </div>
+                {% endif %}
+            </section>
         {% endif %}
-    </section>
+    </div>
 {% endblock %}

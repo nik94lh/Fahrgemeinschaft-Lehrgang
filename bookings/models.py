@@ -207,6 +207,7 @@ class EmailEvent(models.Model):
     occurred_at = models.DateTimeField(null=True, blank=True)
     imported_at = models.DateTimeField(auto_now_add=True)
     review_reason = models.CharField(max_length=32, choices=ReviewReason.choices, blank=True)
+    review_context = models.JSONField(default=dict, db_default={})
     reviewed_at = models.DateTimeField(null=True, blank=True)
     review_resolution = models.CharField(max_length=16, choices=ReviewResolution.choices, blank=True)
 

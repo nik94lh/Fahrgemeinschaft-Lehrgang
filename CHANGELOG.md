@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.6.0
+
+- Die Jahresansicht verlinkt jeden Monat direkt mit der Monatsansicht. Im Monatsplan stehen Wochentage neben den Datumsangaben. Die Navigation benennt die verfügbaren Ansichten und Zeiträume.
+- Klärungsfälle zeigen die beim Import erkannten Angaben und erklären die Folgen der jeweiligen Entscheidung. Bei älteren Fällen ist die Anzeige auf die damals gespeicherten Angaben beschränkt.
+- Die Buchungen eines Teilnehmerprofils unterscheiden Hinweise auf mögliche Doppelbuchungen von zeitlichen Überschneidungen. Die Hinweise lösen keine automatische Zusammenführung aus.
+
 ## 0.5.0
 
 - Der Import kann die Teilnehmeradresse aus dem ursprünglichen An-Feld einer Lehrgangsmail übernehmen. CC und hinterlegte Funktionsadressen bleiben dabei unberücksichtigt.

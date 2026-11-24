@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from django.test import Client, TestCase
 from django.urls import reverse
 
-from bookings.models import Course, CourseSeat, CourseSession, Participant, School
+from bookings.models import BookingStatus, Course, CourseSeat, CourseSession, Participant, School
 
 
 class ParticipantContactTests(TestCase):
@@ -53,3 +53,53 @@ class ParticipantContactTests(TestCase):
         self.assertEqual(Client(enforce_csrf_checks=True).post(self.url, body).status_code, 403)
         replacement.refresh_from_db()
         self.assertEqual(replacement.email, "")
+
+    def test_linked_bookings_show_exact_duplicates_and_time_overlaps_separately(self):
+        original = self.seat.session
+        self.seat.status = BookingStatus.CONFIRMED
+        self.seat.save(update_fields=["status"])
+        duplicate = CourseSeat.objects.create(
+            session=CourseSession.objects.create(
+                course=Course.objects.create(name=original.course.name.upper()),
+                school=original.school,
+                starts_at=original.starts_at,
+                ends_at=original.ends_at,
+            ),
+            participant=self.person,
+            status=BookingStatus.CONFIRMED,
+            external_reference="TEST-DUPLIKAT",
+        )
+        overlap = CourseSeat.objects.create(
+            session=CourseSession.objects.create(
+                course=Course.objects.create(name="Zeitlich überlappender Testlehrgang"),
+                school=School.REGENSBURG,
+                starts_at=original.starts_at,
+                ends_at=datetime(2031, 5, 3, 16, tzinfo=UTC),
+            ),
+            participant=self.person,
+            status=BookingStatus.CONFIRMED,
+        )
+        next_seat = CourseSeat.objects.create(
+            session=CourseSession.objects.create(
+                course=Course.objects.create(name="Anschließender Testlehrgang"),
+                school=School.WUERZBURG,
+                starts_at=overlap.session.ends_at,
+                ends_at=datetime(2031, 5, 4, 16, tzinfo=UTC),
+            ),
+            participant=self.person,
+            status=BookingStatus.CONFIRMED,
+        )
+        CourseSeat.objects.create(session=next_seat.session, participant=self.person, status=BookingStatus.CANCELLED)
+        other = Participant.objects.create(name=self.person.name)
+        CourseSeat.objects.create(session=original, participant=other, status=BookingStatus.CONFIRMED)
+
+        response = self.client.get(self.url)
+        self.assertContains(response, "Lehrgangsbuchungen dieses Profils")
+        bookings = {booking.pk: booking for booking in response.context["profile_bookings"]}
+        self.assertNotIn(other.seats.get().pk, bookings)
+        self.assertTrue(bookings[duplicate.pk].possible_duplicate)
+        self.assertFalse(bookings[overlap.pk].possible_duplicate)
+        self.assertTrue(bookings[overlap.pk].time_overlap)
+        self.assertFalse(bookings[next_seat.pk].time_overlap)
+        self.assertFalse(bookings[next_seat.pk].possible_duplicate)
+        self.assertEqual(self.person.seats.count(), 5)

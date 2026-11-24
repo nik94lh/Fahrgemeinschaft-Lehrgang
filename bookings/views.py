@@ -33,7 +33,7 @@ def overview(request):
         "seats": seats,
         "review_count": EmailEvent.objects.filter(state=EmailEvent.State.NEEDS_REVIEW).count(),
         "upcoming_sessions": upcoming_sessions,
-        "recent_events": EmailEvent.objects.select_related("seat__session__course").order_by("-imported_at", "-pk")[:8],
+        "recent_events": EmailEvent.objects.select_related("seat__session__course", "seat__participant").order_by("-imported_at", "-pk")[:8],
     })
 
 
@@ -73,7 +73,7 @@ def bookings(request):
 @require_safe
 def review(request):
     events = EmailEvent.objects.filter(state=EmailEvent.State.NEEDS_REVIEW).select_related(
-        "seat__session__course",
+        "seat__session__course", "seat__participant",
     ).order_by("-imported_at", "-pk")
     return render(request, "workspace/review.html", {
         "section": "review",

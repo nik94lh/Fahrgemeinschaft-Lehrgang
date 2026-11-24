@@ -4,7 +4,7 @@
     <p class="back-link"><a href="{% url 'bookings' %}">‹ Zurück zu den Buchungen</a></p>
     <h1>Teilnehmer zur Buchung</h1>
     <p class="intro">{{ seat.session.course.name }} · {% include "workspace/session_period.html" with session=seat.session only %}</p>
-    <section class="panel" aria-label="Teilnehmerprofil">
+    <section class="panel participant-profile" aria-label="Teilnehmerprofil">
         <dl class="details">
             <div><dt>Name</dt><dd>{{ seat.participant.name }}</dd></div>
             <div><dt>E-Mail-Adresse</dt><dd>{{ seat.participant.email|default:"Noch nicht hinterlegt" }}</dd></div>
@@ -20,5 +20,37 @@
                 <button type="submit">Adresse speichern</button>
             </form>
         {% endif %}
+    </section>
+    <section class="panel" aria-labelledby="profile-bookings-title">
+        <h2 id="profile-bookings-title">Lehrgangsbuchungen dieses Profils</h2>
+        <p class="note booking-comparison-note">Ein möglicher Doppeleintrag betrifft denselben Lehrgang an derselben Schule zur gleichen Zeit. Eine Überschneidung betrifft zwei verschiedene Termine. BMS markiert diese Buchungen zur Prüfung.</p>
+        <div class="table-scroll" tabindex="0" role="region" aria-labelledby="profile-bookings-title">
+            <table class="mobile-table">
+                <thead><tr><th scope="col">Lehrgangsbuchung</th><th scope="col">Zeitraum</th><th scope="col">Status</th><th scope="col">Hinweis</th></tr></thead>
+                <tbody>
+                    {% for booking in profile_bookings %}
+                        <tr>
+                            <td data-label="Lehrgangsbuchung">
+                                <span>
+                                    <a href="{% url 'booking_participant' booking.pk %}"{% if booking.pk == seat.pk %} aria-current="page"{% endif %}>{{ booking.session.course.name }}</a><br>
+                                    <small>{{ booking.session.get_school_display }} · Buchung {{ booking.pk }}{% if booking.external_reference %} · {{ booking.external_reference }}{% endif %}</small>
+                                </span>
+                            </td>
+                            <td data-label="Zeitraum">{% include "workspace/session_period.html" with session=booking.session only %}</td>
+                            <td data-label="Status">{{ booking.get_status_display }}</td>
+                            <td data-label="Hinweis">
+                                {% if booking.possible_duplicate or booking.time_overlap %}
+                                    <span>
+                                        {% if booking.possible_duplicate %}<span class="booking-comparison">Möglicher Doppeleintrag</span>{% endif %}
+                                        {% if booking.time_overlap %}<span class="booking-comparison">Zeitliche Überschneidung</span>{% endif %}
+                                    </span>
+                                {% else %}—{% endif %}
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include "workspace/pagination.html" with page_obj=profile_bookings only %}
     </section>
 {% endblock %}

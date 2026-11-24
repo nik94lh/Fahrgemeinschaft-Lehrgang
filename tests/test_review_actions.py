@@ -84,3 +84,57 @@ class ReviewActionTests(TestCase):
         self.reassignment.refresh_from_db()
         self.assertEqual(self.booking.status, BookingStatus.CONFIRMED)
         self.assertEqual(self.reassignment.state, EmailEvent.State.NEEDS_REVIEW)
+
+    def test_detail_distinguishes_recognized_fields_and_current_booking(self):
+        response = self.client.get(self.detail_url())
+
+        self.assertContains(response, "Erkannte Angaben")
+        self.assertContains(response, "Verknüpfte Lehrgangsbuchung")
+        self.assertContains(response, "Toni Testperson")
+        self.assertContains(response, "Alex Beispiel")
+        self.assertContains(response, "Bestätigt")
+        self.assertContains(response, "TEST-17")
+        self.assertContains(response, "E-Mail zuordnen")
+        self.assertContains(response, "Ummeldung in BMS übernehmen")
+        self.assertContains(response, "Fall verwerfen")
+        self.assertNotContains(response, 'name="replacement"')
+
+    def test_legacy_case_has_no_automatic_seat_options_but_can_search(self):
+        legacy = EmailEvent.objects.create(
+            sha256="0" * 64, kind=EmailEvent.Kind.CONFIRMATION, state=EmailEvent.State.NEEDS_REVIEW,
+            review_reason=EmailEvent.ReviewReason.PARTICIPANT_UNCLEAR,
+        )
+        url = reverse("review_detail", kwargs={"event_id": legacy.pk})
+        empty = self.client.get(url, {"aktion": "link"})
+        self.assertContains(empty, "Keine Zuordnung")
+        self.assertContains(empty, "Originalnachricht im Postfach")
+        self.assertNotContains(empty, "Alex Beispiel")
+
+        found = self.client.get(url, {"aktion": "link", "platzsuche": "TEST-17"})
+        self.assertContains(found, "Alex Beispiel")
+        self.assertContains(found, f'<option value="{self.booking.pk}"')
+        legacy.refresh_from_db()
+        self.assertIsNone(legacy.seat_id)
+
+    def test_unlinked_reassignment_offers_only_context_supported_candidates(self):
+        other = ingest(eml("Teilnahmebestätigung", participant="Pat Muster", course="Truppführer"))
+        event = ingest(eml(
+            "Ummeldung", participant="Toni Testperson", extra="Bisheriger Teilnehmer: Alex Beispiel",
+        ))
+        self.assertIsNone(event.seat_id)
+        url = reverse("review_detail", kwargs={"event_id": event.pk})
+        response = self.client.get(url, {"aktion": "link"})
+
+        self.assertContains(response, f'<option value="{self.booking.pk}"')
+        self.assertNotContains(response, f'<option value="{other.seat_id}"')
+        self.assertNotContains(response, "Pat Muster")
+        self.assertNotContains(response, 'name="replacement"')
+        self.assertNotContains(response, 'name="reason"')
+
+    def test_dismiss_action_renders_only_its_own_fields(self):
+        response = self.client.get(self.detail_url(), {"aktion": "dismiss"})
+
+        self.assertContains(response, 'name="reason"')
+        self.assertContains(response, 'name="confirm"')
+        self.assertNotContains(response, 'name="seat"')
+        self.assertNotContains(response, 'name="replacement"')

@@ -1,0 +1,32 @@
+<p class="calendar-hint quiet">Hervorgehobene Tage haben mindestens einen Lehrgang. Wähle einen Monat für den Terminplan.</p>
+<ul class="calendar-year" role="list">
+    {% for tile in months %}
+        <li>
+            <a class="calendar-month-card" href="?{{ tile.query }}"
+               aria-label="{{ tile.start|date:'F Y' }}, {{ tile.session_count }} {% if tile.session_count == 1 %}Lehrgang{% else %}Lehrgänge{% endif %}"
+               {% if tile.occupied_days %}aria-describedby="month-days-{{ tile.start|date:'m' }}"{% endif %}>
+                <span class="calendar-month-title">
+                    <strong>{{ tile.start|date:"F" }}</strong>
+                    <span>{{ tile.session_count }} {% if tile.session_count == 1 %}Lehrgang{% else %}Lehrgänge{% endif %}</span>
+                </span>
+                <span class="calendar-mini" aria-hidden="true">
+                    <span class="calendar-mini-weekday">Mo</span><span class="calendar-mini-weekday">Di</span>
+                    <span class="calendar-mini-weekday">Mi</span><span class="calendar-mini-weekday">Do</span>
+                    <span class="calendar-mini-weekday">Fr</span><span class="calendar-mini-weekday">Sa</span>
+                    <span class="calendar-mini-weekday">So</span>
+                    {% for day in tile.days %}
+                        {% if day %}
+                            <span class="calendar-mini-day{% if day.count %} is-occupied{% endif %}{% if day.is_today %} is-today{% endif %}"
+                                  title="{{ day.date|date:'l, d.m.Y' }}{% if day.count %} · {{ day.count }} {% if day.count == 1 %}Lehrgang{% else %}Lehrgänge{% endif %}{% endif %}">{{ day.date.day }}</span>
+                        {% else %}
+                            <span></span>
+                        {% endif %}
+                    {% endfor %}
+                </span>
+            </a>
+            {% if tile.occupied_days %}
+                <span class="visually-hidden" id="month-days-{{ tile.start|date:'m' }}">Lehrgänge am {{ tile.occupied_days|join:", " }}.</span>
+            {% endif %}
+        </li>
+    {% endfor %}
+</ul>

@@ -1,6 +1,7 @@
 from datetime import UTC, date, datetime
 
 from django.test import TestCase
+from django.utils.dateformat import format as format_date
 
 from bookings.models import BookingStatus, Course, CourseSeat, CourseSession, Participant, School
 
@@ -137,7 +138,7 @@ class CalendarTests(TestCase):
         response = self.client.get("/kalender/", {"month": "2032-09", "school": School.GERETSRIED})
         self.assertEqual(response.context["week_query"], "view=week&day=2032-09-13&school=geretsried")
 
-    def test_year_uses_month_columns_and_respects_exclusive_local_month_boundaries(self):
+    def test_year_shows_day_occupancy_and_respects_exclusive_local_month_boundaries(self):
         self.add_session(
             "Jahresübergang am Anfang", School.WUERZBURG,
             datetime(2030, 12, 30, 15, tzinfo=UTC), datetime(2031, 1, 3, 10, tzinfo=UTC),
@@ -158,29 +159,31 @@ class CalendarTests(TestCase):
         response = self.client.get("/kalender/", {"view": "year", "year": "2031"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["day_count"], 12)
         self.assertEqual(response.context["period_end"], date(2031, 12, 31))
-        self.assertEqual([tick["number"] for tick in response.context["ticks"]], list(range(1, 13)))
-        self.assertEqual(response.context["ticks"][-1]["date"], date(2031, 12, 1))
-        groups = response.context["school_groups"]
-        self.assertEqual([group["school"] for group in groups], [School.WUERZBURG, School.REGENSBURG])
-        rows = {row["session"].course.name: row for row in groups[0]["rows"]}
-
-        beginning = rows["Jahresübergang am Anfang"]
-        self.assertEqual((beginning["start_column"], beginning["end_column"]), (1, 2))
-        self.assertTrue(beginning["starts_before"])
-        january = rows["Ende genau zum Monatswechsel"]
-        self.assertEqual((january["start_column"], january["end_column"]), (1, 2))
-        ending = rows["Jahresübergang am Ende"]
-        self.assertEqual((ending["start_column"], ending["end_column"]), (12, 13))
-        self.assertTrue(ending["ends_after"])
-        self.assertNotIn("Termin im Folgejahr", rows)
+        self.assertContains(response, 'class="calendar-month-card"', count=12)
+        self.assertNotContains(response, "Jahresübergang am Anfang")
+        self.assertNotContains(response, "Jahresübergang am Ende")
+        self.assertNotContains(response, 'class="calendar-bar')
+        months = response.context["months"]
+        january, february, *_, december = months
+        self.assertEqual(january["days"][:2], [None, None])
+        self.assertEqual(january["days"][2]["date"], date(2031, 1, 1))
+        self.assertEqual(january["session_count"], 2)
+        self.assertEqual(january["occupied_days"], [1, 2, 3, 30, 31])
+        self.assertEqual(february["session_count"], 0)
+        self.assertEqual(february["occupied_days"], [])
+        self.assertEqual(december["session_count"], 1)
+        self.assertEqual(december["occupied_days"], [29, 30, 31])
 
     def test_year_navigation_switches_zoom_and_preserves_school_and_detail_backlink(self):
         response = self.client.get("/kalender/", {"view": "year", "year": "2031", "school": School.REGENSBURG})
 
-        self.assertContains(response, "Musterlehrgang Regensburg")
+        self.assertContains(response, 'href="?month=2031-05&amp;school=regensburg"')
+        self.assertNotContains(response, "Musterlehrgang Regensburg")
         self.assertNotContains(response, "Übergreifender Musterlehrgang")
+        may = response.context["months"][4]
+        self.assertEqual(may["session_count"], 1)
+        self.assertEqual(may["occupied_days"], [12])
         self.assertEqual(response.context["previous_query"], "view=year&year=2030&school=regensburg")
         self.assertEqual(response.context["next_query"], "view=year&year=2032&school=regensburg")
         self.assertEqual(response.context["current_query"], "view=year&year=2031&school=regensburg")
@@ -198,3 +201,18 @@ class CalendarTests(TestCase):
 
         self.assertEqual(month.context["year_query"], "view=year&year=2031&school=regensburg")
         self.assertEqual(week.context["year_query"], "view=year&year=2031&school=regensburg")
+
+    def test_month_jump_uses_readable_month_and_year_controls_and_weekday_axis(self):
+        response = self.client.get("/kalender/", {
+            "year": "2031", "month_number": "05", "school": School.REGENSBURG,
+        })
+
+        self.assertContains(response, "Mai 2031")
+        self.assertContains(response, '<select name="month_number"')
+        self.assertContains(response, 'inputmode="numeric"')
+        self.assertNotContains(response, 'type="month"')
+        weekday = format_date(date(2031, 5, 1), "D")
+        self.assertContains(response, f'<span class="calendar-weekday">{weekday}</span>')
+        self.assertContains(response, "Musterlehrgang Regensburg")
+        self.assertNotContains(response, "Übergreifender Musterlehrgang")
+        self.assertEqual(response.context["current_query"], "month=2031-05&school=regensburg")

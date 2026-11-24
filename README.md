@@ -35,9 +35,19 @@ In einer Python-Umgebung mit den Projektabhängigkeiten funktioniert auch `pytho
 
 ## Automatischer Postfachimport
 
-Auf dem zugriffsgeschützten HTTPS-Testhost richtest du unter **Postfach** eine separate IMAP-Adresse ein. Das Passwort wird verschlüsselt gespeichert. Aktiviere den Abruf nur für ein freigegebenes Postfach, das Kopien der Lehrgangskommunikation erhält. **Postfach** zeigt den letzten Abrufstatus. Unter **Übersicht**, **Buchungen** und **Klärung** siehst du die verarbeiteten Ereignisse, Buchungen und offenen Fälle. Bei neu importierten Klärungsfällen siehst du, weshalb BMS die Nachricht nicht automatisch zuordnen oder anwenden konnte. Für ältere Fälle wurde dieser Grund noch nicht erfasst. SMTP-Versand ist technisch deaktiviert. [Mailimport](docs/MAILIMPORT.md)
+Auf dem zugriffsgeschützten HTTPS-Testhost richtest du unter **Postfach** eine separate IMAP-Adresse ein. Das Passwort wird verschlüsselt gespeichert. Aktiviere den Abruf nur für ein freigegebenes Postfach, das Kopien der Lehrgangskommunikation erhält. **Postfach** zeigt den letzten Abrufstatus. Unter **Übersicht**, **Buchungen** und **Klärung** siehst du die verarbeiteten Ereignisse, Buchungen und offenen Fälle. Bei neuen Klärungsfällen siehst du den Grund und die erkannten Angaben. Ältere Fälle zeigen die zum damaligen Import gespeicherten Daten. SMTP-Versand ist technisch deaktiviert. [Mailimport](docs/MAILIMPORT.md)
 
 Ein aktivierter Postfachdienst verarbeitet standardmäßig bis zu 25 Nachrichten pro Abrufversuch und wartet danach 120 Sekunden bis zum nächsten Versuch. Die Weboberfläche zeigt den aktuellen Datenbankstand beim Öffnen oder Neuladen der Seite.
+
+## Buchungen, Teilnehmer und Klärung
+
+- Eine **Lehrgangsbuchung** ist die Belegung eines Platzes bei einem konkreten Termin. Sie hat einen eigenen Buchungsstatus.
+- Ein **Teilnehmerprofil** enthält die Angaben zur Person. Dem Profil können mehrere Buchungen zugeordnet sein.
+- Ein **Klärungsfall** ist eine importierte Nachricht, deren Angaben oder Auswirkungen du prüfen musst.
+
+Öffne den Teilnehmernamen in der Buchungsliste, um die Buchungen des Profils zu sehen. Eine mögliche Doppelbuchung liegt vor, wenn Lehrgangsname, Schule, Beginn und Ende übereinstimmen. Eine Überschneidung liegt vor, wenn zwei unterschiedliche Lehrgangstermine gemeinsame Zeit haben. Beide Hinweise dienen der Prüfung und verändern keine Buchungen.
+
+Öffne einen Fall unter **Klärung**, um die erkannten Daten zu sehen. Dazu gehören, soweit vorhanden, Teilnehmername, Lehrgang, Schule, Zeitraum und Buchungsreferenz. Die Ansicht enthält weder die vollständige E-Mail noch eine E-Mail-Adresse aus der Nachricht. Vergleiche sie mit der Originalnachricht im Importpostfach. **E-Mail zuordnen** verbindet das Ereignis mit der Buchung. Der Buchungsstatus bleibt dabei gleich. **Fall verwerfen** schließt das Ereignis mit dem gewählten Grund ab. Bei einer Ummeldung wechselt **Ummeldung in BMS übernehmen** die Person auf dem ausgewählten Platz und dokumentiert die Änderung in der Buchungshistorie.
 
 ## Teilnehmerprofile und E-Mail-Adressen
 
@@ -49,7 +59,7 @@ Fehlt bei einer Buchung die E-Mail-Adresse, wähle unter **Buchungen** den Teiln
 
 Die **Übersicht** zeigt anstehende Lehrgänge mit Beginn und Ende pro Termin. Unter **Buchungen** stehen die beiden Zeitpunkte in der Spalte **Zeitraum**. Die Anzeige verwendet die Zeitzone `Europe/Berlin`.
 
-Im **Kalender** kannst du zwischen Woche, Monat und Jahr wechseln und nach Schule filtern. In der Jahresansicht markieren die Balken die Monate, in denen ein Lehrgang stattfindet. Die genauen Zeiten stehen in der zugänglichen Terminliste und in den Details. Wähle einen Termin, um die zugehörigen Buchungen zu sehen.
+Im **Kalender** kannst du zwischen Woche, Monat und Jahr wechseln und nach Schule filtern. In der Jahresansicht markieren die Balken die Monate, in denen ein Lehrgang stattfindet. Wähle einen Monat, um direkt in seinen Monatsplan zu springen. Dort stehen Wochentage an der Zeitachse. Die genauen Zeiten stehen in der zugänglichen Terminliste und in den Details. Wähle einen Termin, um die zugehörigen Buchungen zu sehen.
 
 Unter **Fahrgemeinschaften** erscheinen mögliche Hin- oder Rückfahrten in den nächsten 28 Tagen, wenn mindestens zwei bestätigte Teilnehmer zur selben Schule fahren und ihre Lehrgangszeiten am selben Tag höchstens 60 Minuten auseinanderliegen. Diese Übersicht zeigt Zeitraum und Anzahl der Personen. Sie sendet keine Einladungen und gibt keine Kontaktdaten frei.
 

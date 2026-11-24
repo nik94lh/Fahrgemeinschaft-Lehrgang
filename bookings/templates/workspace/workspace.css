@@ -44,3 +44,5 @@ td { vertical-align: top; }
 .overview-courses { margin-block-end: 1rem; }
 .participant-contact-form { max-width: 32rem; margin-block-start: 1rem; }
 .participant-contact-form .note { margin-block-start: .5rem; }
+.participant-profile, .booking-comparison-note { margin-block-end: 1rem; }
+.booking-comparison { display: block; color: #70440e; font-weight: 650; }

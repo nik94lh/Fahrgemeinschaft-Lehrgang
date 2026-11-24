@@ -81,7 +81,7 @@ def _reconcile(mail: ParsedMail, occurred_at: datetime | None) -> EmailEvent:
     referenced_seat = _referenced_seat(mail)
     reason = _parsed_review_reason(mail, event.kind)
     if reason:
-        return _flag_review(event, reason, referenced_seat)
+        return _flag_review(event, mail, reason, referenced_seat)
 
     if referenced_seat is not None:
         if not _matches(referenced_seat, mail):
@@ -90,8 +90,8 @@ def _reconcile(mail: ParsedMail, occurred_at: datetime | None) -> EmailEvent:
                 try:
                     _identity_for_seat(referenced_seat, mail.participant_name, email, allow_enrichment=False)
                 except _IdentityConflict as conflict:
-                    return _flag_review(event, conflict.reason, referenced_seat)
-            return _flag_review(event, EmailEvent.ReviewReason.REFERENCE_MISMATCH, referenced_seat)
+                    return _flag_review(event, mail, conflict.reason, referenced_seat)
+            return _flag_review(event, mail, EmailEvent.ReviewReason.REFERENCE_MISMATCH, referenced_seat)
         return _update_booking(event, referenced_seat, mail)
     return _reconcile_by_details(event, mail)
 
@@ -192,36 +192,36 @@ def _reconcile_by_details(event: EmailEvent, mail: ParsedMail) -> EmailEvent:
         ends_at=mail.ends_at,
     )[:2])
     if len(sessions) > 1:
-        return _flag_review(event, EmailEvent.ReviewReason.MULTIPLE_SESSIONS)
+        return _flag_review(event, mail, EmailEvent.ReviewReason.MULTIPLE_SESSIONS)
     session = sessions[0] if sessions else None
     if session is not None:
         name = _normalized_name(mail.participant_name)
         candidates = session.seats.select_related("participant").filter(participant__isnull=False).iterator()
         seats = list(islice((seat for seat in candidates if _normalized_name(seat.participant.name) == name), 2))
         if len(seats) > 1:
-            return _flag_review(event, EmailEvent.ReviewReason.MULTIPLE_SEATS)
+            return _flag_review(event, mail, EmailEvent.ReviewReason.MULTIPLE_SEATS)
         if seats:
             seat = seats[0]
             if mail.booking_reference and seat.external_reference:
-                return _flag_review(event, EmailEvent.ReviewReason.REFERENCE_MISMATCH)
+                return _flag_review(event, mail, EmailEvent.ReviewReason.REFERENCE_MISMATCH)
             return _update_booking(event, seat, mail)
         previous_names = BookingHistory.objects.filter(
             seat__session=session, previous_participant__isnull=False,
         ).order_by().values_list("previous_participant__name", flat=True).distinct()
         if any(_normalized_name(previous) == name for previous in previous_names.iterator()):
-            return _flag_review(event, EmailEvent.ReviewReason.PREVIOUS_PARTICIPANT)
+            return _flag_review(event, mail, EmailEvent.ReviewReason.PREVIOUS_PARTICIPANT)
     if event.kind not in ACTIVATION_EVENTS:
-        return _flag_review(event, EmailEvent.ReviewReason.NO_MATCHING_BOOKING)
+        return _flag_review(event, mail, EmailEvent.ReviewReason.NO_MATCHING_BOOKING)
 
     email = mail.participant_email or ""
     try:
         participant = _participant_with_email(mail.participant_name, email) if email else None
     except _IdentityConflict as conflict:
-        return _flag_review(event, conflict.reason)
+        return _flag_review(event, mail, conflict.reason)
     if session is None:
         courses = list(Course.objects.filter(name__iexact=mail.course_name)[:2])
         if len(courses) > 1:
-            return _flag_review(event, EmailEvent.ReviewReason.MULTIPLE_COURSES)
+            return _flag_review(event, mail, EmailEvent.ReviewReason.MULTIPLE_COURSES)
         course = courses[0] if courses else Course.objects.create(name=mail.course_name)
         session = CourseSession.objects.create(
             course=course, school=mail.school, starts_at=mail.starts_at, ends_at=mail.ends_at,
@@ -254,7 +254,7 @@ def _update_booking(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> Em
         try:
             participant = _identity_for_seat(seat, mail.participant_name, email, allow_enrichment=allow_enrichment)
         except _IdentityConflict as conflict:
-            return _flag_review(event, conflict.reason, seat)
+            return _flag_review(event, mail, conflict.reason, seat)
     if not new:
         latest_timestamp = seat.history.filter(source_event__occurred_at__isnull=False).order_by(
             "-source_event__occurred_at",
@@ -266,9 +266,9 @@ def _update_booking(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> Em
                 event.occurred_at == latest_timestamp
                 or (event.occurred_at is None and event.kind in CANCELLATION_EVENTS)
             ):
-                return _flag_review(event, EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR, seat)
+                return _flag_review(event, mail, EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR, seat)
         if seat.status not in ACTIVE_STATUSES and status != seat.status:
-            return _flag_review(event, EmailEvent.ReviewReason.PROTECTED_STATUS, seat)
+            return _flag_review(event, mail, EmailEvent.ReviewReason.PROTECTED_STATUS, seat)
 
     previous_status = "" if new else seat.status
     previous_participant = None if new else seat.participant
@@ -306,15 +306,30 @@ def _update_booking(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> Em
 
 def _flag_review(
     event: EmailEvent,
+    mail: ParsedMail,
     reason: EmailEvent.ReviewReason,
     seat: CourseSeat | None = None,
 ) -> EmailEvent:
+    context = {
+        "course_name": mail.course_name,
+        "school": mail.school,
+        "starts_at": mail.starts_at.isoformat() if mail.starts_at else None,
+        "ends_at": mail.ends_at.isoformat() if mail.ends_at else None,
+        "participant_name": mail.participant_name,
+        "booking_reference": mail.booking_reference,
+    }
+    if event.kind == EmailEvent.Kind.REASSIGNMENT:
+        context["previous_participant_name"] = mail.previous_participant_name
     event.review_reason = reason
+    event.review_context = {key: value for key, value in context.items() if value is not None}
     return _record(event, EmailEvent.State.NEEDS_REVIEW, seat)
 
 
 def _record(event: EmailEvent, state: str, seat: CourseSeat | None = None) -> EmailEvent:
     event.state = state
     event.seat = seat
-    event.save(update_fields=["state", "seat", "review_reason"])
+    update_fields = ["state", "seat", "review_reason"]
+    if state == EmailEvent.State.NEEDS_REVIEW:
+        update_fields.append("review_context")
+    event.save(update_fields=update_fields)
     return event
