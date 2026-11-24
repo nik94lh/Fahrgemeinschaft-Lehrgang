@@ -39,18 +39,38 @@ jobs:
           .venv/bin/python manage.py makemigrations --check --dry-run
           .venv/bin/python manage.py test
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/feat/bms-foundation'
     needs: verify
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+    concurrency:
+      group: bms-release-publisher
+      cancel-in-progress: false
     steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 2
+          fetch-tags: true
+          persist-credentials: false
       - name: Publish GitHub prerelease
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_REPO: ${{ github.repository }}
-          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
         run: |
-          if ! gh release view "$RELEASE_TAG" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
-            gh release create "$RELEASE_TAG" --repo "$RELEASE_REPO" --verify-tag --notes-from-tag --prerelease
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tags="${GITHUB_REF#refs/tags/}"
+          else
+            tags="$(git tag --list 'v*' --points-at HEAD)"
+            # A workflow-only fix may publish its already tagged parent.
+            if git diff --quiet HEAD^ HEAD -- . ':(exclude).github/workflows'; then
+              tags+="$(printf '\n%s' "$(git tag --list 'v*' --points-at HEAD^)")"
+            fi
           fi
+          while IFS= read -r tag; do
+            [[ -n "$tag" ]] || continue
+            if ! gh release view "$tag" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+              gh release create "$tag" --repo "$RELEASE_REPO" --verify-tag --notes-from-tag --prerelease
+            fi
+          done <<< "$tags"
