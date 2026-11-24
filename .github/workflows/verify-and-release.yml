@@ -50,8 +50,7 @@ jobs:
     steps:
       - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
-          fetch-depth: 2
-          fetch-tags: true
+          fetch-depth: 0
           persist-credentials: false
       - name: Publish GitHub prerelease
         env:
@@ -62,15 +61,20 @@ jobs:
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             tags="${GITHUB_REF#refs/tags/}"
           else
-            tags="$(git tag --list 'v*' --points-at HEAD)"
-            # A workflow-only fix may publish its already tagged parent.
-            if git diff --quiet HEAD^ HEAD -- . ':(exclude).github/workflows'; then
-              tags+="$(printf '\n%s' "$(git tag --list 'v*' --points-at HEAD^)")"
-            fi
+            tags=""
+            # Only publish a tag when the verified application tree matches it.
+            while IFS= read -r candidate; do
+              [[ -n "$candidate" ]] || continue
+              if git diff --quiet "$candidate^{commit}" HEAD -- . ':(exclude).github/workflows'; then
+                tags+="$(printf '\n%s' "$candidate")"
+              fi
+            done < <(git tag --list 'v*' --merged HEAD)
           fi
           while IFS= read -r tag; do
             [[ -n "$tag" ]] || continue
             if ! gh release view "$tag" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
-              gh release create "$tag" --repo "$RELEASE_REPO" --verify-tag --notes-from-tag --prerelease
+              notes="$RUNNER_TEMP/bms-release-notes.md"
+              git for-each-ref --format='%(contents)' "refs/tags/$tag" > "$notes"
+              gh release create "$tag" --repo "$RELEASE_REPO" --verify-tag --notes-file "$notes" --prerelease
             fi
           done <<< "$tags"
