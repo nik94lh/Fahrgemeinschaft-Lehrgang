@@ -1,0 +1,315 @@
+"""Pure local extraction of provisional fields from an EML message."""
+
+import hashlib
+import re
+from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, date, datetime
+from email import policy
+from email.errors import MessageError
+from email.message import EmailMessage
+from email.parser import BytesParser
+from zoneinfo import ZoneInfo
+
+from .html_text import html_to_text
+
+
+MAX_EML_BYTES = 1024 * 1024
+BERLIN = ZoneInfo("Europe/Berlin")
+
+SCHOOLS = {
+    "wuerzburg": r"\b(?:würzburg|wuerzburg)\b",
+    "regensburg": r"\bregensburg\b",
+    "geretsried": r"\bgeretsried\b",
+}
+MONTHS = {
+    month: number
+    for number, month in enumerate(
+        ("januar", "februar", "märz", "april", "mai", "juni", "juli", "august",
+         "september", "oktober", "november", "dezember"),
+        start=1,
+    )
+}
+MONTHS["maerz"] = 3
+
+SUBJECT_PATTERNS = (
+    ("automatic_cancellation", r"^automatische stornierung\b"),
+    ("cancellation", r"^stornierung\b|^lehrgangsanmeldung wurde storniert\b"),
+    ("reassignment", r"^ummeldung\b|^lehrgangsanmeldung wurde umgemeldet\b"),
+    ("schedule_change", r"^terminänderung\b"),
+    ("reminder", r"^erinnerung\b"),
+    ("confirmation_request", r"^bestätigungsaufforderung\b|^bitte bestätigen sie\b"),
+    ("confirmation", r"^teilnahmebestätigung\b|^lehrgangsanmeldung wurde bestätigt\b"),
+    ("approval", r"^lehrgangsgenehmigung\b"),
+    ("invitation", r"^einladung\b"),
+)
+BODY_PATTERNS = (
+    ("approval", r"^ihre teilnahme an folgendem lehrgangstermin wurde genehmigt:"),
+    ("confirmation", r"^die lehrgangsanmeldung (?:des teilnehmers|der teilnehmerin)"
+                     r" .+? wurde bestätigt:"),
+)
+PAST_CANCELLATION = re.compile(
+    r"^(?:ihre|die) (?:lehrgangs(?:anmeldung|teilnahme)|anmeldung|teilnahme)\b"
+    r"[^.!?\n]{0,140}?(?:\bwurde\b[^.!?\n]{0,55}\bstorniert\b"
+    r"|\bstorniert (?:wurde|worden)\b)",
+    re.IGNORECASE | re.MULTILINE,
+)
+CANCELLATION_TYPES = {"cancellation", "automatic_cancellation"}
+CANCELLATION_NEGATION = re.compile(r"\b(?:nicht|nie|niemals|keineswegs|weder)\b", re.IGNORECASE)
+FORWARD_PREFIX = re.compile(r"^\s*(?:WG|FW|FWD):\s*", re.IGNORECASE)
+REPLY_PREFIX = re.compile(r"^\s*(?:AW|RE):\s*", re.IGNORECASE)
+FORWARD_HEADER = re.compile(
+    r"^(?:von|from|an|to|cc|datum|date|gesendet|sent|betreff|subject) *:",
+    re.IGNORECASE,
+)
+FORWARD_SEPARATOR = re.compile(
+    r"^\s*-{2,}\s*(?:weitergeleitete nachricht|ursprüngliche nachricht|forwarded message)"
+    r"\s*-{2,}\s*$", re.IGNORECASE | re.MULTILINE,
+)
+TIME_RANGE = re.compile(
+    r"(\d{1,2}\.\d{1,2}\.\d{4} \d{1,2}:\d{2})(?: Uhr)?"
+    r"\s*(?:[–—-]|bis)\s*"
+    r"(\d{1,2}\.\d{1,2}\.\d{4} \d{1,2}:\d{2})(?: Uhr)?",
+    re.IGNORECASE,
+)
+DATE_PATTERN = r"(\d{1,2})\.\s*([a-zäöü]+|\d{1,2}\.)\s*(\d{4})\b"
+NAME_PATTERN = r"[^\W\d_]+(?:[.’' -][^\W\d_]+)+\.?"
+GREETING = r"^sehr geehrte(?:r)?\s+(?:herr|frau)\s+([^,\n]+),"
+CONFIRMED_PARTICIPANT = (
+    r"^die lehrgangsanmeldung (?:des teilnehmers|der teilnehmerin) ([^\n]+?) für den folgenden\b"
+)
+
+
+class MailParseError(ValueError):
+    """The message cannot be inspected unambiguously."""
+
+
+@dataclass(frozen=True, slots=True)
+class ParsedMail:
+    fingerprint: str
+    event_type: str
+    course_name: str | None
+    participant_name: str | None
+    previous_participant_name: str | None
+    school: str | None
+    starts_at: datetime | None
+    ends_at: datetime | None
+    confirmation_deadline: date | None
+    cancellation_date: date | None
+    booking_reference: str | None
+    warnings: tuple[str, ...]
+
+
+def _normalized(value: str) -> str:
+    return " ".join(value.split())
+
+
+def _unique(values: list[str], validate: Callable[[str], bool]) -> str | None:
+    candidates = {_normalized(value) for value in values}
+    if len(candidates) != 1:
+        return None
+    value = candidates.pop()
+    return value if validate(value) else None
+
+
+def _values(text: str, labels: str) -> list[str]:
+    return re.findall(rf"^(?:{labels}) *: *([^\n]+)$", text, re.IGNORECASE | re.MULTILINE)
+
+
+def _name(value: str) -> bool:
+    return len(value) <= 150 and bool(re.fullmatch(NAME_PATTERN, value))
+
+
+def _course_name(value: str) -> bool:
+    return (
+        len(value) <= 160
+        and not re.search(r"\b[\w-]+\.[a-zäöü]{2,63}\b|//", value, re.IGNORECASE)
+        and bool(re.fullmatch(r"[^\W_][\w .,&()'’–/-]*", value))
+    )
+
+
+def _booking_reference(value: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z0-9]+(?:[-/][A-Za-z0-9]+)*", value)) and len(value) <= 64
+
+
+def _body_text(part: EmailMessage) -> str:
+    try:
+        value = part.get_content()
+    except LookupError:
+        value = part.get_payload(decode=True).decode("utf-8", errors="replace")
+    return html_to_text(value) if part.get_content_subtype() == "html" else value
+
+
+def _attached_messages(message: EmailMessage) -> list[EmailMessage]:
+    child_messages = []
+    for part in message.iter_parts():
+        if part.get_content_type() == "message/rfc822":
+            child_messages.extend(part.get_payload())
+        elif part.get_content_maintype() == "multipart":
+            child_messages.extend(_attached_messages(part))
+    return child_messages
+
+
+def _inline_forward(text: str) -> tuple[str, str] | None:
+    lines = [re.sub(r"^\s*(?:>\s*)+", "", line) for line in text.splitlines()]
+    unfolded = "\n".join(lines)
+    separators = list(FORWARD_SEPARATOR.finditer(unfolded))
+    if not separators:
+        return None
+    if len(separators) > 1:
+        raise MailParseError("Die Weiterleitung enthält mehrere zitierte Nachrichten.")
+
+    lines = unfolded[separators[0].end():].strip().splitlines()
+    headers = []
+    for index, line in enumerate(lines):
+        line = _normalized(line)
+        if line and not FORWARD_HEADER.match(line):
+            subjects = _values("\n".join(headers), "Betreff|Subject")
+            if len(subjects) == 1:
+                return subjects[0], "\n".join(lines[index:])
+            break
+        if line:
+            headers.append(line)
+    raise MailParseError("Die zitierte Weiterleitung ist unvollständig.")
+
+
+def _original_text(message: EmailMessage) -> tuple[str, str]:
+    subject = _normalized(str(message.get("Subject", "")))
+    body = message.get_body(preferencelist=("plain", "html"))
+    if body is None or FORWARD_PREFIX.match(subject):
+        attached = _attached_messages(message)
+        if len(attached) > 1:
+            raise MailParseError("Die Weiterleitung enthält mehrere E-Mails.")
+        if attached:
+            return _original_text(attached[0])
+
+    if body is None:
+        raise MailParseError("Die E-Mail enthält keinen lesbaren Klartext- oder HTML-Teil.")
+
+    text = _body_text(body)
+    if not REPLY_PREFIX.match(subject):
+        original = _inline_forward(text)
+        if original:
+            subject, text = original
+    subject = FORWARD_PREFIX.sub("", subject, count=1)
+    cleaned = "\n".join(_normalized(line) for line in text.splitlines())
+    if not cleaned.strip():
+        raise MailParseError("Die E-Mail enthält keinen lesbaren Inhalt.")
+    return subject, cleaned
+
+
+def _classify(subject: str, text: str) -> str:
+    matches = {
+        event_type for event_type, pattern in BODY_PATTERNS
+        if re.search(pattern, text, re.IGNORECASE | re.MULTILINE)
+    }
+    matches.update(
+        event_type for event_type, pattern in SUBJECT_PATTERNS
+        if re.search(pattern, subject, re.IGNORECASE)
+    )
+    cancellation_negated = False
+    for cancellation in PAST_CANCELLATION.findall(text):
+        if CANCELLATION_NEGATION.search(cancellation):
+            cancellation_negated = True
+            continue
+        automatic = re.search(r"\bautomatisch\b", cancellation, re.IGNORECASE)
+        matches.add("automatic_cancellation" if automatic else "cancellation")
+    if cancellation_negated and matches & CANCELLATION_TYPES:
+        return "unknown"
+    if matches == CANCELLATION_TYPES:
+        return "automatic_cancellation"
+    return matches.pop() if len(matches) == 1 else "unknown"
+
+
+def _berlin_time(value: str) -> datetime:
+    naive = datetime.strptime(value, "%d.%m.%Y %H:%M")
+    localized = naive.replace(tzinfo=BERLIN)
+    if localized.utcoffset() != naive.replace(tzinfo=BERLIN, fold=1).utcoffset():
+        raise ValueError("Mehrdeutige oder nicht existierende Ortszeit")
+    return localized
+
+
+def _period(text: str) -> tuple[datetime | None, datetime | None]:
+    value = _unique(_values(text, "Lehrgangstermin|Zeitraum"), lambda field: bool(field))
+    match = TIME_RANGE.fullmatch(value or "")
+    if not match:
+        return None, None
+    try:
+        starts_at, ends_at = map(_berlin_time, match.groups())
+    except ValueError:
+        return None, None
+    if ends_at.astimezone(UTC) <= starts_at.astimezone(UTC):
+        return None, None
+    return starts_at, ends_at
+
+
+def _date_from_match(pattern: str, text: str) -> date | None:
+    matches = set(re.findall(pattern, text, re.IGNORECASE))
+    if len(matches) != 1:
+        return None
+    day, month, year = matches.pop()
+    number = int(month[:-1]) if month.endswith(".") else MONTHS.get(month.casefold())
+    if number is None:
+        return None
+    try:
+        return date(int(year), number, int(day))
+    except ValueError:
+        return None
+
+
+def parse_eml(raw: bytes) -> ParsedMail:
+    """Parse bounded bytes locally. The result contains structured fields only."""
+    if not raw:
+        raise MailParseError("Die EML-Datei ist leer.")
+    if len(raw) > MAX_EML_BYTES:
+        raise MailParseError("Die EML-Datei ist größer als 1 MiB.")
+    try:
+        message = BytesParser(policy=policy.default).parsebytes(raw)
+        if not message.keys() or message.defects:
+            raise MailParseError("Die EML-Kopfzeilen sind beschädigt oder fehlen.")
+        subject, text = _original_text(message)
+    except (MessageError, RecursionError) as error:
+        raise MailParseError("Die EML-Struktur kann nicht gelesen werden.") from error
+
+    # Replies can contain HTML quotations and must not create new events or preview stale fields.
+    if REPLY_PREFIX.match(subject):
+        subject, text = "", ""
+    event_type = _classify(subject, text)
+    participant = _values(text, "Teilnehmer(?:in)?|Neue[rs]? Teilnehmer(?:in)?")
+    if not participant:
+        pattern = CONFIRMED_PARTICIPANT if event_type == "confirmation" else GREETING
+        participant = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
+    participant_name = _unique(participant, _name)
+    previous_name = _unique(_values(text, "Bisherige[rs]? Teilnehmer(?:in)?"), _name)
+    course_name = _unique(_values(text, "Lehrgangsart|Lehrgang"), _course_name)
+    reference = _unique(_values(text, "Buchungsreferenz|Buchungsnummer"), _booking_reference)
+    locations = " ".join(_values(text, "Schulungsort|Lehrgangsort|Schule"))
+    schools = [code for code, pattern in SCHOOLS.items() if re.search(pattern, locations, re.IGNORECASE)]
+    school = schools[0] if len(schools) == 1 else None
+    starts_at, ends_at = _period(text)
+    deadline = _date_from_match(r"spätestens am (?:[a-zäöü]+, )?" + DATE_PATTERN, text)
+    cancellation = _date_from_match(
+        r"andernfalls erfolgt am (?:[a-zäöü]+, )?" + DATE_PATTERN + r" die stornierung", text,
+    )
+
+    checks = (
+        (event_type == "unknown", "E-Mail-Typ nicht erkannt."),
+        (participant_name is None, "Teilnehmername fehlt oder ist nicht eindeutig."),
+        (course_name is None, "Lehrgangsart fehlt oder ist nicht eindeutig."),
+        (school is None, "Schulungsort fehlt oder ist nicht eindeutig."),
+        (starts_at is None, "Lehrgangszeitraum fehlt oder ist ungültig."),
+    )
+    return ParsedMail(
+        fingerprint=hashlib.sha256(raw).hexdigest(),
+        event_type=event_type,
+        course_name=course_name,
+        participant_name=participant_name,
+        previous_participant_name=previous_name,
+        school=school,
+        starts_at=starts_at,
+        ends_at=ends_at,
+        confirmation_deadline=deadline,
+        cancellation_date=cancellation,
+        booking_reference=reference,
+        warnings=tuple(warning for invalid, warning in checks if invalid),
+    )

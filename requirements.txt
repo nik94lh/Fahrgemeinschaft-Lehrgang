@@ -1,0 +1,8 @@
+Django==5.2.15
+asgiref==3.13.0
+gunicorn==27.0.1
+packaging==26.4
+psycopg[binary]==3.3.4
+psycopg-binary==3.3.4
+sqlparse==0.6.1
+typing-extensions==4.16.0

@@ -1,0 +1,12 @@
+services:
+  web:
+    environment:
+      BMS_HTTPS: "1"
+    networks:
+      default:
+      fpp-web:
+        aliases:
+          - bms-web
+networks:
+  fpp-web:
+    external: true

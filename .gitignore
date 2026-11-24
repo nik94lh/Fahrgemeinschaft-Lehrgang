@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+*.eml
+*.mbox
+*.pdf
+*.sqlite3
+__pycache__/
+*.py[cod]
+.venv/
+.coverage
+.pytest_cache/
