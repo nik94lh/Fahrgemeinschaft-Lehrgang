@@ -1,6 +1,7 @@
 from datetime import timedelta
 
 from django.test import TestCase
+from django.urls import reverse
 from django.utils import timezone
 
 from bookings.rides_matching import sync_ride_cases
@@ -63,16 +64,29 @@ class RideSuggestionTests(TestCase):
         self.assertContains(response, "Noch keine Fahrgemeinschaftsfälle")
         self.assertEqual(list(response.context["page_obj"]), [])
 
-    def test_trip_window_excludes_old_past_and_later_appointments(self):
-        for offset in (-7, 30):
-            start = self.date + timedelta(days=offset)
-            self.seat(self.first, start, start + timedelta(hours=4))
-            self.seat(self.second, start, start + timedelta(hours=4))
+    def test_manual_sync_lists_long_range_matches_and_excludes_past_trips(self):
+        future = self.date + timedelta(days=395)
+        past = self.date - timedelta(days=7)
+        upcoming_return = self.date - timedelta(days=2)
+        for start, end in (
+            (past, past + timedelta(hours=4)),
+            (past, upcoming_return),
+            (future, future + timedelta(hours=4)),
+        ):
+            self.seat(self.first, start, end)
+            self.seat(self.second, start, end)
 
-        sync_ride_cases()
-        response = self.client.get("/fahrgemeinschaften/")
+        response = self.client.post(reverse("rides_sync"), follow=True)
 
-        self.assertContains(response, "Noch keine Fahrgemeinschaftsfälle")
+        self.assertContains(response, "Abgleich abgeschlossen.")
+        self.assertCountEqual(
+            [(case.travel_date, case.direction) for case in response.context["page_obj"]],
+            [
+                (upcoming_return.date(), Carpool.Direction.RETURN),
+                (future.date(), Carpool.Direction.OUTBOUND),
+                (future.date(), Carpool.Direction.RETURN),
+            ],
+        )
 
     def test_both_directions_group_same_day_without_hour_limit(self):
         beginning = timezone.localtime(self.date).replace(hour=8)

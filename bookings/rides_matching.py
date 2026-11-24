@@ -2,18 +2,16 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
-from django.db.models import Q
 from django.utils import timezone
 
 from .models import BookingStatus, Carpool, CourseSeat, EmailEvent, RideCase, School
 from .services import _lock_import
 
 
-LOOKAHEAD = timedelta(days=28)
 BERLIN = ZoneInfo("Europe/Berlin")
 _LEGACY_STATUS_PRIORITY = {RideCase.Status.IN_REVIEW: 2, RideCase.Status.CLOSED: 1}
 
@@ -33,10 +31,8 @@ class _Match:
 
 
 def _trip_groups(now: datetime):
-    horizon = now + LOOKAHEAD
     seats = CourseSeat.objects.filter(
-        Q(session__starts_at__gte=now, session__starts_at__lt=horizon)
-        | Q(session__ends_at__gte=now, session__ends_at__lt=horizon),
+        session__ends_at__gte=now,
         status=BookingStatus.CONFIRMED,
         participant__isnull=False,
         session__school__in=School.values,
@@ -46,7 +42,7 @@ def _trip_groups(now: datetime):
     groups = defaultdict(list)
     for school, start, end, participant, seat_id in seats.iterator():
         for direction, instant in ((Carpool.Direction.OUTBOUND, start), (Carpool.Direction.RETURN, end)):
-            if now <= instant < horizon:
+            if instant >= now:
                 travel_date = instant.astimezone(BERLIN).date()
                 groups[(School(school), direction, travel_date)].append((instant, participant, seat_id))
     return groups

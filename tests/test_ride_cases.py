@@ -102,9 +102,6 @@ class RideCaseTests(TestCase):
         make_seat(self.course, self.sam, status=BookingStatus.APPROVED)
         unresolved = make_seat(self.course, self.toni)
         EmailEvent.objects.create(sha256="a" * 64, state=EmailEvent.State.NEEDS_REVIEW, seat=unresolved)
-        for participant in (self.sam, self.toni):
-            make_seat(self.course, participant, start=NOW + timedelta(days=28))
-
         self.assertEqual(sync_ride_cases(now=NOW), 0)
         self.assertFalse(RideCase.objects.exists())
 

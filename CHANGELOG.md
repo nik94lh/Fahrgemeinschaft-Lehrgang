@@ -1,5 +1,9 @@
 # Änderungen
 
+## 0.7.2
+
+- BMS ermittelt mögliche Fahrgemeinschaften für alle bereits erfassten künftigen Hin- und Rückfahrten. Passende Fälle für Lehrgänge im nächsten Jahr können dadurch schon jetzt zur Planung erscheinen.
+
 ## 0.7.1
 
 - Mögliche Rückfahrten werden wie Hinfahrten nach Schule und Kalendertag ermittelt. Hin- und Rückrichtung bleiben getrennt.

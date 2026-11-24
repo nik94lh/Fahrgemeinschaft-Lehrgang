@@ -11,7 +11,7 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
 from .models import RideCase
-from .rides_matching import LOOKAHEAD, set_ride_case_status, sync_ride_cases
+from .rides_matching import set_ride_case_status, sync_ride_cases
 
 
 class RideCaseStatusForm(forms.Form):
@@ -47,7 +47,6 @@ def rides(request):
         "selected_status": selected_status,
         "querystring": urlencode({"status": selected_status}) if selected_status else "",
         "synced": request.GET.get("abgleich") == "1",
-        "lookahead_days": LOOKAHEAD.days,
     })
 
 
