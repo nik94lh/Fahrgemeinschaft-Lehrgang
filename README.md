@@ -82,7 +82,9 @@ Der Hintergrunddienst gleicht die Buchungen standardmäßig alle zwei Minuten ab
 
 Der FFP-Testserver verfolgt `feat/bms-foundation`. Änderungen werden lokal geprüft und erst danach als Fast-Forward auf diesen Branch gepusht. Der beim Einrichten konfigurierte systemd-Timer plant den nächsten Deployment-Lauf zwei Minuten nach Ende des letzten Laufs ein. Findet ein Lauf einen neuen Stand, holt der Server die Änderungen, baut das Image, migriert die Datenbank und startet Webdienst und Postfachdienst. Build, Migration und Neustart dauern zusätzlich zur Wartezeit.
 
-Für eine sofortige Bereitstellung den eingerichteten Dienst auf dem FFP-Server manuell starten. Anschließend den installierten Commit im Protokoll mit dem erwarteten Commit vergleichen und die BMS-Seite neu öffnen.
+Für einen aktiven Push führe im Repository `bash scripts/push-ffp.sh` aus (unter Windows in Git Bash). Der Befehl pusht den aktuellen Commit, startet den bestehenden Deployment-Dienst über SSH und wartet auf die Bestätigung desselben Commits im Serverprotokoll. Es gilt der vorhandene SSH- und sudo-Zugang. Mit `bash scripts/push-ffp.sh --deploy-only` startest und prüfst du den bereits auf GitHub liegenden Stand. Ein alternatives SSH-Ziel kannst du als letztes Argument in der Form `Benutzer@Server` angeben.
+
+Direkt auf dem FFP-Server lässt sich ein Rollout ebenfalls anstoßen und prüfen.
 
 ```bash
 sudo systemctl start bms-deploy.service
