@@ -15,7 +15,10 @@
     <header class="app-header">
         <div class="header-inner">
             <a class="brand" href="{% url 'overview' %}"><strong>BMS</strong><span>Lehrgangsverwaltung</span></a>
-            <span class="mode">Testbetrieb</span>
+            <div class="header-status">
+                <span class="mode">Testbetrieb</span>
+                <span class="version">Version {{ bms_version }}</span>
+            </div>
         </div>
     </header>
     {% include "workspace/navigation.html" %}

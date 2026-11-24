@@ -43,9 +43,11 @@ body {
 
 .brand { display: flex; align-items: center; gap: 1rem; color: white; text-decoration: none; }
 .brand strong { font-size: 1.6rem; line-height: 1; }
-.brand span, .mode { color: #e0e7f5; }
+.brand span, .header-status { color: #e0e7f5; }
 .brand span { border-inline-start: 1px solid #6a7b94; padding-inline-start: 1rem; font-weight: 630; }
-.mode { border: 1px solid #7485a0; border-radius: .45rem; padding: .15rem .55rem; font-size: .8rem; }
+.header-status { display: flex; align-items: center; gap: .65rem; margin-inline-start: auto; white-space: nowrap; font-size: .8rem; }
+.mode { border: 1px solid #7485a0; border-radius: .45rem; padding: .15rem .55rem; }
+.version { font-variant-numeric: tabular-nums; }
 
 main { padding-block: clamp(1.5rem, 4vw, 2.75rem) 3rem; }
 

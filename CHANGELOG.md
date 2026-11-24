@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.9.0
+
+- **Mail-Eingang** zeigt die abgerufenen Nachrichten, erkannte Buchungsdaten, Importergebnisse und Gründe für fehlende Teilnehmeradressen.
+- **Klärung** stellt erkannte Angaben und Felder der Buchung gegenüber und verweist auf den zugehörigen Mail-Eingang.
+- Die gemeinsame Kopfzeile zeigt die installierte BMS-Version neben dem Hinweis auf den Testbetrieb.
+
 ## 0.8.0
 
 - BMS bildet einen gemeinsamen **Fahrgemeinschaftsvorschlag** für Hin- und Rückfahrt. Mindestens zwei verschiedene Teilnehmer müssen bestätigte, eindeutige Buchungen an derselben Schule mit übereinstimmendem Start- und Endtag haben. Maßgeblich sind die Kalendertage in `Europe/Berlin`, unabhängig von der Uhrzeit.
