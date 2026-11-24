@@ -1,5 +1,9 @@
 # Änderungen
 
+## 0.9.1
+
+- Die Maildetails zeigen die beim Abruf erkannten Angaben und den aktuellen Adressstand der verknüpften Buchung getrennt.
+
 ## 0.9.0
 
 - **Mail-Eingang** zeigt die abgerufenen Nachrichten, erkannte Buchungsdaten, Importergebnisse und Gründe für fehlende Teilnehmeradressen.

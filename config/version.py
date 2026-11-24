@@ -1,6 +1,6 @@
 """Version shared by the BMS header and release process."""
 
-BMS_VERSION = "0.9.0"
+BMS_VERSION = "0.9.1"
 
 
 def version_context(_request):
