@@ -13,7 +13,7 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_safe
 
-from .models import CourseSession, School
+from .models import BookingStatus, CourseSession, School
 
 
 DAY = timedelta(days=1)
@@ -214,9 +214,9 @@ def _month_groups(sessions, start, stop, selected, school_filter):
 def _month_timeline(selected, center, today, school):
     start = max(FIRST_TIMELINE_DAY, _shift_month(center, -TIMELINE_SIDE_MONTHS))
     stop = min(TIMELINE_STOP, _shift_month(center, TIMELINE_SIDE_MONTHS + 1))
-    sessions = _overlapping_sessions(
+    sessions = _calendar_sessions(_overlapping_sessions(
         datetime.combine(start, time.min, tzinfo=BERLIN), datetime.combine(stop, time.min, tzinfo=BERLIN), school,
-    ).select_related("course").order_by("starts_at", "course__name", "pk")
+    ))
     days = _ticks(start, stop, today)
     months = [
         {"start": day["date"], "start_column": column, "end_column": (_next_month(day["date"]) - start).days + 1}
@@ -262,6 +262,14 @@ def _overlapping_sessions(starts, ends, school):
     return sessions.filter(school=school) if school else sessions
 
 
+def _calendar_sessions(sessions):
+    return sessions.select_related("course").annotate(
+        participant_count=Count(
+            "seats__participant_id", filter=~Q(seats__status=BookingStatus.CANCELLED), distinct=True,
+        ),
+    ).order_by("starts_at", "course__name", "pk")
+
+
 @never_cache
 @require_safe
 def calendar(request):
@@ -275,9 +283,7 @@ def calendar(request):
     if period.view == "year":
         sessions = list(sessions.only("starts_at", "ends_at").order_by("starts_at", "pk"))
     else:
-        sessions = list(sessions.select_related("course").annotate(seat_count=Count("seats")).order_by(
-            "starts_at", "course__name", "pk"
-        ))
+        sessions = list(_calendar_sessions(sessions).annotate(seat_count=Count("seats")))
 
     month_anchor = period.start
     week_anchor = period.start

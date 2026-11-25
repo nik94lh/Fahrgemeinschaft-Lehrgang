@@ -38,10 +38,13 @@
                                 <a class="calendar-bar calendar-month-bar{% if bar.starts_before %} continues-before{% endif %}{% if bar.ends_after %} continues-after{% endif %}"
                                    style="grid-column: {{ bar.start_column }} / {{ bar.end_column }}; grid-row: {{ bar.lane }};"
                                    href="{% url 'calendar_detail' session.pk %}?{{ bar.detail_query }}"
-                                   aria-label="{{ session.course.name }}, {{ session.get_venue_display }}, {{ session.starts_at|date:'d.m.Y, H:i' }} bis {{ session.ends_at|date:'d.m.Y, H:i' }}"
+                                   aria-label="{{ session.course.name }}{% if session.participant_count > 1 %}, {{ session.participant_count }} Personen{% endif %}, {{ session.get_venue_display }}, {{ session.starts_at|date:'d.m.Y, H:i' }} bis {{ session.ends_at|date:'d.m.Y, H:i' }}"
                                    title="{{ session.course.name }} · {{ session.get_venue_display }}">
                                     {% if bar.starts_before %}<span class="continuation" aria-hidden="true">‹</span>{% endif %}
-                                    <span class="calendar-bar-text" aria-hidden="true">{{ session.course.name }}{% if session.is_online and session.school != 'online' %} · Online{% endif %}</span>
+                                    <span class="calendar-bar-text" aria-hidden="true">
+                                        {% if session.participant_count > 1 %}<span class="calendar-participant-count">{{ session.participant_count }}x</span>{% endif %}
+                                        <span class="calendar-bar-name">{{ session.course.name }}{% if session.is_online and session.school != 'online' %} · Online{% endif %}</span>
+                                    </span>
                                     {% if bar.ends_after %}<span class="continuation" aria-hidden="true">›</span>{% endif %}
                                 </a>
                             {% endwith %}
