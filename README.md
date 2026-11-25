@@ -67,19 +67,23 @@ Unter **Postfach → Einmaliger Adressabgleich** kannst du den Fortschritt sehen
 
 Fehlt bei einer Buchung die E-Mail-Adresse, wähle unter **Buchungen** den Teilnehmernamen aus. Prüfe die Originalnachricht, ergänze die Adresse unter **Teilnehmer zur Buchung** und wähle **Adresse speichern**. Bereits hinterlegte Adressen bleiben erhalten. Konflikte aus dem Import bleiben unter **Klärung** offen. Das Ergänzen einer Adresse löst keinen Versand aus. [Regeln für die Zuordnung](docs/MAILIMPORT.md#teilnehmeradresse-aus-dem-ursprünglichen-an-feld)
 
+Unter **Personen** kannst du nach Profilen suchen. Das Ansichtsrecht für Personen gibt den Reiter frei. Buchungsdaten und Links erfordern zusätzlich das Ansichtsrecht für Buchungen.
+
 ## Termine, Buchungen und mögliche Fahrten
 
 Die **Übersicht** zeigt anstehende Lehrgänge mit Beginn und Ende pro Termin. Unter **Buchungen** stehen die beiden Zeitpunkte in der Spalte **Zeitraum**. Die Anzeige verwendet die Zeitzone `Europe/Berlin`.
 
 Unter **Buchungen** zeigen drei Kacheln je Platz **Angemeldet**, **Genehmigt** und **Storniert**. **Offen** bedeutet, dass für diesen Schritt ein eindeutiger Nachweis fehlt. Die Liste zeigt auch, welche Angaben zur Vollständigkeit der Buchung fehlen.
 
-Im **Kalender** kannst du zwischen Woche, Monat und Jahr wechseln und nach Schule filtern. In der Jahresansicht zeigen die Monatskacheln, an wie vielen verschiedenen Tagen mindestens ein Lehrgang zum gewählten Schulfilter stattfindet. Die Kacheln sind bei 0 Tagen neutral, bei 1 Tag blau, bei 2–5 Tagen indigoblau, bei 6–10 Tagen violett, bei 11–20 Tagen dunkelrosa und bei 21–31 Tagen dunkelrot. Die genaue Anzahl steht auf der Kachel. Wähle einen Monat, um direkt in seinen Monatsplan zu springen. Dort stehen Wochentage an der Zeitachse. Die genauen Zeiten stehen in der zugänglichen Terminliste und in den Details. Wähle einen Termin, um die zugehörigen Buchungen zu sehen.
+Im **Kalender** kannst du zwischen Woche, Monat und Jahr wechseln und nach Schule filtern. In der Jahresansicht zeigen die Monatskacheln, an wie vielen verschiedenen Tagen mindestens ein Lehrgang zum gewählten Schulfilter stattfindet. Die Kacheln sind bei 0 Tagen neutral, bei 1 Tag blau, bei 2–5 Tagen indigoblau, bei 6–10 Tagen violett, bei 11–20 Tagen dunkelrosa und bei 21–31 Tagen dunkelrot. Die genaue Anzahl steht auf der Kachel. Wähle einen Monat, um direkt in sein Kalenderraster von Montag bis Sonntag zu springen. Das Raster bleibt auch ohne Termine sichtbar. Die genauen Zeiten stehen in der Terminliste und in den Details. Wähle einen Termin, um die zugehörigen Buchungen zu sehen.
 
 Ein **Fahrgemeinschaftsvorschlag** verbindet Hin- und Rückfahrt. BMS sucht unter allen erfassten künftigen Abfahrten nach mindestens zwei unterschiedlichen Teilnehmern mit vollständigen, bestätigten Buchungen vor Ort an derselben Schule. Eine vollständige Buchung hat einen Namen, eine persönliche E-Mail-Adresse, einen Lehrgang, einen Schulungsort und einen Zeitraum. Offene Klärungsfälle und mögliche Doppelbuchungen sperren die betroffenen Plätze. Online-Lehrgänge bleiben in Buchungen und Kalender sichtbar. Der Starttag und der Endtag müssen jeweils bei beiden Buchungen übereinstimmen. BMS verwendet für jede Person Beginn und Ende aus derselben Buchung. Die Kalendertage richten sich nach `Europe/Berlin`. Die Uhrzeiten sind für den Abgleich unerheblich.
 
 Der Hintergrunddienst gleicht die Buchungen standardmäßig alle zwei Minuten ab. Mit **Abgleich starten** kannst du die Prüfung manuell auslösen. Unter **Fahrgemeinschaften** kannst du einen Vorschlag öffnen und seinen Bearbeitungsstand ändern. Wenn die Buchungen nicht mehr zusammenpassen, kennzeichnet BMS den Vorschlag und erhält seinen Bearbeitungsstand. Frühere Fälle für einzelne Hin- oder Rückfahrten bleiben im Archiv. Die kombinierten Vorschläge beginnen mit einem eigenen Bearbeitungsstand. BMS verschickt dabei keine Einladungen und gibt keine Kontaktdaten frei.
 
 Jeder Vorschlag erscheint als Kachel mit Schule, Anzahl der Personen und den Daten für Hin- und Rückfahrt. **Standby** zeigt das Datum, ab dem der Vorschlag **Bereit zur Vermittlung** ist. Wer Fahrgemeinschaften bearbeiten darf, kann den Vorlauf unter **Fahrgemeinschaften → Einstellungen** festlegen. BMS zählt standardmäßig 14 Kalendertage ab dem Tag der Hinfahrt zurück. Der manuell gepflegte Bearbeitungsstand ist separat verfügbar.
+
+Mit **Teilnehmerabfrage testen** startest du eine persönliche Simulation mit drei fiktiven Personen. Sie zeigt Einladung, einmalige Antwort und den Stand der Zusagen in einer eigenen Kachel. Die Simulation verwendet keine Teilnehmerprofile und löst keinen Versand aus.
 
 ## Dokumentation
 

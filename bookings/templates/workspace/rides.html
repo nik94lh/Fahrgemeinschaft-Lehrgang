@@ -5,6 +5,7 @@
     .ride-toolbar { display: flex; align-items: end; justify-content: space-between; flex-wrap: wrap; gap: .75rem; margin-block-end: 1rem; }
     .ride-filter { display: flex; gap: .5rem; flex-wrap: wrap; align-items: end; margin: 0; }
     .ride-toolbar button { width: auto; margin: 0; }
+    .ride-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
     .ride-time { display: block; font-size: .875rem; color: var(--muted); }
     .ride-archive-link { margin-block-start: 1rem; }
     .ride-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
@@ -36,7 +37,12 @@
     {% else %}
         <div class="page-heading">
             <h1 id="ride-cases" class="ride-heading">Fahrgemeinschaftsvorschläge</h1>
-            {% if workspace_edit.rides %}<a class="button-link" href="{% url 'rides_settings' %}">Einstellungen</a>{% endif %}
+            {% if workspace_edit.rides %}
+                <div class="ride-page-actions">
+                    <a class="button-link" href="{% url 'ride_simulation' %}">Teilnehmerabfrage testen</a>
+                    <a class="button-link" href="{% url 'rides_settings' %}">Einstellungen</a>
+                </div>
+            {% endif %}
         </div>
         {% if synced %}<p class="notice" role="status">Abgleich abgeschlossen.</p>{% endif %}
         <dl class="stats ride-stats">

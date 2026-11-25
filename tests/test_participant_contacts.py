@@ -1,6 +1,8 @@
 from datetime import UTC, datetime
 
+from django.db import connection
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
 from bookings.models import BookingHistory, BookingStatus, Course, CourseSeat, CourseSession, EmailEvent, Participant, School
@@ -86,6 +88,11 @@ class ParticipantContactTests(WorkspaceTestCase):
         mail_detail = self.client.get(reverse("mail_receipt", args=[receipt.pk]), secure=True)
         self.assertContains(mail_detail, f'href="{review_url}"')
         self.assertContains(mail_detail, OPAQUE_ADDRESS)
+        self.assertContains(mail_detail, "Diese Mail enthält einen Adressvorschlag für die Buchung.")
+
+        profile = self.client.get(self.url, secure=True)
+        self.assertEqual(profile.context["form"]["email"].value(), OPAQUE_ADDRESS)
+        self.assertContains(profile, "Adressvorschlag · noch nicht gespeichert")
 
         form = self.client.get(review_url, secure=True)
         self.assertEqual(form.context["form"]["email"].value(), OPAQUE_ADDRESS)
@@ -98,6 +105,79 @@ class ParticipantContactTests(WorkspaceTestCase):
         self.seat.refresh_from_db()
         self.assertEqual(self.person.email, OPAQUE_ADDRESS)
         self.assertEqual(self.seat.status, BookingStatus.CONFIRMED)
+        saved_mail = self.client.get(reverse("mail_receipt", args=[receipt.pk]), secure=True)
+        self.assertContains(saved_mail, "Adresse an der Buchung aktuell</strong> · Hinterlegt")
+        self.assertContains(saved_mail, "Adressvorschlag aus dem ursprünglichen An-Feld")
+        self.assertNotContains(saved_mail, "Diese Mail enthält einen Adressvorschlag für die Buchung.")
+
+    @override_settings(HTTPS=True)
+    def test_conflicting_eligible_mail_candidates_leave_the_profile_form_empty(self):
+        receipt = self.make_address_receipt()
+        duplicate = MailReceipt.objects.create(
+            source_id=receipt.source_id, uid_validity=receipt.uid_validity, uid=3,
+            event=receipt.event, outcome=MailReceipt.Outcome.DUPLICATE,
+            fields={**receipt.fields, "participant_email_candidate": OPAQUE_ADDRESS.upper()},
+        )
+        self.assertEqual(self.client.get(self.url, secure=True).context["form"]["email"].value(), OPAQUE_ADDRESS)
+
+        duplicate.fields["participant_email_candidate"] = "zweiter-vorschlag@example.invalid"
+        duplicate.save(update_fields=["fields"])
+
+        for parameters in ({}, {"mail": receipt.pk}):
+            with self.subTest(parameters=parameters):
+                response = self.client.get(self.url, parameters, secure=True)
+                self.assertFalse(response.context["form"]["email"].value())
+                self.assertContains(response, "Mehrere Adressvorschläge")
+        self.person.refresh_from_db()
+        self.assertEqual(self.person.email, "")
+
+        response = self.client.post(self.url, {"email": OPAQUE_ADDRESS, "participant_id": self.person.pk}, secure=True)
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+        self.person.refresh_from_db()
+        self.assertEqual(self.person.email, OPAQUE_ADDRESS)
+
+    @override_settings(HTTPS=True)
+    def test_open_booking_review_pauses_suggestion_and_keeps_independent_manual_save(self):
+        receipt = self.make_address_receipt()
+        review = EmailEvent.objects.create(
+            sha256="d" * 64, seat=self.seat, state=EmailEvent.State.NEEDS_REVIEW,
+            review_reason=EmailEvent.ReviewReason.PARTICIPANT_IDENTITY_UNCLEAR,
+        )
+
+        for parameters in ({}, {"mail": receipt.pk}):
+            with self.subTest(parameters=parameters):
+                response = self.client.get(self.url, parameters, secure=True)
+                self.assertFalse(response.context["form"]["email"].value())
+                self.assertContains(response, "Zu dieser Buchung ist ein Klärungsfall offen.")
+                self.assertNotContains(response, OPAQUE_ADDRESS)
+        self.person.refresh_from_db()
+        self.assertEqual(self.person.email, "")
+
+        response = self.client.post(self.url, {"email": OPAQUE_ADDRESS, "participant_id": self.person.pk}, secure=True)
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+        self.person.refresh_from_db()
+        review.refresh_from_db()
+        self.assertEqual(self.person.email, OPAQUE_ADDRESS)
+        self.assertEqual(review.state, EmailEvent.State.NEEDS_REVIEW)
+
+    @override_settings(HTTPS=True)
+    def test_duplicate_candidate_receipts_reuse_checks_and_keep_the_selected_source(self):
+        receipt = self.make_address_receipt()
+        with CaptureQueriesContext(connection) as initial_queries:
+            self.client.get(self.url, {"mail": receipt.pk}, secure=True)
+        MailReceipt.objects.bulk_create([
+            MailReceipt(
+                source_id=receipt.source_id, uid_validity=receipt.uid_validity, uid=uid,
+                event=receipt.event, outcome=MailReceipt.Outcome.DUPLICATE,
+                fields={**receipt.fields, "participant_email_candidate": OPAQUE_ADDRESS.upper()},
+            )
+            for uid in range(3, 8)
+        ])
+
+        with self.assertNumQueries(len(initial_queries)):
+            response = self.client.get(self.url, {"mail": receipt.pk}, secure=True)
+        self.assertEqual(response.context["address_receipt_id"], receipt.pk)
+        self.assertEqual(response.context["form"]["email"].value(), OPAQUE_ADDRESS)
 
     @override_settings(HTTPS=True)
     def test_receipt_query_and_status_must_identify_an_applied_active_booking(self):

@@ -1,0 +1,3 @@
+.people-search { grid-template-columns: minmax(0, 1fr) auto; max-inline-size: 44rem; }
+.people-search button { grid-column: auto; }
+.people-booking { display: grid; gap: .25rem; justify-items: start; }

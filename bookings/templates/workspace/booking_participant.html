@@ -17,7 +17,11 @@
                 {{ form.participant_id.errors }}
                 <p>{{ form.email.label_tag }} {{ form.email }} {{ form.email.errors }}</p>
                 {% if address_receipt_id %}
-                    <p class="note">Prüfe vor dem Speichern die Adresse aus dem ursprünglichen An-Feld. <a href="{% url 'mail_receipt' address_receipt_id %}">Mail-Eingang ansehen</a></p>
+                    <p class="note"><strong>Adressvorschlag · noch nicht gespeichert</strong><br>Prüfe die Adresse vor dem Speichern. <a href="{% url 'mail_receipt' address_receipt_id %}">Mail-Eingang ansehen</a></p>
+                {% elif address_suggestion_issue == 'open_review' %}
+                    <p class="note">Zu dieser Buchung ist ein Klärungsfall offen. Prüfe die Zuordnung und die Originalnachricht vor dem Speichern.</p>
+                {% elif address_suggestion_issue == 'conflict' %}
+                    <p class="note">Mehrere Adressvorschläge passen zu dieser Buchung. Vergleiche die Originalnachrichten und trage die geprüfte Adresse ein.</p>
                 {% endif %}
                 <p class="note">Gibt es bereits ein Profil mit diesem Namen und dieser Adresse, kann BMS diese Buchung damit verknüpfen.</p>
                 <button type="submit">Adresse speichern</button>

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.validators import MaxValueValidator, RegexValidator
 from django.db import models
 from django.db.models import F, Q
@@ -328,6 +329,24 @@ class RideCase(models.Model):
                 ),
                 name="bookings_ride_return_fields",
             ),
+        ]
+
+
+class RideSimulationInvitation(models.Model):
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    respondent = models.PositiveSmallIntegerField()
+    token_digest = models.CharField(max_length=64, unique=True)
+    expires_at = models.DateTimeField()
+    answered_at = models.DateTimeField(null=True, blank=True)
+    interest = models.BooleanField(null=True, blank=True)
+    driver = models.BooleanField(null=True, blank=True)
+    brigade = models.CharField(max_length=32, blank=True)
+    phone = models.CharField(max_length=25, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["owner", "respondent"], name="bookings_one_sim_invite_per_respondent"),
+            models.CheckConstraint(condition=Q(respondent__range=(1, 3)), name="bookings_known_sim_respondent"),
         ]
 
 

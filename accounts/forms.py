@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth.models import Permission
 
-from .access import SECTIONS, section_permission
+from .access import SECTIONS, section_actions, section_permission
 
 
 User = get_user_model()
@@ -17,7 +17,7 @@ ACCESS_CHOICES = (
 def _workspace_permissions():
     codenames = [
         section_permission(section, action).split(".", 1)[1]
-        for section in SECTIONS for action in ("view", "edit")
+        for section in SECTIONS for action in section_actions(section)
     ]
     return {
         f"accounts.{permission.codename}": permission
@@ -34,12 +34,14 @@ class WorkspaceRightsMixin:
                 content_type__app_label="accounts",
             ).values_list("codename", flat=True))
         for section, label in SECTIONS.items():
+            actions = section_actions(section)
             initial = next((
-                action for action in ("edit", "view")
+                action for action in reversed(actions)
                 if section_permission(section, action).split(".", 1)[1] in direct_rights
             ), "none")
+            choices = [(value, text) for value, text in ACCESS_CHOICES if value == "none" or value in actions]
             self.fields[f"access_{section}"] = forms.ChoiceField(
-                label=label, choices=ACCESS_CHOICES, initial=initial,
+                label=label, choices=choices, initial=initial,
             )
 
     def access_fields(self):

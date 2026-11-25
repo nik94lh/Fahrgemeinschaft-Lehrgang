@@ -12,7 +12,7 @@ class ContentPolicyMiddleware:
         if response.get("Content-Type", "").startswith("text/html"):
             response.headers.setdefault(
                 "Content-Security-Policy",
-                "default-src 'none'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; form-action 'self'; "
+                "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; script-src 'self'; connect-src 'self'; form-action 'self'; "
                 "base-uri 'none'; frame-ancestors 'none'",
             )
             patch_vary_headers(response, ("X-BMS-Live",))

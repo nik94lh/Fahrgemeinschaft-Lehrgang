@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.14.0
+
+- Die Teilnehmerabfrage lässt sich mit drei fiktiven Personen, Einmallinks und einer Kachel für die Rückmeldungen im angemeldeten Bereich testen. Die Simulation versendet keine E-Mails.
+- Die Monatsansicht zeigt auch ohne Lehrgänge ein vollständiges Kalenderraster. Die Monats-, Wochen- und Jahresnavigation ist deutlicher gestaltet.
+- Der Reiter **Personen** bietet eine durchsuchbare Profilübersicht mit eigenem Ansichtsrecht. Die Startseite zeigt den Stand der passenden Fahrgemeinschaftsvorschläge. BMS hat ein eigenes Tab-Symbol.
+- Ein einzelner passender Adressvorschlag ist auch beim direkten Öffnen des Teilnehmerprofils sichtbar. Bei den unterstützten Mailvorlagen kann BMS eine alleinige Originaladresse in der Schreibweise `nachname-vorname` zum vollständigen Teilnehmernamen zuordnen.
+
 ## 0.13.0
 
 - Fahrgemeinschaftsvorschläge erscheinen als Kacheln mit Schulungsort, Personenzahl, Hin- und Rückfahrt, Vermittlungsstatus und Detailansicht.

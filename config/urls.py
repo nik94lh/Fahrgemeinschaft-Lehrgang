@@ -11,8 +11,15 @@ from bookings import views
 from bookings.brigades import brigade_edit, brigades
 from bookings.calendar import calendar, calendar_detail
 from bookings.participant_views import booking_participant
+from bookings.people import people
 from bookings.review_actions import review_detail
 from bookings.ride_settings import rides_settings
+from bookings.ride_simulation import (
+    ride_simulation,
+    ride_simulation_open,
+    ride_simulation_response,
+    ride_simulation_script,
+)
 from bookings.rides import ride_detail, rides, rides_sync
 from mailimport.mailbox_views import mailbox_view
 from mailimport.receipt_views import mail_receipt, mail_receipt_recheck, mail_receipts
@@ -30,8 +37,16 @@ def live_script(request):
     return FileResponse(Path(__file__).with_name("live.js").open("rb"), content_type="text/javascript; charset=utf-8")
 
 
+@require_safe
+@cache_control(public=True, max_age=3600)
+def favicon(request):
+    return FileResponse(Path(__file__).with_name("favicon.png").open("rb"), content_type="image/png")
+
+
 urlpatterns = [
     path("assets/live.js", live_script, name="live_script"),
+    path("assets/ride-simulation.js", ride_simulation_script, name="ride_simulation_script"),
+    path("favicon.png", favicon, name="favicon"),
     path("anmelden/", account_views.WorkspaceLoginView.as_view(), name="login"),
     path("abmelden/", LogoutView.as_view(), name="logout"),
     path("konto/", account_views.account_home, name="account"),
@@ -43,11 +58,19 @@ urlpatterns = [
     path("", views.overview, name="overview"),
     path("buchungen/", views.bookings, name="bookings"),
     path("buchungen/<int:seat_id>/teilnehmer/", booking_participant, name="booking_participant"),
+    path("personen/", people, name="people"),
     path("kalender/", calendar, name="calendar"),
     path("kalender/<int:session_id>/", calendar_detail, name="calendar_detail"),
     path("fahrgemeinschaften/", rides, name="rides"),
     path("fahrgemeinschaften/abgleichen/", rides_sync, name="rides_sync"),
     path("fahrgemeinschaften/einstellungen/", rides_settings, name="rides_settings"),
+    path("fahrgemeinschaften/simulation/", ride_simulation, name="ride_simulation"),
+    path("fahrgemeinschaften/simulation/antwort/", ride_simulation_open, name="ride_simulation_open"),
+    path(
+        "fahrgemeinschaften/simulation/antwort/<int:invitation_id>/",
+        ride_simulation_response,
+        name="ride_simulation_response",
+    ),
     path("fahrgemeinschaften/<int:case_id>/", ride_detail, name="ride_detail"),
     path("feuerwehren/", brigades, name="brigades"),
     path("feuerwehren/neu/", brigade_edit, name="brigade_create"),

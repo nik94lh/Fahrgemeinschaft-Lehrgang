@@ -3,6 +3,7 @@
     <div>
         {% if workspace_view.overview %}<a href="{% url 'overview' %}"{% if section == 'overview' %} aria-current="page"{% endif %}>Übersicht</a>{% endif %}
         {% if workspace_view.bookings %}<a href="{% url 'bookings' %}"{% if section == 'bookings' %} aria-current="page"{% endif %}>Buchungen</a>{% endif %}
+        {% if workspace_view.people %}<a href="{% url 'people' %}"{% if section == 'people' %} aria-current="page"{% endif %}>Personen</a>{% endif %}
         {% if workspace_view.calendar %}<a href="{% url 'calendar' %}"{% if section == 'calendar' %} aria-current="page"{% endif %}>Kalender</a>{% endif %}
         {% if workspace_view.rides %}<a href="{% url 'rides' %}"{% if section == 'rides' %} aria-current="page"{% endif %}>Fahrgemeinschaften</a>{% endif %}
         {% if workspace_view.brigades %}<a href="{% url 'brigades' %}"{% if section == 'brigades' %} aria-current="page"{% endif %}>Feuerwehren</a>{% endif %}
