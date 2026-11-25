@@ -24,6 +24,7 @@ REPLAY_SKIP_LABELS = {
     ContactReplayResult.SAME_ADDRESS: "Adresse bereits hinterlegt",
     ContactReplayResult.OTHER_ADDRESS: "Andere Adresse im Teilnehmerprofil hinterlegt",
     ContactReplayResult.ADDRESS_IN_USE: "Adresse gehört zu einem anderen Profil",
+    ContactReplayResult.SHARED_PROFILE: "Leeres Teilnehmerprofil gehört zu mehreren Buchungen",
     ContactReplayResult.INVALID: "Buchungsangaben fehlen oder sind widersprüchlich",
     ContactReplayResult.NO_APPLIED_EVENT: "Kein bereits angewendetes Buchungsereignis",
     ContactReplayResult.NO_ACTIVE_BOOKING: "Keine aktive Buchung mit zugeordnetem Teilnehmer",

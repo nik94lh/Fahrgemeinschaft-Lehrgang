@@ -65,7 +65,10 @@ def set_participant_email(seat_id: int, email: str, *, expected_participant_id: 
 
     previous = seat.participant
     participant = _identity_for_seat(seat, previous.name, email, allow_enrichment=True)
-    _fill_email(participant, email)
+    if participant == previous and not previous.email and _has_other_bookings(seat):
+        participant = Participant.objects.create(name=previous.name, email=email)
+    else:
+        _fill_email(participant, email)
     if participant.pk != previous.pk:
         seat.participant = participant
         seat.save(update_fields=["participant"])
@@ -281,11 +284,15 @@ def _identity_for_seat(
         current.home_brigade_id
         or current.consents.exists()
         or current.carpool_memberships.exists()
-        or current.seats.exclude(pk=seat.pk).exists()
+        or _has_other_bookings(seat)
         or canonical.seats.filter(session_id=seat.session_id).exclude(pk=seat.pk).exists()
     ):
         raise _IdentityConflict(EmailEvent.ReviewReason.PARTICIPANT_IDENTITY_UNCLEAR)
     return canonical
+
+
+def _has_other_bookings(seat: CourseSeat) -> bool:
+    return seat.participant.seats.exclude(pk=seat.pk).exists()
 
 
 def _fill_email(participant: Participant, email: str):
@@ -449,6 +456,8 @@ def _update_booking(
     previous_status = "" if new else seat.status
     previous_participant = None if new else seat.participant
     missing_address = previous_participant is not None and not previous_participant.email
+    if allow_enrichment and email and missing_address and not participant.email and _has_other_bookings(seat):
+        return _flag_review(event, mail, EmailEvent.ReviewReason.PARTICIPANT_IDENTITY_UNCLEAR, seat)
     changed = []
     if allow_enrichment:
         _update_online_session(seat.session, mail)

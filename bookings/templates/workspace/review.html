@@ -42,7 +42,7 @@
                             </dl>
                         {% endif %}
                         <div class="review-case-footer">
-                            <span class="quiet">Fall {{ case.event.pk }}{% if case.event.seat_id and workspace_view.bookings %} · Buchung {{ case.event.seat_id }}{% endif %}</span>
+                            <span class="quiet">Fall {{ case.event.pk }}{% if case.event.seat_id and workspace_view.bookings %} · <a href="{% url 'booking_detail' case.event.seat_id %}">Buchungs-ID {{ case.event.seat_id|stringformat:"d" }}</a>{% endif %}</span>
                             <a class="button-link" href="{% url 'review_detail' case.event.pk %}{% if detail_querystring %}?{{ detail_querystring }}{% endif %}" aria-label="Fall prüfen, Nummer {{ case.event.pk }}">Fall prüfen</a>
                         </div>
                     </article>

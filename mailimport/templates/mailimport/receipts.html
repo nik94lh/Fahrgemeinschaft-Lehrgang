@@ -58,8 +58,8 @@
                                     <td data-label="Details">
                                         {% if event.state in case_states and workspace_view.review %}
                                             <a href="{% url 'review_detail' event.pk %}">Klärungsfall ansehen</a>
-                                        {% elif event.seat.participant_id and workspace_view.bookings %}
-                                            <a href="{% url 'booking_participant' event.seat_id %}">Buchung ansehen</a>
+                                        {% elif event.seat_id and workspace_view.bookings %}
+                                            <a href="{% url 'booking_detail' event.seat_id %}">Buchungs-ID {{ event.seat_id|stringformat:"d" }} ansehen</a>
                                         {% else %}
                                             <span class="quiet">Keine weiteren Angaben</span>
                                         {% endif %}

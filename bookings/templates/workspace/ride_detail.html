@@ -59,7 +59,7 @@
                         {% for seat in seats %}
                             <tr>
                                 <td data-label="Buchung">
-                                    {% if seat.participant and workspace_view.bookings %}<a href="{% url 'booking_participant' seat.pk %}">Buchung {{ seat.pk }}</a>{% else %}Buchung {{ seat.pk }}{% endif %}
+                                    {% if workspace_view.bookings %}<a href="{% url 'booking_detail' seat.pk %}">Buchungs-ID {{ seat.pk|stringformat:"d" }}</a>{% else %}Buchungs-ID {{ seat.pk|stringformat:"d" }}{% endif %}
                                 </td>
                                 <td data-label="Teilnehmer/in">{{ seat.participant.name|default:"Ohne Zuordnung" }}</td>
                                 <td data-label="Lehrgang">{% if workspace_view.calendar %}<a href="{% url 'calendar_detail' seat.session_id %}">{{ seat.session.course.name }}</a>{% else %}{{ seat.session.course.name }}{% endif %}</td>

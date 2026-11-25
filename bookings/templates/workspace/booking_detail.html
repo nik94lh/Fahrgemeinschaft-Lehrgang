@@ -1,0 +1,83 @@
+{% extends "workspace/base.html" %}
+{% block title %}Buchungs-ID {{ seat.pk|stringformat:'d' }}{% endblock %}
+{% block page_styles %}
+    .booking-detail-summary { margin-block-end: 1rem; }
+    .booking-detail-timeline { margin: 0; padding: 0; list-style: none; }
+    .booking-detail-timeline > li { position: relative; margin-inline-start: .35rem; padding: 0 0 .95rem 1rem; border-inline-start: 2px solid var(--line); }
+    .booking-detail-timeline > li:last-child { padding-block-end: 0; border-color: transparent; }
+    .booking-detail-timeline > li::before { content: ""; position: absolute; inset: .4rem auto auto -.42rem; width: .65rem; height: .65rem; border: 2px solid var(--accent); border-radius: 50%; background: var(--surface); }
+    .booking-timeline-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: .25rem .7rem; }
+    .booking-timeline-row h3 { font-size: 1.025rem; }
+    .booking-timeline-time, .booking-timeline-note { color: var(--muted); font-size: .9rem; }
+    .booking-timeline-changes { padding-inline-start: 1.1rem; margin-block: .3rem 0; }
+    .booking-timeline-link { display: inline-block; margin-block-start: .25rem; }
+{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'bookings' %}">‹ Zurück zu den Buchungen</a></p>
+    <div class="page-heading">
+        <h1>Buchungs-ID {{ seat.pk|stringformat:'d' }}</h1>
+        {% if seat.participant_id %}
+            <a class="button-link" href="{% url 'booking_participant' seat.pk %}">Teilnehmerprofil ansehen</a>
+        {% endif %}
+    </div>
+    <section class="panel booking-detail-summary" aria-labelledby="booking-course">
+        <h2 id="booking-course">{{ seat.session.course.name }}</h2>
+        <dl class="details">
+            <div><dt>Schulungsort</dt><dd>{{ seat.session.get_venue_display }}</dd></div>
+            <div><dt>Zeitraum</dt><dd>{% include "workspace/session_period.html" with session=seat.session only %}</dd></div>
+            <div><dt>Teilnehmer</dt><dd>{{ seat.participant.name|default:"Keine Person zugeordnet" }}</dd></div>
+            {% if seat.external_reference %}<div><dt>Externe Buchungsreferenz</dt><dd>{{ seat.external_reference }}</dd></div>{% endif %}
+            <div><dt>Aktueller Buchungsstatus</dt><dd><span class="status-label status-{{ seat.status }}">{{ seat.get_status_display }}</span></dd></div>
+        </dl>
+    </section>
+    <section class="panel" aria-labelledby="booking-timeline">
+        <h2 id="booking-timeline">Verlauf dieser Buchung</h2>
+        {% if timeline %}
+            <ol class="booking-detail-timeline" role="list">
+                {% for entry in timeline %}
+                    <li>
+                        <div class="booking-timeline-row">
+                            <h3>{% if entry.event %}{{ entry.event.get_kind_display }}{% elif entry.changes.0.profile_linked %}Teilnehmerprofil zugeordnet{% else %}Änderung in der Buchung{% endif %}</h3>
+                            {% if entry.event %}<span class="status-label status-{{ entry.event.state }}">{{ entry.event.get_state_display }}</span>{% endif %}
+                        </div>
+                        <p class="booking-timeline-time">
+                            {% if entry.event %}Importiert{% else %}Protokolliert{% endif %}
+                            <time datetime="{{ entry.recorded_at|date:'c' }}">{{ entry.recorded_at|date:"d.m.Y, H:i" }}</time>
+                        </p>
+                        {% if entry.event.reviewed_at %}
+                            <p class="booking-timeline-note">
+                                Bearbeitet <time datetime="{{ entry.event.reviewed_at|date:'c' }}">{{ entry.event.reviewed_at|date:"d.m.Y, H:i" }}</time>
+                                {% if entry.event.review_resolution %} · {{ entry.event.get_review_resolution_display }}{% endif %}
+                            </p>
+                        {% elif entry.event.state == 'needs_review' and entry.event.review_reason %}
+                            <p class="booking-timeline-note">{{ entry.event.get_review_reason_display }}</p>
+                        {% endif %}
+                        {% if entry.changes %}
+                            <ul class="booking-timeline-changes">
+                                {% for change in entry.changes %}
+                                    <li>
+                                        {% if not change.previous_status %}Status erfasst · {{ change.get_status_display }}
+                                        {% elif change.previous_status != change.status %}{{ change.get_previous_status_display }} → {{ change.get_status_display }}
+                                        {% else %}Buchungsstatus unverändert{% endif %}
+                                        {% if entry.event %}
+                                            {% with change_minute=change.recorded_at|date:'Y-m-d H:i O' entry_minute=entry.recorded_at|date:'Y-m-d H:i O' %}
+                                                {% if change_minute != entry_minute %}<small class="booking-timeline-note">· protokolliert <time datetime="{{ change.recorded_at|date:'c' }}">{{ change.recorded_at|date:"d.m.Y, H:i" }}</time></small>{% endif %}
+                                            {% endwith %}
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% elif entry.event.state == 'applied' or entry.event.state == 'reviewed' %}
+                            <p class="booking-timeline-note">Kein Statuswechsel protokolliert.</p>
+                        {% endif %}
+                        {% if entry.event.receipt_id %}
+                            <a class="booking-timeline-link" href="{% url 'mail_receipt' entry.event.receipt_id %}">Im Mail-Eingang ansehen</a>
+                        {% endif %}
+                    </li>
+                {% endfor %}
+            </ol>
+        {% else %}
+            <p class="quiet">Noch keine Ereignisse protokolliert.</p>
+        {% endif %}
+    </section>
+{% endblock %}

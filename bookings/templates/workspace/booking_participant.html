@@ -3,7 +3,7 @@
 {% block content %}
     <p class="back-link"><a href="{% url 'bookings' %}">‹ Zurück zu den Buchungen</a></p>
     <h1>Teilnehmer zur Buchung</h1>
-    <p class="intro">{{ seat.session.course.name }} · {{ seat.session.get_venue_display }} · {% include "workspace/session_period.html" with session=seat.session only %}</p>
+    <p class="intro"><a href="{% url 'booking_detail' seat.pk %}">Buchungs-ID {{ seat.pk|stringformat:"d" }}</a> · {{ seat.session.course.name }} · {{ seat.session.get_venue_display }} · {% include "workspace/session_period.html" with session=seat.session only %}</p>
     <section class="panel participant-profile" aria-label="Teilnehmerprofil">
         <dl class="details">
             <div><dt>Name</dt><dd>{{ seat.participant.name }}</dd></div>
@@ -23,7 +23,7 @@
                 {% elif address_suggestion_issue == 'conflict' %}
                     <p class="note">Mehrere Adressvorschläge passen zu dieser Buchung. Vergleiche die Originalnachrichten und trage die geprüfte Adresse ein.</p>
                 {% endif %}
-                <p class="note">Gibt es bereits ein Profil mit diesem Namen und dieser Adresse, kann BMS diese Buchung damit verknüpfen.</p>
+                <p class="note">Du speicherst die geprüfte Adresse für diese Buchung. BMS kann sie mit einem vorhandenen Profil mit demselben Namen und derselben Adresse verknüpfen.</p>
                 <button type="submit">Adresse speichern</button>
             </form>
         {% endif %}
@@ -40,7 +40,7 @@
                             <td data-label="Lehrgangsbuchung">
                                 <span>
                                     <a href="{% url 'booking_participant' booking.pk %}"{% if booking.pk == seat.pk %} aria-current="page"{% endif %}>{{ booking.session.course.name }}</a><br>
-                                    <small>{{ booking.session.get_venue_display }} · Buchung {{ booking.pk }}{% if booking.external_reference %} · {{ booking.external_reference }}{% endif %}</small>
+                                    <small>{{ booking.session.get_venue_display }} · <a href="{% url 'booking_detail' booking.pk %}">Buchungs-ID {{ booking.pk|stringformat:"d" }}</a>{% if booking.external_reference %} · Referenz {{ booking.external_reference }}{% endif %}</small>
                                 </span>
                             </td>
                             <td data-label="Zeitraum">{% include "workspace/session_period.html" with session=booking.session only %}</td>

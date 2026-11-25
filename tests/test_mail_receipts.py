@@ -351,7 +351,7 @@ class MailReceiptTests(WorkspaceTestCase):
         self.assertIsNone(event.seat_id)
         response = self.client.get(reverse("review_detail", args=[event.pk]), secure=True)
         self.assertContains(response, "Buchungsreferenz weicht ab")
-        self.assertContains(response, f"Nr. {first.seat_id}")
+        self.assertContains(response, f"Buchungs-ID {first.seat_id}")
 
     @override_settings(HTTPS=True)
     def test_older_events_are_visible_in_archive_without_inventing_source_metadata(self):

@@ -51,7 +51,9 @@
                     {% elif address_handoff_issue == 'unavailable' %}
                         <p class="note">Der Vorschlag kann dem aktuellen Teilnehmerprofil nicht sicher zugeordnet werden.</p>
                     {% endif %}
-                    <p><a href="{% url 'booking_participant' receipt.event.seat_id %}">Verknüpfte Buchung ansehen</a></p>
+                {% endif %}
+                {% if show_booking %}
+                    <p class="detail-note"><a href="{% url 'booking_detail' receipt.event.seat_id %}">Buchungs-ID {{ receipt.event.seat_id|stringformat:"d" }} ansehen</a></p>
                 {% endif %}
                 {% if receipt.address_checked_at %}
                     <h3 class="detail-note">Letzter Adressabgleich</h3>

@@ -9,7 +9,7 @@
                         <td data-label="Ereignis">{{ event.get_kind_display }}</td>
                         <td data-label="Lehrgangsbuchung">
                             {% if event.seat and show_bookings %}
-                                <span>{{ event.seat.session.course.name }}<br><small>Buchung {{ event.seat.pk }}{% if event.seat.participant %} · {{ event.seat.participant.name }}{% endif %}</small></span>
+                                <span>{{ event.seat.session.course.name }}<br><small><a href="{% url 'booking_detail' event.seat.pk %}">Buchungs-ID {{ event.seat.pk|stringformat:"d" }}</a>{% if event.seat.participant %} · {{ event.seat.participant.name }}{% endif %}</small></span>
                             {% elif event.review_context.course_name or event.review_context.participant_name %}
                                 <span>{{ event.review_context.course_name|default:"Lehrgang nicht erkannt" }}<br><small>{{ event.review_context.participant_name|default:"Teilnehmer nicht erkannt" }} · Zuordnung offen</small></span>
                             {% else %}

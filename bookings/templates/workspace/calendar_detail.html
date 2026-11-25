@@ -20,7 +20,10 @@
                     <tbody>
                         {% for seat in seats %}
                             <tr>
-                                <td data-label="Teilnehmer/in">{% if seat.participant %}<a href="{% url 'booking_participant' seat.pk %}">{{ seat.participant.name }}</a>{% else %}—{% endif %}</td>
+                                <td data-label="Teilnehmer/in">
+                                    {% if seat.participant %}<a href="{% url 'booking_participant' seat.pk %}">{{ seat.participant.name }}</a>{% else %}—{% endif %}<br>
+                                    <small><a href="{% url 'booking_detail' seat.pk %}">Buchungs-ID {{ seat.pk|stringformat:'d' }}</a></small>
+                                </td>
                                 <td data-label="Status">{{ seat.get_status_display }}</td>
                                 <td data-label="Buchungsreferenz">{{ seat.external_reference|default:"—" }}</td>
                             </tr>

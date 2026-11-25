@@ -8,6 +8,7 @@ from django.views.decorators.http import require_safe
 
 from accounts import views as account_views
 from bookings import views
+from bookings.booking_detail import booking_detail
 from bookings.brigades import brigade_edit, brigades
 from bookings.calendar import calendar, calendar_detail
 from bookings.participant_views import booking_participant
@@ -39,12 +40,21 @@ def live_script(request):
 
 @require_safe
 @cache_control(public=True, max_age=3600)
+def calendar_timeline_script(request):
+    return FileResponse(
+        Path(__file__).with_name("calendar_timeline.js").open("rb"), content_type="text/javascript; charset=utf-8",
+    )
+
+
+@require_safe
+@cache_control(public=True, max_age=3600)
 def favicon(request):
     return FileResponse(Path(__file__).with_name("favicon.png").open("rb"), content_type="image/png")
 
 
 urlpatterns = [
     path("assets/live.js", live_script, name="live_script"),
+    path("assets/calendar-timeline.js", calendar_timeline_script, name="calendar_timeline_script"),
     path("assets/ride-simulation.js", ride_simulation_script, name="ride_simulation_script"),
     path("favicon.png", favicon, name="favicon"),
     path("anmelden/", account_views.WorkspaceLoginView.as_view(), name="login"),
@@ -57,6 +67,7 @@ urlpatterns = [
     path("benutzer/<int:user_id>/passwort/", account_views.account_password_reset, name="account_password_reset"),
     path("", views.overview, name="overview"),
     path("buchungen/", views.bookings, name="bookings"),
+    path("buchungen/<int:seat_id>/", booking_detail, name="booking_detail"),
     path("buchungen/<int:seat_id>/teilnehmer/", booking_participant, name="booking_participant"),
     path("personen/", people, name="people"),
     path("kalender/", calendar, name="calendar"),

@@ -73,7 +73,8 @@
                 <h2 id="review-linked">{% if event.seat_id %}Verknüpfte Lehrgangsbuchung{% else %}Mögliche Lehrgangsbuchung{% endif %}</h2>
                 {% if comparison_seat %}
                     <dl class="details">
-                        <div><dt>Buchung</dt><dd>Nr. {{ comparison_seat.pk }}{% if comparison_seat.external_reference %} · {{ comparison_seat.external_reference }}{% endif %}</dd></div>
+                        <div><dt>Buchung</dt><dd><a href="{% url 'booking_detail' comparison_seat.pk %}">Buchungs-ID {{ comparison_seat.pk|stringformat:"d" }}</a></dd></div>
+                        {% if comparison_seat.external_reference %}<div><dt>Buchungsreferenz</dt><dd>{{ comparison_seat.external_reference }}</dd></div>{% endif %}
                         <div><dt>Aktueller Teilnehmer</dt><dd>{{ comparison_seat.participant.name|default:"Ohne Zuordnung" }}</dd></div>
                         {% if address_conflict %}<div><dt>Gespeicherte E-Mail-Adresse</dt><dd>{{ comparison_seat.participant.email|default:"Noch nicht hinterlegt" }}</dd></div>{% endif %}
                         <div><dt>Aktueller Status</dt><dd><span class="status-label status-{{ comparison_seat.status }}">{{ comparison_seat.get_status_display }}</span></dd></div>
@@ -121,7 +122,7 @@
                                         </div>
                                         <button type="submit">Suchen</button>
                                     </div>
-                                    <p id="review-search-help" class="note review-info">Buchungsnummer, Referenz, Name oder Lehrgang</p>
+                                    <p id="review-search-help" class="note review-info">Buchungs-ID, Referenz, Name oder Lehrgang</p>
                                 </form>
                             {% endif %}
                             <form class="review-form" method="post">

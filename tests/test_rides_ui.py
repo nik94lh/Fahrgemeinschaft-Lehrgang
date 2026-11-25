@@ -196,7 +196,8 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
 
         self.assertContains(response, "Synthetische Person")
         self.assertContains(response, "Zweite Testperson")
-        self.assertContains(response, reverse("booking_participant", args=[self.first_seat.pk]))
+        booking_link = reverse("booking_detail", args=[self.first_seat.pk])
+        self.assertContains(response, f'<a href="{booking_link}">Buchungs-ID {self.first_seat.pk}</a>', html=True)
         self.assertContains(response, "Fahrgemeinschaftsvorschlag")
         self.assertContains(response, "Lehrgangsbeginn")
         self.assertContains(response, "Lehrgangsende")

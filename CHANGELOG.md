@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.15.1
+
+- Der Monatskalender zeigt alle Tage in einer scrollbaren Zeitleiste. Bei der Monatswahl steht der Erste links. Schulgruppen und Lehrgangsbalken reichen über Monats- und Jahreswechsel.
+- Die interne Buchungs-ID steht in der Buchung und den verknüpften Ansichten. Unter Buchungen lässt sich ein Platz gezielt über diese ID finden. Die Detailseite zeigt die eingegangenen Meldungen und Statusänderungen dieses einzelnen Platzes. Das Teilnehmerprofil ist separat erreichbar.
+- Neue Adressen für ein leeres Profil mit mehreren Buchungen gehen zur Klärung. Eine ausdrücklich für einen Platz gespeicherte neue Adresse wird nur diesem Platz zugeordnet.
+
 ## 0.15.0
 
 - Bei unterstützten persönlichen Genehmigungen und Teilnahmebestätigungen kann BMS eine einzelne Originaladresse ohne Namensbestandteile übernehmen. Die Anrede muss eindeutig zur teilnehmenden Person passen.
