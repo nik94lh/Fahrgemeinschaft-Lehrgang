@@ -18,6 +18,7 @@ from .participant_settings import get_functional_addresses
 
 
 REPLAY_SKIP_LABELS = {
+    ContactReplayResult.ADDRESS_REVIEW: "Adresse zur Bestätigung im Mail-Eingang",
     ContactReplayResult.NO_ADDRESS: "Keine eindeutig passende Teilnehmeradresse erkannt",
     ContactReplayResult.AMBIGUOUS_ADDRESS: "Mehrere mögliche Teilnehmeradressen",
     ContactReplayResult.SAME_ADDRESS: "Adresse bereits hinterlegt",

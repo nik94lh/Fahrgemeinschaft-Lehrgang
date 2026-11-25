@@ -138,6 +138,7 @@ class ParsedMail:
     sent_at: datetime | None = None
     is_online: bool = False
     unusable_fields: tuple[str, ...] = ()
+    participant_email_candidate: str | None = field(default=None, repr=False)
 
 
 def _normalized(value: str) -> str:
@@ -556,6 +557,7 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
         warnings=tuple(warning for invalid, warning in checks if invalid),
         reference_conflict=reference_conflict,
         participant_email=participant_email,
+        participant_email_candidate=selection.candidate if event_type in ("approval", "confirmation") else None,
         participant_email_ambiguous=participant_email_ambiguous,
         address_note=address_note,
         sent_at=_sent_at(message),

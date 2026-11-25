@@ -2,7 +2,7 @@
 
 import re
 from collections.abc import Iterable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from email import policy
 from email.headerregistry import Address
 from unicodedata import normalize
@@ -59,6 +59,7 @@ class AddressSelection:
     email: str | None = None
     ambiguous: bool = False
     note: str = ""
+    candidate: str | None = field(default=None, repr=False)
 
 
 def _address_matches_name(email: str, name: str) -> bool:
@@ -118,6 +119,9 @@ def select_participant_address(
                 allow_approval_fallback and not display and excluded_from_original
             ):
                 return AddressSelection(email=email)
-            return AddressSelection(note="Das Original nennt eine Adresse ohne eindeutigen Bezug zum vollständigen Teilnehmernamen.")
+            return AddressSelection(
+                note="Das Original nennt eine Adresse ohne eindeutigen Bezug zum vollständigen Teilnehmernamen.",
+                candidate=email,
+            )
 
     return AddressSelection(note="Der Empfängername im ursprünglichen An-Feld passt nicht eindeutig zum Teilnehmer.")

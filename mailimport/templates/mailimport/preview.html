@@ -2,7 +2,6 @@
 {% block title %}E-Mail-Vorschau{% endblock %}
 {% block content %}
         <h1>E-Mail-Vorschau</h1>
-        <p class="intro">Prüfe, welche Daten BMS in einer Lehrgangsmail erkennt.</p>
         <div class="workspace">
             <section class="panel" aria-labelledby="upload-title">
                 <h2 id="upload-title">Datei auswählen</h2>
@@ -17,7 +16,7 @@
                     {{ form.file.errors }}
                     <button type="submit">Prüfen</button>
                     <button class="secondary-button" type="submit" formaction="{% url 'manual_import' %}">Testmail importieren</button>
-                    <p class="note">Verwende eine synthetische oder anonymisierte Testmail. Die Vorschau speichert keine Daten. Der Import speichert erkannte Buchungsdaten ohne die Originaldatei. <a href="{% url 'sample_eml' %}">Beispiel-EML herunterladen</a></p>
+                    <p class="note">Verwende eine synthetische oder anonymisierte Testmail. „Testmail importieren“ speichert die Buchungsdaten. <a href="{% url 'sample_eml' %}">Beispiel-EML herunterladen</a></p>
                 </form>
             </section>
             <section class="panel" aria-labelledby="results-title">
@@ -32,7 +31,11 @@
                         <div><dt>Ende</dt><dd>{{ result.ends_at|date:"d.m.Y, H:i"|default:"—" }}</dd></div>
                         <div><dt>Teilnehmer/in</dt><dd>{{ result.participant_name|default:"—" }}</dd></div>
                         {% if result.event_type == "approval" or result.event_type == "confirmation" %}
-                            <div><dt>Teilnehmeradresse</dt><dd>{{ result.participant_email|default:"Keine persönliche Adresse erkannt" }}</dd></div>
+                            {% if result.participant_email_candidate %}
+                                <div><dt>Adressvorschlag aus dem ursprünglichen An-Feld</dt><dd>{{ result.participant_email_candidate }}</dd></div>
+                            {% else %}
+                                <div><dt>Teilnehmeradresse</dt><dd>{{ result.participant_email|default:"Keine persönliche Adresse erkannt" }}</dd></div>
+                            {% endif %}
                         {% endif %}
                         {% if result.previous_participant_name %}
                             <div><dt>Bisherige/r Teilnehmer/in</dt><dd>{{ result.previous_participant_name }}</dd></div>
@@ -57,7 +60,6 @@
                 {% else %}
                     <div class="empty">
                         <h3>Noch keine Vorschau</h3>
-                        <p>Wähle eine EML-Datei und klicke auf „Prüfen“.</p>
                     </div>
                 {% endif %}
             </section>

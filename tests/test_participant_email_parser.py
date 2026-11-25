@@ -104,6 +104,7 @@ class ParticipantEmailParserTests(TestCase):
         )
         parsed = parse_eml(raw)
         self.assertIsNone(parsed.participant_email)
+        self.assertIsNone(parsed.participant_email_candidate)
         self.assertTrue(parsed.participant_email_ambiguous)
 
     def test_html_must_describe_same_booked_course_and_person(self):
@@ -362,6 +363,43 @@ class ParticipantEmailParserTests(TestCase):
         self.assertIsNone(parse_eml(message.as_bytes(), functional_addresses=FUNCTIONAL).participant_email)
         exact = booking_message("alex.beispiel@example.invalid").as_bytes()
         self.assertEqual(parse_eml(exact).participant_email, "alex.beispiel@example.invalid")
+
+    def test_original_recipient_is_available_for_manual_review_without_automatic_assignment(self):
+        address = "lernplatz97@example.invalid"
+        direct = booking_message(address)
+        forwarded = nested_booking_forward(booking_message(f'"{address}" <{address}>'))
+        confirmation = booking_message(address, subject="Teilnahmebestätigung", body=CONFIRMATION)
+        for message in (direct, forwarded, confirmation):
+            with self.subTest(subject=message["Subject"]):
+                parsed = parse_eml(message.as_bytes())
+
+                self.assertEqual(parsed.participant_email_candidate, address)
+                self.assertNotIn(address, repr(parsed))
+                self.assertIsNone(parsed.participant_email)
+
+    def test_review_candidate_excludes_functional_conflicting_and_unrelated_recipients(self):
+        address = "lernplatz97@example.invalid"
+        messages = (
+            booking_message(FUNCTIONAL[0]),
+            booking_message(f"{address}, zweiter@example.invalid"),
+            booking_message(f"Robin Muster <{address}>"),
+            booking_message(address, subject="AW: Ihre Lehrgangsanmeldung"),
+            booking_message(address, subject="WG: Ihre Lehrgangsanmeldung"),
+            booking_message(address, subject="Stornierung", body="Teilnehmer: Alex Beispiel"),
+        )
+        cc_only = booking_message()
+        cc_only["Cc"] = address
+        for message in (*messages, cc_only):
+            with self.subTest(subject=message["Subject"]):
+                parsed = parse_eml(message.as_bytes(), functional_addresses=FUNCTIONAL)
+
+                self.assertIsNone(parsed.participant_email_candidate)
+
+    def test_automatically_assigned_address_is_not_also_a_candidate(self):
+        parsed = parse_eml(booking_message("alex.beispiel@example.invalid").as_bytes())
+
+        self.assertEqual(parsed.participant_email, "alex.beispiel@example.invalid")
+        self.assertIsNone(parsed.participant_email_candidate)
 
     def test_functional_address_is_removed_even_when_display_name_matches(self):
         message = booking_message(

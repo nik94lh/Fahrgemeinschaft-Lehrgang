@@ -1,5 +1,6 @@
 """Reconcile a local EML message without fetching or storing its original contents."""
 
+from dataclasses import replace
 from datetime import datetime
 from itertools import islice
 from unicodedata import normalize
@@ -80,6 +81,7 @@ def _reconcile(
     mail: ParsedMail, occurred_at: datetime | None, *, receipt: MailReceipt | None = None,
 ) -> EmailEvent:
     _lock_import()
+    mail = _use_known_participant_address(mail)
     event, created = EmailEvent.objects.get_or_create(
         sha256=mail.fingerprint,
         defaults={"kind": mail.event_type, "occurred_at": occurred_at},
@@ -166,6 +168,7 @@ def _record_receipt(
         **_recognized_booking_fields(mail, include_previous=True),
         "mail_type": EmailEvent.Kind(mail.event_type).label,
         "participant_email": mail.participant_email,
+        "participant_email_candidate": mail.participant_email_candidate,
         "address_note": address_note,
         "confirmation_deadline": mail.confirmation_deadline.isoformat() if mail.confirmation_deadline else None,
         "cancellation_date": mail.cancellation_date.isoformat() if mail.cancellation_date else None,
@@ -247,6 +250,22 @@ def _participant_with_email(name: str, email: str) -> Participant | None:
     if participant and _normalized_name(participant.name) != _normalized_name(name):
         raise _IdentityConflict(EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT)
     return participant
+
+
+def _use_known_participant_address(mail: ParsedMail) -> ParsedMail:
+    candidate = mail.participant_email_candidate
+    if not candidate or mail.participant_email or not mail.participant_name:
+        return mail
+    try:
+        participant = _participant_with_email(mail.participant_name, candidate)
+    except _IdentityConflict:
+        return mail
+    if participant is None:
+        return mail
+    return replace(
+        mail, participant_email=candidate, participant_email_candidate=None,
+        address_note="Die Adresse aus dem ursprünglichen An-Feld passt zu einem bestehenden Teilnehmerprofil.",
+    )
 
 
 def _identity_for_seat(

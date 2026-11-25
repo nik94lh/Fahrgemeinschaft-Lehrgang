@@ -7,7 +7,7 @@ from django.db import DatabaseError, IntegrityError, transaction
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
 
-from bookings.contact_replay import ContactReplayResult, contact_replay_outcome
+from bookings.contact_replay import ContactReplayResult, check_contact_replay
 
 from .imap_sync import (
     MAX_UID,
@@ -108,13 +108,18 @@ def _scan_step(job: ContactReplayJob) -> tuple[int, Counter[str]]:
         if raw is None:
             outcome = ContactReplayResult.UNREADABLE
         else:
-            outcome = contact_replay_outcome(raw, imported_event_id=receipt.event_id if receipt else None)
+            outcome, candidate = check_contact_replay(raw, imported_event_id=receipt.event_id if receipt else None)
+            if receipt:
+                if candidate:
+                    receipt.fields["participant_email_candidate"] = candidate
+                else:
+                    receipt.fields.pop("participant_email_candidate", None)
             detail = outcome.value
         outcomes[outcome.name] += 1
         if receipt:
             receipt.address_checked_at = checked_at
             receipt.address_check_detail = detail
-    MailReceipt.objects.bulk_update(receipts.values(), ("address_checked_at", "address_check_detail"))
+    MailReceipt.objects.bulk_update(receipts.values(), ("address_checked_at", "address_check_detail", "fields"))
     return end_uid, outcomes
 
 

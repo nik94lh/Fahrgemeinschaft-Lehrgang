@@ -16,6 +16,9 @@
                 {{ form.participant_id }}
                 {{ form.participant_id.errors }}
                 <p>{{ form.email.label_tag }} {{ form.email }} {{ form.email.errors }}</p>
+                {% if address_receipt_id %}
+                    <p class="note">Prüfe vor dem Speichern die Adresse aus dem ursprünglichen An-Feld. <a href="{% url 'mail_receipt' address_receipt_id %}">Mail-Eingang ansehen</a></p>
+                {% endif %}
                 <p class="note">Gibt es bereits ein Profil mit diesem Namen und dieser Adresse, kann BMS diese Buchung damit verknüpfen.</p>
                 <button type="submit">Adresse speichern</button>
             </form>
@@ -23,7 +26,7 @@
     </section>
     <section class="panel" aria-labelledby="profile-bookings-title">
         <h2 id="profile-bookings-title">Lehrgangsbuchungen dieses Profils</h2>
-        <p class="note booking-comparison-note">Ein möglicher Doppeleintrag betrifft denselben Lehrgang am selben Schulungsort zur gleichen Zeit. Eine Überschneidung betrifft zwei verschiedene Termine. BMS markiert diese Buchungen zur Prüfung.</p>
+        <p class="note booking-comparison-note">Ein möglicher Doppeleintrag betrifft denselben Termin. Eine Überschneidung betrifft verschiedene Termine zur selben Zeit.</p>
         <div class="table-scroll" tabindex="0" role="region" aria-labelledby="profile-bookings-title">
             <table class="mobile-table">
                 <thead><tr><th scope="col">Lehrgangsbuchung</th><th scope="col">Zeitraum</th><th scope="col">Status</th><th scope="col">Hinweis</th></tr></thead>

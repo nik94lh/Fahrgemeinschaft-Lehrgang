@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.10.1
+
+- BMS zeigt eine einzelne Originaladresse ohne Namensbezug im Mail-Eingang zur Bestätigung. Bei einer passenden Buchung lässt sich die Adresse im Teilnehmerprofil speichern.
+- Ein bestehendes Profil kann für weitere Mails mit derselben Originaladresse und demselben Teilnehmernamen wiederverwendet werden.
+- Wiederholte Infotexte in den Betriebsansichten sind gekürzt.
+
 ## 0.10.0
 
 - BMS aktualisiert die geöffnete Ansicht im Hintergrund. Filter und Seitennummer gelten auch für den Live-Abgleich. Bereiche mit laufenden Eingaben warten mit der Aktualisierung.

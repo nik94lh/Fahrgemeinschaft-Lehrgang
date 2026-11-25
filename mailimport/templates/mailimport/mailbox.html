@@ -19,7 +19,6 @@
 <div class="page-heading">
   <div>
     <h1>Postfach</h1>
-    <p class="intro">Konfiguriere den lesenden Abruf aus dem separaten Postfach für Lehrgangs-E-Mails.</p>
   </div>
   <a class="button-link" href="{% url 'mail_receipts' %}">Zum Mail-Eingang</a>
 </div>
@@ -45,14 +44,14 @@
     {{ form.as_p }}
     <button type="submit">Postfach speichern</button>
   </form>
-  <p class="note">Aktiviere den Abruf nur für ein freigegebenes Postfach. BMS berücksichtigt die Einstellung beim nächsten Abruf.</p>
+  <p class="note">Aktiviere den Abruf nur für ein freigegebenes Postfach.</p>
 </section>
 <section class="panel" aria-labelledby="functional-addresses-heading" style="max-width: 38rem; margin-block-start: 1rem;">
   <h2 id="functional-addresses-heading">Funktionsadressen der Lehrgangskommunikation</h2>
   {% if addresses_saved %}
     <p role="status">Funktionsadressen gespeichert.</p>
   {% endif %}
-  <p class="note">Trage Sammel- und Verteileradressen ein, die keine Personen bezeichnen. Ohne hinterlegte Funktionsadressen übernimmt BMS bei künftigen Importen nur ausdrücklich genannte Teilnehmende.</p>
+  <p class="note">Trage Sammel- und Verteileradressen ein, damit BMS sie bei der Adresszuordnung auslässt.</p>
   <form method="post" style="margin-block-start: 1rem;">
     {% csrf_token %}
     <input type="hidden" name="action" value="save-functional-addresses">
@@ -62,7 +61,7 @@
 </section>
 <section data-live-region="contact-replay" class="panel participant-profile" aria-labelledby="contact-replay-heading" style="max-width: 38rem; margin-block-start: 1rem;">
   <h2 id="contact-replay-heading">Einmaliger Adressabgleich</h2>
-  <p class="note">BMS liest frühere Mails im Importpostfach erneut und ergänzt eindeutig belegte, fehlende Teilnehmeradressen. Das Ergebnis pro Nachricht steht im Mail-Eingang unter „Letzter Adressabgleich“.</p>
+  <p class="note">Ergebnisse pro Nachricht findest du im <a href="{% url 'mail_receipts' %}">Mail-Eingang</a> unter „Letzter Adressabgleich“.</p>
   {% if replay_error %}
     <p class="errorlist" role="alert">{{ replay_error }}</p>
   {% endif %}

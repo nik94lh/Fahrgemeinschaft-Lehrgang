@@ -1,9 +1,13 @@
 from datetime import UTC, datetime
 
-from django.test import Client, TestCase
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
-from bookings.models import BookingStatus, Course, CourseSeat, CourseSession, Participant, School
+from bookings.models import BookingHistory, BookingStatus, Course, CourseSeat, CourseSession, EmailEvent, Participant, School
+from mailimport.models import MailReceipt, ParticipantRecognitionConfiguration
+
+
+OPAQUE_ADDRESS = "x7q19@example.invalid"
 
 
 class ParticipantContactTests(TestCase):
@@ -20,6 +24,21 @@ class ParticipantContactTests(TestCase):
 
     def setUp(self):
         self.url = f"/buchungen/{self.seat.pk}/teilnehmer/"
+
+    def make_address_receipt(self):
+        self.seat.status = BookingStatus.CONFIRMED
+        self.seat.save(update_fields=["status"])
+        event = EmailEvent.objects.create(
+            sha256="a" * 64, kind=EmailEvent.Kind.CONFIRMATION,
+            state=EmailEvent.State.APPLIED, seat=self.seat,
+        )
+        BookingHistory.objects.create(
+            seat=self.seat, participant=self.person, status=self.seat.status, source_event=event,
+        )
+        return MailReceipt.objects.create(
+            source_id="b" * 64, uid_validity=1, uid=2, event=event, outcome=MailReceipt.Outcome.APPLIED,
+            fields={"participant_name": self.person.name, "participant_email_candidate": OPAQUE_ADDRESS},
+        )
 
     def test_booking_lists_the_link_and_shows_current_profile(self):
         self.assertContains(self.client.get(reverse("bookings")), self.url)
@@ -53,6 +72,68 @@ class ParticipantContactTests(TestCase):
         self.assertEqual(Client(enforce_csrf_checks=True).post(self.url, body).status_code, 403)
         replacement.refresh_from_db()
         self.assertEqual(replacement.email, "")
+
+    @override_settings(HTTPS=True)
+    def test_linked_mail_candidate_prefills_only_until_operator_saves(self):
+        receipt = self.make_address_receipt()
+        review_url = f"{self.url}?mail={receipt.pk}"
+        mail_detail = self.client.get(reverse("mail_receipt", args=[receipt.pk]), secure=True)
+        self.assertContains(mail_detail, f'href="{review_url}"')
+        self.assertContains(mail_detail, OPAQUE_ADDRESS)
+
+        form = self.client.get(review_url, secure=True)
+        self.assertEqual(form.context["form"]["email"].value(), OPAQUE_ADDRESS)
+        self.person.refresh_from_db()
+        self.assertEqual(self.person.email, "")
+
+        response = self.client.post(review_url, {"email": OPAQUE_ADDRESS, "participant_id": self.person.pk}, secure=True)
+        self.assertRedirects(response, self.url, fetch_redirect_response=False)
+        self.person.refresh_from_db()
+        self.seat.refresh_from_db()
+        self.assertEqual(self.person.email, OPAQUE_ADDRESS)
+        self.assertEqual(self.seat.status, BookingStatus.CONFIRMED)
+
+    @override_settings(HTTPS=True)
+    def test_receipt_query_and_status_must_identify_an_applied_active_booking(self):
+        receipt = self.make_address_receipt()
+        for source in ("ungültig", "0", "9223372036854775808", str(receipt.pk + 1)):
+            response = self.client.get(self.url, {"mail": source}, secure=True)
+            self.assertFalse(response.context["form"]["email"].value())
+
+        self.seat.status = BookingStatus.CANCELLED
+        self.seat.save(update_fields=["status"])
+        self.assertFalse(self.client.get(self.url, {"mail": receipt.pk}, secure=True).context["form"]["email"].value())
+        self.seat.status = BookingStatus.CONFIRMED
+        self.seat.save(update_fields=["status"])
+        receipt.event.state = EmailEvent.State.NEEDS_REVIEW
+        receipt.event.save(update_fields=["state"])
+        self.assertFalse(self.client.get(self.url, {"mail": receipt.pk}, secure=True).context["form"]["email"].value())
+
+    @override_settings(HTTPS=True)
+    def test_candidate_is_unavailable_after_participant_history_changed(self):
+        receipt = self.make_address_receipt()
+        replacement = Participant.objects.create(name=self.person.name)
+        BookingHistory.objects.create(
+            seat=self.seat, previous_participant=self.person, participant=replacement, status=self.seat.status,
+        )
+        BookingHistory.objects.create(
+            seat=self.seat, previous_participant=replacement, participant=self.person, status=self.seat.status,
+        )
+
+        response = self.client.get(self.url, {"mail": receipt.pk}, secure=True)
+        self.assertFalse(response.context["form"]["email"].value())
+
+    @override_settings(HTTPS=True)
+    def test_candidate_is_unavailable_for_functional_or_other_profile_address(self):
+        receipt = self.make_address_receipt()
+        other_owner = Participant.objects.create(name=self.person.name, email=OPAQUE_ADDRESS)
+        response = self.client.get(self.url, {"mail": receipt.pk}, secure=True)
+        self.assertFalse(response.context["form"]["email"].value())
+
+        other_owner.delete()
+        ParticipantRecognitionConfiguration.objects.create(functional_addresses=[OPAQUE_ADDRESS])
+        response = self.client.get(self.url, {"mail": receipt.pk}, secure=True)
+        self.assertFalse(response.context["form"]["email"].value())
 
     def test_linked_bookings_show_exact_duplicates_and_time_overlaps_separately(self):
         original = self.seat.session

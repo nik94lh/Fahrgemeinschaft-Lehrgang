@@ -27,6 +27,7 @@ class ContactReplayResult(StrEnum):
     UNREADABLE = "Die Mail war nicht verfügbar, zu groß oder nicht lesbar."
     UNSUPPORTED = "Die Mail ist keine unterstützte Genehmigung oder Teilnahmebestätigung."
     NO_ADDRESS = "Die Mail enthält keine eindeutig passende persönliche Teilnehmeradresse."
+    ADDRESS_REVIEW = "Im ursprünglichen An-Feld steht eine Adresse zur Bestätigung."
     AMBIGUOUS_ADDRESS = "Im ursprünglichen An-Feld kommen mehrere Adressen für die Person in Frage."
     INVALID = "Die Nachricht enthält keine eindeutigen Angaben für einen Adressnachtrag."
     NO_APPLIED_EVENT = "Zur früheren Mail gibt es keine anwendbare Buchungszuordnung."
@@ -48,12 +49,18 @@ def enrich_contact_from_imported_mail(raw: bytes) -> bool:
 
 @sensitive_variables()
 def contact_replay_outcome(raw: bytes, *, imported_event_id: int | None = None) -> ContactReplayResult:
+    return check_contact_replay(raw, imported_event_id=imported_event_id)[0]
+
+
+@sensitive_variables()
+def check_contact_replay(raw: bytes, *, imported_event_id: int | None = None) -> tuple[ContactReplayResult, str | None]:
     """Read the EML in memory and return the reason for the update or skip."""
     try:
         mail = parse_eml(raw, functional_addresses=get_functional_addresses())
     except MailParseError:
-        return ContactReplayResult.UNREADABLE
-    return fill_existing_contact(mail, imported_event_id=imported_event_id)
+        return ContactReplayResult.UNREADABLE, None
+    outcome = fill_existing_contact(mail, imported_event_id=imported_event_id)
+    return outcome, mail.participant_email_candidate if outcome == ContactReplayResult.ADDRESS_REVIEW else None
 
 
 def _history_matches(event, seat) -> bool:
@@ -88,7 +95,8 @@ def fill_existing_contact(mail: ParsedMail, *, imported_event_id: int | None = N
         return ContactReplayResult.UNSUPPORTED
     if mail.participant_email_ambiguous:
         return ContactReplayResult.AMBIGUOUS_ADDRESS
-    if not mail.participant_email:
+    email = mail.participant_email or mail.participant_email_candidate
+    if not email:
         return ContactReplayResult.NO_ADDRESS
     if _parsed_review_reason(mail, mail.event_type, allow_partial=bool(mail.booking_reference)):
         return ContactReplayResult.INVALID
@@ -110,7 +118,6 @@ def fill_existing_contact(mail: ParsedMail, *, imported_event_id: int | None = N
     if not _matches(seat, mail, allow_partial=bool(mail.booking_reference)):
         return ContactReplayResult.BOOKING_CHANGED
 
-    email = mail.participant_email
     if seat.participant.email:
         if normalize_contact_email(seat.participant.email) == email:
             return ContactReplayResult.SAME_ADDRESS
@@ -119,6 +126,8 @@ def fill_existing_contact(mail: ParsedMail, *, imported_event_id: int | None = N
         return ContactReplayResult.OPEN_REVIEW
     if not _history_matches(event, seat):
         return ContactReplayResult.PARTICIPANT_CHANGED
+    if not mail.participant_email:
+        return ContactReplayResult.ADDRESS_REVIEW
     try:
         if _participant_with_email(mail.participant_name, email) is not None:
             return ContactReplayResult.ADDRESS_IN_USE

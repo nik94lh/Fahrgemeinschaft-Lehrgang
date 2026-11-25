@@ -1,8 +1,7 @@
 {% extends "workspace/base.html" %}
 {% block title %}Klärungsfälle{% endblock %}
 {% block content %}
-    <h1>Klärungsfälle</h1>
-    <p class="intro">Öffne einen Fall, um erkannte Angaben und die betroffene Lehrgangsbuchung zu vergleichen.</p>
+    <div class="page-heading"><h1>Klärungsfälle</h1></div>
     <section class="panel">
         {% include "workspace/events.html" with events=page_obj only %}
         {% include "workspace/pagination.html" %}

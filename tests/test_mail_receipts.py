@@ -8,14 +8,14 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from bookings.models import BookingStatus, CourseSeat, EmailEvent
-from bookings.services import _reconcile, ingest
+from bookings.services import _reconcile, ingest, set_participant_email
 from mailimport.imap_sync import ImapConfig, sync_mailbox
 from mailimport.models import MailReceipt, MailboxCursor
 from mailimport.parser import MAX_EML_BYTES, parse_eml
 from tests.test_imap_sync import body_result, mock_mailbox
 from tests.test_participant_email_parser import booking_message, nested_booking_forward
 from tests.test_participant_identity import PERSONAL, booking_mail
-from tests.test_reconciliation import eml
+from tests.test_reconciliation import JUNE, eml
 
 
 class MailReceiptTests(TestCase):
@@ -51,6 +51,24 @@ class MailReceiptTests(TestCase):
         self.assertEqual(CourseSeat.objects.get().history.count(), 1)
         cursor = MailboxCursor.objects.get()
         self.assertEqual((cursor.last_processed, cursor.last_skipped), (2, 2))
+
+    def test_alias_is_recorded_for_confirmation_and_reused_after_saving(self):
+        alias = "mx-4472@example.invalid"
+        self.sync({1: booking_mail(to=alias)})
+        receipt = MailReceipt.objects.get()
+        seat = receipt.event.seat
+        self.assertEqual(receipt.fields["participant_email_candidate"], alias)
+        self.assertNotIn("participant_email", receipt.fields)
+        self.assertEqual(seat.participant.email, "")
+
+        set_participant_email(seat.pk, alias, expected_participant_id=seat.participant_id)
+        next_booking = ingest(booking_mail(to=alias, period=JUNE))
+        self.assertEqual(next_booking.seat.participant_id, seat.participant_id)
+        self.assertEqual(next_booking.seat.participant.email, alias)
+
+        different_person = ingest(booking_mail(name="Jana Testperson", to=alias, period=JUNE))
+        self.assertNotEqual(different_person.seat.participant_id, seat.participant_id)
+        self.assertEqual(different_person.seat.participant.email, "")
 
     def test_redelivery_records_address_backfill_even_when_status_is_unchanged(self):
         raw = booking_mail(address=PERSONAL)

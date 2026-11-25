@@ -1,8 +1,7 @@
 {% extends "workspace/base.html" %}
 {% block title %}Buchungen{% endblock %}
 {% block content %}
-    <h1>Buchungen</h1>
-    <p class="intro">Lehrgangsplätze nach Kurs, Teilnehmer und Buchungsstatus durchsuchen.</p>
+    <div class="page-heading"><h1>Buchungen</h1></div>
     {% if imported %}<p class="notice" role="status">Die Testmail wurde ausgewertet. Nicht eindeutige Ereignisse findest du unter <a href="{% url 'review' %}">Klärung</a>.</p>{% endif %}
     <form class="panel filters" method="get">
         <label>Suche<input name="q" type="search" maxlength="100" value="{{ query }}"></label>

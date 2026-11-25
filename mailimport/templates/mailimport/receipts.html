@@ -4,7 +4,6 @@
     <div class="page-heading">
         <div>
             <h1>Mail-Eingang</h1>
-            <p class="intro">Sieh, welche Nachrichten BMS gelesen hat, welche Angaben erkannt wurden und was daraus geworden ist.</p>
         </div>
         <a class="button-link" href="{% url 'mailbox' %}">Postfachstatus</a>
     </div>
@@ -35,7 +34,7 @@
 
     <section class="panel receipt-list" aria-label="{% if archive %}Frühere Importe{% else %}Neu empfangene Mails{% endif %}">
         {% if archive %}
-            <p class="note list-note">Ursprüngliche Maildaten wurden nicht erfasst. Hier findest du frühere Vorgänge und manuelle Importe mit ihrer verknüpften Buchung, sofern vorhanden.</p>
+            <p class="note list-note">Ursprüngliche Maildaten wurden nicht erfasst.</p>
         {% else %}
             <form class="receipt-search" method="get" role="search">
                 <label>Mail suchen<input type="search" name="q" value="{{ query }}" maxlength="100" placeholder="Name, Lehrgang, Referenz oder Nr."></label>
@@ -92,7 +91,6 @@
                     <h2>Keine früheren Importe</h2>
                 {% elif query %}
                     <h2>Keine Mail zur Suche gefunden</h2>
-                    <p class="quiet">Suche nach einer anderen Angabe oder setze die Suche zurück.</p>
                 {% else %}
                     <h2>Hier ist noch kein neuer Eingang erfasst</h2>
                     <p class="quiet">Bei einer erwarteten Mail prüfe den letzten Abruf und den eingestellten Ordner unter <a href="{% url 'mailbox' %}">Postfach</a>.</p>

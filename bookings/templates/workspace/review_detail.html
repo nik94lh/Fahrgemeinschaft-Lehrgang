@@ -62,7 +62,7 @@
                     </dl>
                 {% endif %}
                 {% if not has_recognized_data %}
-                    <p>Zu diesem Import sind keine erkannten Angaben hinterlegt. Suche die Originalnachricht im Postfach. Der oben angegebene Importzeitpunkt grenzt den Abruf ein. Das Versanddatum kann früher liegen.</p>
+                    <p>Keine Angaben für diesen Import gespeichert. Suche die Originalnachricht im Postfach anhand des Abrufzeitpunkts.</p>
                 {% endif %}
                 {% if receipt_id %}<p class="detail-note"><a href="{% url 'mail_receipt' receipt_id %}">Mail-Eingang ansehen →</a></p>{% endif %}
             </section>
@@ -113,7 +113,7 @@
                                         </div>
                                         <button type="submit">Suchen</button>
                                     </div>
-                                    <p id="review-search-help" class="note review-info">Suche nach Buchungsnummer, Referenz, Name oder Lehrgang.</p>
+                                    <p id="review-search-help" class="note review-info">Buchungsnummer, Referenz, Name oder Lehrgang</p>
                                 </form>
                             {% endif %}
                             <form class="review-form" method="post">

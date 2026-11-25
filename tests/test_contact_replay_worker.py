@@ -28,11 +28,11 @@ class ContactReplayWorkerTests(TestCase):
 
     def step(self, client, callback=None):
         if callback is None:
-            callback = Mock(return_value=ContactReplayResult.ADDED)
+            callback = Mock(return_value=(ContactReplayResult.ADDED, None))
         with (
             patch("mailimport.contact_replay.load_configuration", return_value=self.config),
             patch("mailimport.imap_sync._open_mailbox", return_value=nullcontext(client)),
-            patch("mailimport.contact_replay.contact_replay_outcome", callback),
+            patch("mailimport.contact_replay.check_contact_replay", callback),
         ):
             return process_contact_replay()
 
@@ -75,7 +75,7 @@ class ContactReplayWorkerTests(TestCase):
             ("OK", [b" ".join(str(uid).encode() for uid in range(1, 27))]),
             *(result for uid in range(1, 26) for result in self.fetch(uid)),
         ]
-        callback = Mock(side_effect=[ContactReplayResult.ADDED] + [ContactReplayResult.NO_ADDRESS] * 24)
+        callback = Mock(side_effect=[(ContactReplayResult.ADDED, None)] + [(ContactReplayResult.NO_ADDRESS, None)] * 24)
 
         first = self.step(client, callback)
 
@@ -129,7 +129,7 @@ class ContactReplayWorkerTests(TestCase):
             body_result(1, self.raw),
             *self.fetch(2),
         ]
-        callback = Mock(return_value=ContactReplayResult.ADDED)
+        callback = Mock(return_value=(ContactReplayResult.ADDED, None))
 
         job = self.step(client, callback)
 

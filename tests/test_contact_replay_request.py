@@ -132,6 +132,21 @@ class RequestedContactReplayTests(TestCase):
         detail = self.client.get(reverse("mail_receipt", args=[receipt.pk]), secure=True)
         self.assertContains(detail, "Die Mail ist im Importordner nicht mehr verfügbar.")
 
+    @override_settings(HTTPS=True)
+    def test_replay_records_an_old_alias_for_confirmation(self):
+        alias = "mx-4472@example.invalid"
+        raw = booking_mail(to=alias)
+        receipt = MailReceipt(source_id=self.source_id, uid_validity=42, uid=43)
+        event = _reconcile(replace(parse_eml(raw), participant_email_candidate=None), occurred_at=None, receipt=receipt)
+
+        job = self.replay_from_mailbox(raw)
+
+        self.assertEqual(job.outcome_counts, {"ADDRESS_REVIEW": 1})
+        receipt.refresh_from_db()
+        self.assertEqual(receipt.fields["participant_email_candidate"], alias)
+        event.seat.participant.refresh_from_db()
+        self.assertEqual(event.seat.participant.email, "")
+
 
     @override_settings(HTTPS=True, ALLOWED_HOSTS=["bms.planspielplatte.de"])
     def test_requested_replay_fills_a_contact_without_reimporting_the_booking(self):

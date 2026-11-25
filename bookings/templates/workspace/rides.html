@@ -12,11 +12,9 @@
 {% block content %}
     {% if archived %}
         <p class="back-link"><a href="{% url 'rides' %}">Zu den Fahrgemeinschaftsvorschlägen</a></p>
-        <h1 id="ride-cases">Frühere Einzelstrecken</h1>
-        <p class="intro">Einzelne Hin- oder Rückfahrten aus dem früheren Abgleich.</p>
+        <div class="page-heading"><h1 id="ride-cases">Frühere Einzelstrecken</h1></div>
     {% else %}
-        <h1 id="ride-cases" class="ride-heading">Fahrgemeinschaftsvorschläge</h1>
-        <p class="intro">Gemeinsame Hin- und Rückfahrten zu bestätigten Lehrgängen.</p>
+        <div class="page-heading"><h1 id="ride-cases" class="ride-heading">Fahrgemeinschaftsvorschläge</h1></div>
         {% if synced %}<p class="notice" role="status">Abgleich abgeschlossen.</p>{% endif %}
         <dl class="stats ride-stats">
             <div><dt>Beim letzten Abgleich passend</dt><dd>{{ active_count }}</dd></div>
@@ -107,7 +105,7 @@
             <p class="quiet">Noch keine Fahrgemeinschaftsvorschläge.</p>
         {% endif %}
         {% if not archived %}
-            <p class="quiet ride-rules">Ein Vorschlag setzt mindestens zwei verschiedene Personen mit bestätigten Buchungen ohne offenen Klärungsfall voraus. Ihre Lehrgänge stehen noch bevor und finden an derselben Schule statt. Die Tage für Lehrgangsbeginn und Lehrgangsende müssen jeweils übereinstimmen. Dafür gilt die Zeitzone Europe/Berlin. Die Zeitspannen zeigen die frühesten und spätesten Lehrgangszeiten am jeweiligen Tag.</p>
+            <p class="quiet ride-rules">Vorschläge setzen mindestens zwei verschiedene Personen mit bevorstehenden, bestätigten Buchungen ohne offenen Klärungsfall voraus. Schule sowie Start- und Endtag (Europe/Berlin) müssen übereinstimmen. Die Zeitspannen zeigen die früheste und späteste Lehrgangszeit am jeweiligen Tag.</p>
             {% if has_legacy %}<p class="ride-archive-link"><a href="?archiv=1">Frühere Einzelstrecken</a></p>{% endif %}
         {% endif %}
     </section>
