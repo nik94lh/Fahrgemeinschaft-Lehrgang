@@ -10,24 +10,23 @@
 .calendar-hint { font-size: .9rem; margin-block: .75rem; }
 .calendar-empty { margin-block-start: .9rem; }
 
-.calendar-month-frame { overflow: hidden; border: 1px solid var(--line); border-radius: .55rem; }
-.calendar-month-grid { table-layout: fixed; }
-.calendar-month-grid th, .calendar-month-day { border-inline-end: 1px solid var(--rule); }
-.calendar-month-grid th { padding: .45rem; background: #f4f7fc; }
-.calendar-month-grid th abbr { text-decoration: none; }
-.calendar-month-grid tr > :last-child { border-inline-end: 0; }
-.calendar-month-grid tbody tr:last-child td { border-block-end: 0; }
-.calendar-month-day { height: 5.35rem; padding: .35rem .45rem; }
-.calendar-month-day.is-weekend { background: #f6f8fc; }
+.calendar-month-grid { overflow: hidden; border: 1px solid var(--line); border-radius: .6rem; }
+.calendar-month-weekdays, .calendar-month-week, .calendar-month-school { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+.calendar-month-weekdays { background: #edf2fa; color: var(--muted); font-size: .8rem; font-weight: 700; }
+.calendar-month-weekdays span { padding: .4rem .55rem; border-inline-end: 1px solid var(--rule); }
+.calendar-month-week { grid-template-rows: 1.8rem repeat(var(--school-rows), auto); min-block-size: 4.85rem; border-block-start: 1px solid var(--line); }
+.calendar-month-day { grid-row: 1 / -1; padding: .28rem .35rem 0; border-inline-end: 1px solid var(--rule); }
+.calendar-month-weekdays span:last-child, .calendar-month-day:nth-child(7) { border-inline-end: 0; }
+.calendar-month-day.is-weekend { background: #f5f8fc; }
 .calendar-month-day.is-outside { background: #edf2f8; color: var(--muted); }
-.calendar-month-day.is-today { box-shadow: inset 0 0 0 2px var(--accent); }
-.calendar-month-date { display: block; font-size: .9rem; font-weight: 650; font-variant-numeric: tabular-nums; }
-.calendar-month-day.is-today .calendar-month-date { color: var(--accent); }
-.calendar-month-courses { display: grid; gap: .2rem; padding: 0; margin: .25rem 0 0; list-style: none; }
-.calendar-month-courses li { min-width: 0; }
-.calendar-month-course { display: block; padding: .15rem .3rem; overflow: hidden; border-inline-start: .18rem solid var(--school-ink); border-radius: .25rem; color: var(--school-ink); background: var(--school-bg); font-size: .77rem; font-weight: 650; white-space: nowrap; text-overflow: ellipsis; text-decoration: none; }
-.calendar-month-course:hover { text-decoration: underline; }
-.calendar-month-course:focus-visible { outline-offset: -2px; }
+.calendar-month-day.is-today { background: #edf4ff; box-shadow: inset 0 0 0 1px #a0bbe0; }
+.calendar-month-date { display: inline-block; padding: .04rem .24rem; border-radius: .28rem; font-size: .85rem; font-weight: 650; font-variant-numeric: tabular-nums; }
+.calendar-month-day.is-today .calendar-month-date { color: white; background: var(--accent); }
+.calendar-month-school { grid-column: 1 / -1; grid-template-rows: 1.35rem repeat(var(--course-lanes), minmax(2.15rem, auto)); min-width: 0; z-index: 1; }
+.calendar-month-school-label { grid-column: 1 / -1; grid-row: 1; display: flex; align-items: center; padding-inline: .5rem; background: #f4f7fb; background: color-mix(in srgb, var(--school-bg) 49%, white); color: var(--school-ink); border-block-start: 1px solid var(--rule); font-size: .77rem; font-weight: 700; }
+.calendar-bar.calendar-month-bar { justify-content: flex-start; margin: .1rem .15rem; padding-inline: .4rem; }
+.calendar-month-bar .continuation { flex: none; }
+.calendar-month-bar.continues-after .continuation:last-child { margin-inline-start: auto; }
 
 .calendar-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: .55rem; }
 .calendar-grid { --label-width: 14rem; --day-minimum: 1.62rem; min-width: calc(var(--label-width) + var(--days) * var(--day-minimum)); }
@@ -43,7 +42,7 @@
 .calendar-tick.is-today { color: #12306e; background: #d9e5fc; }
 .calendar-day.is-today { box-shadow: inset 1px 0 #4969a4, inset -1px 0 #4969a4; }
 
-.school-timeline, .calendar-month-course { --school-ink: #214080; --school-bg: #dce8ff; }
+.school-timeline, .calendar-month-school { --school-ink: #214080; --school-bg: #dce8ff; }
 .school-regensburg { --school-ink: #14553d; --school-bg: #daf0e4; }
 .school-geretsried { --school-ink: #6a440d; --school-bg: #f8ead0; }
 .school-online { --school-ink: #573574; --school-bg: #eee4f8; }
@@ -99,9 +98,14 @@
     .calendar-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .calendar-filters--year { grid-template-columns: 4.5rem minmax(0, 1fr); }
     .calendar-filters--month .calendar-school-filter { grid-column: 1 / -1; }
-    .calendar-month-grid th { padding: .35rem .2rem; }
-    .calendar-month-day { height: 3.65rem; padding: .25rem; }
-    .calendar-month-course { min-height: 1.5rem; padding-inline: .18rem; font-size: .7rem; }
+    .calendar-month-weekdays span { padding: .34rem .25rem; }
+    .calendar-month-week { grid-template-rows: 1.55rem repeat(var(--school-rows), auto); min-block-size: 3.65rem; }
+    .calendar-month-day { padding: .15rem .16rem 0; }
+    .calendar-month-date { font-size: .78rem; }
+    .calendar-month-school { grid-template-rows: 1.15rem repeat(var(--course-lanes), minmax(1.95rem, auto)); }
+    .calendar-month-school-label { padding-inline: .3rem; font-size: .7rem; }
+    .calendar-bar.calendar-month-bar { min-block-size: 1.75rem; margin-inline: .09rem; padding-inline: .17rem; }
+    .calendar-month-bar .calendar-bar-text { font-size: .72rem; }
     .calendar-grid { --label-width: 8rem; }
     .calendar-grid--week { --day-minimum: 1.58rem; }
     .calendar-tick, .calendar-tick span { font-size: .72rem; }

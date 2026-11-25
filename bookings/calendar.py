@@ -104,10 +104,15 @@ def _ticks(period, today):
     return ticks
 
 
-def _occupied_dates(session, period):
+def _session_dates(session):
     starts_on = timezone.localtime(session.starts_at).date()
     ends_at = timezone.localtime(session.ends_at)
     last_day = ends_at.date() - DAY if ends_at.time() == time.min else ends_at.date()
+    return starts_on, last_day
+
+
+def _occupied_dates(session, period):
+    starts_on, last_day = _session_dates(session)
     return max(starts_on, period.start), min(last_day, period.last_day)
 
 
@@ -154,25 +159,61 @@ def _month_overview(sessions, period, today, school):
     return months
 
 
-def _month_weeks(sessions, period, today):
-    by_day = defaultdict(list)
-    for session in sessions:
-        day, last_day = _occupied_dates(session, period)
-        while day <= last_day:
-            by_day[day].append(session)
-            day += DAY
+def _month_week_bars(session_dates, week_start, first_visible_day, last_visible_day):
+    bars = []
+    lane_ends = []
+    for session, starts_on, last_day in session_dates:
+        start = max(starts_on, first_visible_day)
+        end = min(last_day, last_visible_day)
+        if start > end:
+            continue
 
-    calendar = Calendar()
-    return [
-        [{
+        start_column = (start - week_start).days + 1
+        end_column = (end - week_start).days + 2
+        lane = next(
+            (index for index, free_at in enumerate(lane_ends) if free_at <= start_column),
+            len(lane_ends),
+        )
+        if lane == len(lane_ends):
+            lane_ends.append(end_column)
+        else:
+            lane_ends[lane] = end_column
+        bars.append({
+            "session": session,
+            "start_column": start_column,
+            "end_column": end_column,
+            "lane": lane + 2,  # The first grid row contains the dates.
+            "starts_before": starts_on < start,
+            "ends_after": last_day > end,
+        })
+    return bars, max(1, len(lane_ends))
+
+
+def _month_weeks(sessions, period, today):
+    # Clipping preserves the start order. The session query supplies stable tie-breaks.
+    session_dates_by_school = defaultdict(list)
+    for session in sessions:
+        session_dates_by_school[session.school].append((session, *_session_dates(session)))
+
+    weeks = []
+    for week in Calendar().monthdatescalendar(period.start.year, period.start.month):
+        days = [{
             "date": day,
             "is_outside": day.month != period.start.month,
             "is_weekend": day.weekday() >= 5,
             "is_today": day == today,
-            "sessions": by_day[day],
         } for day in week]
-        for week in calendar.monthdatescalendar(period.start.year, period.start.month)
-    ]
+        first_visible_day = max(week[0], period.start)
+        last_visible_day = min(week[-1], period.last_day)
+        groups = []
+        for school in School:
+            bars, lane_count = _month_week_bars(
+                session_dates_by_school.get(school, ()), week[0], first_visible_day, last_visible_day,
+            )
+            if bars:
+                groups.append({"school": school, "bars": bars, "lane_count": lane_count})
+        weeks.append({"days": days, "groups": groups})
+    return weeks
 
 
 def _timeline_rows(sessions, period, starts, ends):
