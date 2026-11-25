@@ -20,7 +20,7 @@ from .recipient_address import AddressSelection, header_addresses, inline_addres
 
 
 MAX_EML_BYTES = 1024 * 1024
-MAX_INLINE_FORWARD_LAYERS = 12
+MAX_FORWARD_LAYERS = 12
 BERLIN = ZoneInfo("Europe/Berlin")
 
 SCHOOLS = {
@@ -75,12 +75,16 @@ FORWARD_HEADER = re.compile(
     r"^(von|from|an|to|cc|datum|date|gesendet|sent|betreff|subject) *:",
     re.IGNORECASE,
 )
+FORWARD_QUOTE_PREFIX = re.compile(r"^\s*(?:>\s*(?=>))*>[^\S\r\n]?")
+FORWARD_RECIPIENT_HEADER = re.compile(r"^(?:an|to) *:", re.IGNORECASE)
+FORWARD_RECIPIENT_CONTINUATION = r"[ \t]+<[^<>\n]+>[ \t]*"
 FORWARD_DATE_LINE = r"[ \t]*(?:gesendet|sent|datum|date) *: *[^\n]+\n"
-FORWARD_TO_LINE = r"[ \t]*(?:an|to) *: *[^\n]*\n"
+FORWARD_TO_LINE = rf"[ \t]*(?:an|to) *: *[^\n]*\n(?:{FORWARD_RECIPIENT_CONTINUATION}\n)?"
 NONBREAKING_SPACES = str.maketrans("\u00a0\u202f", "  ")
 INLINE_FORWARD_START = re.compile(
     r"^[ \t]*-{2,}[ \t]*(?:weitergeleitete nachricht|ursprüngliche nachricht|forwarded message|original message)"
     r"[ \t]*-{2,}[ \t]*$"
+    r"|^[ \t]*(?:begin forwarded message|anfang der weitergeleiteten nachricht)[ \t]*:[ \t]*$"
     r"|(?=^[ \t]*(?:von|from) *: *[^\n]+\n"
     rf"(?:{FORWARD_DATE_LINE}{FORWARD_TO_LINE}|{FORWARD_TO_LINE}{FORWARD_DATE_LINE})"
     r"(?:[ \t]*cc *: *[^\n]*\n)?"
@@ -116,6 +120,10 @@ CONFIRMED_PARTICIPANT = (
 
 class MailParseError(ValueError):
     """The message cannot be inspected unambiguously."""
+
+
+class _AmbiguousForward(MailParseError):
+    """More than one independent forwarded message could be the original."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,24 +224,31 @@ class _OriginalMail:
     conflict: bool = False
 
 
-def _inline_forward(text: str) -> _InlineMail | None:
-    unfolded = "\n".join(re.sub(r"^\s*(?:>\s*)+", "", line) for line in text.splitlines()).translate(
-        NONBREAKING_SPACES,
-    )
+def _has_booking_content(text: str) -> bool:
+    cleaned = _clean_text(text)
+    labels = rf"{PARTICIPANT_LABELS}|Lehrgangsart|Lehrgang|Lehrgangstermin|Zeitraum|Buchungsreferenz|Buchungsnummer"
+    return _classify("", cleaned) != "unknown" or bool(_values(cleaned, labels))
+
+
+def _inline_forward(text: str, remaining_layers: int) -> _InlineMail | None:
+    unfolded = "\n".join(FORWARD_QUOTE_PREFIX.sub("", line) for line in text.translate(NONBREAKING_SPACES).splitlines())
     start = INLINE_FORWARD_START.search(unfolded)
     if start is None:
         return None
 
-    for _ in range(MAX_INLINE_FORWARD_LAYERS):
+    for _ in range(remaining_layers):
+        # A cover note can lead to another forward. A booking before it is a separate original.
+        if _has_booking_content(unfolded[:start.start()]):
+            raise _AmbiguousForward("Die Weiterleitung enthält mehrere zitierte Nachrichten.")
         quoted = _inline_layer(unfolded[start.end():])
         if REPLY_PREFIX.match(quoted.subject):
             return quoted
         unfolded = quoted.text
         start = INLINE_FORWARD_START.search(unfolded)
         if start is None:
+            if not quoted.subject:
+                raise MailParseError("Die zitierte Weiterleitung ist unvollständig.")
             return quoted
-        if not FORWARD_PREFIX.match(quoted.subject):
-            raise MailParseError("Die Weiterleitung enthält mehrere zitierte Nachrichten.")
     raise MailParseError("Die Weiterleitung enthält zu viele verschachtelte Nachrichten.")
 
 
@@ -244,14 +259,27 @@ def _inline_layer(text: str) -> _InlineMail:
     has_subject = False
     for index, raw_line in enumerate(lines):
         line = _normalized(raw_line)
-        if header := FORWARD_HEADER.match(line):
+        header = FORWARD_HEADER.match(line)
+        starts_nested = (
+            first_gap is not None and header and header[1].casefold() in ("von", "from")
+            and INLINE_FORWARD_START.match("\n".join(lines[index:]))
+        )
+        if header and not starts_nested:
             headers.append(line)
             has_subject = has_subject or header[1].casefold() in ("betreff", "subject")
+        elif (
+            first_gap is None and headers and FORWARD_RECIPIENT_HEADER.match(headers[-1])
+            and re.fullmatch(FORWARD_RECIPIENT_CONTINUATION, raw_line)
+        ):
+            headers[-1] += f" {line}"
         elif line or has_subject:
             body = "\n".join(lines[index:]).lstrip()
             subjects = _values("\n".join(headers), "Betreff|Subject")
             if len(subjects) == 1 and body:
                 return _quoted_mail(subjects[0], body, headers[:first_gap])
+            if not subjects and body and _values("\n".join(headers[:first_gap]), "Von|From"):
+                # A structurally marked wrapper without a subject cannot supply recipients.
+                return _InlineMail("", body, (), None, None)
             break
         elif first_gap is None:
             first_gap = len(headers)
@@ -314,25 +342,41 @@ def _recipient_names(recipients: tuple[Address, ...]) -> dict[str, set[str]]:
     return names
 
 
-def _forward_original(message: EmailMessage, body: EmailMessage, primary: _InlineMail) -> _OriginalMail:
+def _sibling_html(message: EmailMessage, body: EmailMessage) -> EmailMessage | None:
+    if body.get_content_type() != "text/plain":
+        return None
+    html = message.get_body(("html",))
+    if html is None:
+        return None
+    for part in message.walk():
+        if part.get_content_type() != "multipart/alternative":
+            continue
+        siblings = tuple(part.iter_parts())
+        plain_branch = next((branch for branch in siblings if branch.get_body(("plain",)) is body), None)
+        if plain_branch is not None and any(
+            branch is not plain_branch and branch.get_body(("html",)) is html for branch in siblings
+        ):
+            return html
+    return None
+
+
+def _forward_original(
+    message: EmailMessage, body: EmailMessage, primary: _InlineMail, remaining_layers: int,
+) -> _OriginalMail:
     source = "An-Feld der zitierten Originalmail"
     selected = _OriginalMail(primary.subject, _clean_text(primary.text), primary.recipients, source)
-    if not primary.sender or body.get_content_type() != "text/plain":
-        return selected
 
     # Only use a sibling HTML representation of the same forwarded mail.
-    html = message.get_body(("html",))
-    if html is None or not any(
-        part.get_content_type() == "multipart/alternative"
-        and body in part.get_payload() and html in part.get_payload()
-        for part in message.walk()
-    ):
+    html = _sibling_html(message, body)
+    if html is None:
         return selected
     try:
-        alternate = _inline_forward(_body_text(html))
+        alternate = _inline_forward(_body_text(html), remaining_layers)
+    except _AmbiguousForward:
+        raise
     except MailParseError:
         return selected
-    if not alternate or not alternate.recipients or not alternate.sender:
+    if not primary.sender or not alternate or not alternate.recipients or not alternate.sender:
         return selected
 
     plain_addresses = {normalize_contact_email(address.addr_spec) for address in primary.recipients}
@@ -378,7 +422,7 @@ def _clean_text(text: str) -> str:
     return "\n".join(_normalized(line) for line in text.splitlines())
 
 
-def _original_text(message: EmailMessage) -> _OriginalMail:
+def _original_text(message: EmailMessage, remaining_layers: int = MAX_FORWARD_LAYERS) -> _OriginalMail:
     subject = _normalized(str(message.get("Subject", "")))
     if REPLY_PREFIX.match(subject):
         return _OriginalMail(subject, "")
@@ -386,16 +430,32 @@ def _original_text(message: EmailMessage) -> _OriginalMail:
     body = message.get_body(preferencelist=("plain", "html"))
     attached = _attached_messages(message)
     cleaned = ""
-    if body is not None and not (forwarded and attached):
+    if body is not None:
         text = _body_text(body)
-        if original := _inline_forward(text):
-            return _forward_original(message, body, original)
+        if original := _inline_forward(text, remaining_layers):
+            if attached:
+                raise _AmbiguousForward("Die Weiterleitung enthält mehrere E-Mails.")
+            return _forward_original(message, body, original, remaining_layers)
         cleaned = _clean_text(text)
+        if (html := _sibling_html(message, body)) is not None:
+            alternate = _inline_forward(_body_text(html), remaining_layers)
+            if alternate:
+                if attached:
+                    raise _AmbiguousForward("Die Weiterleitung enthält mehrere E-Mails.")
+                plain_booking = _InlineMail(FORWARD_PREFIX.sub("", subject, count=1), cleaned, (), None, None)
+                if _has_booking_content(cleaned) and (
+                    not alternate.sender or not (identity := _body_identity(plain_booking))
+                    or identity != _body_identity(alternate)
+                ):
+                    raise _AmbiguousForward("Die Weiterleitung enthält mehrere zitierte Nachrichten.")
+                return _forward_original(message, html, alternate, remaining_layers)
 
     if attached and (body is None or forwarded or _classify(subject, cleaned) == "unknown"):
-        if len(attached) > 1:
-            raise MailParseError("Die Weiterleitung enthält mehrere E-Mails.")
-        return _original_text(attached[0])
+        if len(attached) > 1 or _has_booking_content(cleaned):
+            raise _AmbiguousForward("Die Weiterleitung enthält mehrere E-Mails.")
+        if not remaining_layers:
+            raise MailParseError("Die Weiterleitung enthält zu viele verschachtelte Nachrichten.")
+        return _original_text(attached[0], remaining_layers - 1)
 
     if body is None:
         raise MailParseError("Die E-Mail enthält keinen lesbaren Klartext- oder HTML-Teil.")

@@ -10,7 +10,7 @@ from unicodedata import normalize
 from .email_address import normalize_contact_email
 
 
-REPEATED_MAILTO = re.compile(r"<([^<>\s]+)<mailto:([^<>\s]+)>>", re.IGNORECASE)
+REPEATED_MAILTO = re.compile(r"<([^<>\s]+)(?:<mailto:([^<>\s]+)>|[ \t]+mailto:([^<>\s]+))>", re.IGNORECASE)
 GERMAN_UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue"})
 FUNCTIONAL_MAILBOX_PARTS = frozenset({
     "admin", "anmeldung", "ausbildung", "buchung", "buchungen", "buero",
@@ -48,7 +48,8 @@ def inline_addresses(envelope: str, labels: str, *, outlook_recipients: bool = F
 
 
 def _collapse_repeated_mailto(match: re.Match) -> str:
-    visible, repeated = match.groups()
+    visible, nested_copy, inline_copy = match.groups()
+    repeated = nested_copy or inline_copy
     if visible.casefold() == repeated.casefold():
         return f"<{visible}>"
     return match[0]
