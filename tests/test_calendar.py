@@ -59,6 +59,35 @@ class CalendarTests(WorkspaceTestCase):
         self.assertIn("timeline_groups", response.context)
         self.assertEqual({group["school"] for group in response.context["timeline_groups"]}, {School.WUERZBURG})
 
+    def test_week_and_month_bars_show_distinct_people_per_appointment(self):
+        session = CourseSession.objects.get(course__name="Musterlehrgang Regensburg")
+        other_session = CourseSession.objects.create(
+            course=session.course, school=session.school,
+            starts_at=session.starts_at + timedelta(days=1), ends_at=session.ends_at + timedelta(days=1),
+        )
+        first = Participant.objects.create(name="Synthetische Testperson")
+        same_name = Participant.objects.create(name=first.name)
+        cancelled = Participant.objects.create(name="Ausgeschiedene Testperson")
+        for participant, status in (
+            (first, BookingStatus.CONFIRMED),
+            (first, BookingStatus.CONFIRMED),
+            (same_name, BookingStatus.APPROVED),
+            (cancelled, BookingStatus.CANCELLED),
+            (None, BookingStatus.CONFIRMED),
+        ):
+            CourseSeat.objects.create(session=session, participant=participant, status=status)
+        CourseSeat.objects.create(session=other_session, participant=first, status=BookingStatus.CONFIRMED)
+
+        for params in ({"month": "2031-05"}, {"view": "week", "day": "2031-05-12"},
+                       {"month": "2031-05", "range": "2031-06"}):
+            with self.subTest(params=params):
+                response = self.client.get("/kalender/", params)
+
+                self.assertContains(response, '<span class="calendar-participant-count">2x</span>', count=1)
+                self.assertContains(response, "Musterlehrgang Regensburg, 2 Personen, SFS Regensburg", count=1)
+                self.assertNotContains(response, first.name)
+                self.assertNotContains(response, cancelled.name)
+
     def test_invalid_month_falls_back_to_the_current_month(self):
         default_response = self.client.get("/kalender/")
         invalid_response = self.client.get("/kalender/", {"month": "2031-13"})

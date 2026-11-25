@@ -90,7 +90,9 @@
 .calendar-bar { grid-row: 1; position: relative; z-index: 1; align-self: center; display: flex; align-items: center; gap: .2rem; min-width: 0; min-height: 2rem; margin-inline: .15rem; padding-inline: .2rem; border: 1px solid var(--school-ink); border-radius: .42rem; background: var(--school-bg); color: var(--school-ink); text-decoration: none; }
 .calendar-bar:hover { filter: brightness(.94); text-decoration: underline; }
 .calendar-bar:focus-visible { z-index: 3; outline-offset: 1px; }
-.calendar-bar-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: .79rem; font-weight: 700; }
+.calendar-bar-text { display: flex; align-items: center; gap: .3em; min-inline-size: 0; overflow: hidden; white-space: nowrap; font-size: .79rem; font-weight: 700; }
+.calendar-bar-name { overflow: hidden; text-overflow: ellipsis; }
+.calendar-participant-count { flex: none; padding-inline: .22em; border-radius: .22rem; background: color-mix(in srgb, currentColor 12%, transparent); font-size: .86em; font-variant-numeric: tabular-nums; }
 .continuation { font-weight: 750; }
 .continues-before { border-start-start-radius: 0; border-end-start-radius: 0; }
 .continues-after { border-start-end-radius: 0; border-end-end-radius: 0; }
@@ -131,7 +133,7 @@
     .calendar-filters--month .calendar-school-filter { grid-column: 1 / -1; }
     .calendar-month-track { --day-width: 2.8rem; }
     .calendar-grid { --label-width: 8rem; }
-    .calendar-grid--week { --day-minimum: 1.58rem; }
+    .calendar-grid--week { --day-minimum: 2rem; }
     .calendar-tick, .calendar-tick span { font-size: .72rem; }
     .calendar-course { font-size: .8rem; }
 }

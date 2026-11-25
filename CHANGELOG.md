@@ -1,5 +1,9 @@
 # Änderungen
 
+## 0.15.2
+
+- In der Wochen- und Monatsansicht zeigt ein Lehrgangsbalken ab zwei zugeordneten Personen die Anzahl vor dem Lehrgangsnamen, zum Beispiel „2x Gruppenführer“.
+
 ## 0.15.1
 
 - Der Monatskalender zeigt alle Tage in einer scrollbaren Zeitleiste. Bei der Monatswahl steht der Erste links. Schulgruppen und Lehrgangsbalken reichen über Monats- und Jahreswechsel.
