@@ -1,12 +1,17 @@
 from django.conf import settings
+from django.contrib.auth import logout
 from django.contrib.auth.views import redirect_to_login
 from django.http import HttpResponse, HttpResponseForbidden
+from django.shortcuts import render
 from django.utils.cache import add_never_cache_headers, patch_vary_headers
 
 from .access import can_edit, can_view, is_active_user, is_workspace_admin
+from .sessions import session_revision_is_current
 
 
-PUBLIC_ROUTES = frozenset({"health", "live_script", "calendar_timeline_script", "favicon", "login"})
+PUBLIC_ROUTES = frozenset({
+    "health", "live_script", "workspace_chrome_script", "calendar_timeline_script", "favicon", "login",
+})
 ACCOUNT_ROUTES = frozenset({"account", "account_password_change", "logout"})
 ADMIN_ROUTES = frozenset({"account_list", "account_create", "account_edit", "account_password_reset"})
 VIEW_ROUTES = {
@@ -76,16 +81,24 @@ class WorkspaceAccessMiddleware:
 
     def process_view(self, request, view_func, view_args, view_kwargs):
         route = request.resolver_match.view_name
+        if route in PUBLIC_ROUTES and route != "login":
+            return None
+        if is_active_user(request.user) and not session_revision_is_current(request, request.user):
+            logout(request)
         if route in PUBLIC_ROUTES:
             return None
 
+        live_request = request.headers.get("X-BMS-Live") == "1"
         if not is_active_user(request.user):
-            if request.headers.get("X-BMS-Live") == "1":
+            if live_request:
                 response = HttpResponse(status=401)
             else:
                 response = redirect_to_login(request.get_full_path(), settings.LOGIN_URL)
         elif not _allows_workspace_route(request, route):
-            response = HttpResponseForbidden("Für diese Seite fehlt die Berechtigung.", content_type="text/plain")
+            if live_request:
+                response = HttpResponseForbidden("Für diese Seite fehlt die Berechtigung.", content_type="text/plain")
+            else:
+                response = render(request, "accounts/forbidden.html", status=403)
         else:
             return None
 

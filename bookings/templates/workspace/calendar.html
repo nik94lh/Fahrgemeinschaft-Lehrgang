@@ -7,10 +7,10 @@
 {% block content %}
     <h1>Lehrgangskalender</h1>
     <form class="panel filters calendar-filters calendar-filters--{{ view }}" method="get">
-        {% if view == 'week' %}
-            <input type="hidden" name="view" value="week">
+        {% if view == 'week' or view == 'day' %}
+            <input type="hidden" name="view" value="{{ view }}">
             <div>
-                <label for="calendar-day">Woche ab</label>
+                <label for="calendar-day">{% if view == 'week' %}Woche ab{% else %}Datum{% endif %}</label>
                 <input id="calendar-day" type="date" name="day" value="{{ period_start|date:'Y-m-d' }}">
             </div>
         {% elif view == 'year' %}
@@ -47,7 +47,9 @@
     <section class="panel calendar-panel" aria-labelledby="calendar-period">
         <div class="calendar-toolbar">
             <h2 id="calendar-period">
-                {% if view == 'week' %}
+                {% if view == 'day' %}
+                    {{ period_start|date:"l, d.m.Y" }}
+                {% elif view == 'week' %}
                     {{ period_start|date:"d.m.Y" }} – {{ period_end|date:"d.m.Y" }}
                 {% elif view == 'year' %}
                     {{ year_id }}
@@ -56,13 +58,18 @@
                 {% endif %}
             </h2>
             <nav class="calendar-modes" aria-label="Kalenderansicht">
+                <a class="button-link" href="?{{ day_query }}"{% if view == 'day' %} aria-current="true"{% endif %}>Tag</a>
                 <a class="button-link" href="?{{ week_query }}"{% if view == 'week' %} aria-current="true"{% endif %}>Woche</a>
                 <a class="button-link" href="?{{ month_query }}"{% if view == 'month' %} aria-current="true"{% endif %}>Monat</a>
                 <a class="button-link" href="?{{ year_query }}"{% if view == 'year' %} aria-current="true"{% endif %}>Jahr</a>
             </nav>
         </div>
         <nav class="calendar-dates" aria-label="Zeitraum wechseln">
-            {% if view == 'week' %}
+            {% if view == 'day' %}
+                <a class="button-link" href="?{{ previous_query }}">‹ Vortag</a>
+                <a class="button-link" href="?{{ today_query }}">Heute</a>
+                <a class="button-link" href="?{{ next_query }}">Nächster Tag ›</a>
+            {% elif view == 'week' %}
                 <a class="button-link" href="?{{ previous_query }}">‹ Vorherige Woche</a>
                 <a class="button-link" href="?{{ today_query }}">Diese Woche</a>
                 <a class="button-link" href="?{{ next_query }}">Nächste Woche ›</a>
@@ -77,21 +84,24 @@
             {% endif %}
         </nav>
 
-        {% if view == 'year' %}
+        {% if view == 'day' %}
+            {% include "workspace/calendar_day.html" %}
+        {% elif view == 'year' %}
             {% include "workspace/calendar_year.html" %}
         {% elif view == 'month' %}
             {% include "workspace/calendar_month.html" %}
-        {% elif school_groups %}
-            <p class="calendar-hint quiet" id="calendar-hint">Öffne einen Balken für Uhrzeiten und Buchungen. Der Plan ist seitlich scrollbar.</p>
+        {% else %}
+            <p class="calendar-hint quiet" id="calendar-hint">Wähle einen Wochentag für die Tagesansicht.{% if school_groups %} Ein Balken öffnet den Lehrgang.{% endif %}</p>
             <div id="calendar-timeline" data-live-preserve class="calendar-scroll" tabindex="0" role="region" aria-labelledby="calendar-period" aria-describedby="calendar-hint">
                 <div class="calendar-grid calendar-grid--{{ view }}" style="--days: {{ day_count }};">
-                    <div class="calendar-line calendar-axis" aria-hidden="true">
+                    <div class="calendar-line calendar-axis">
                         <div class="calendar-label">Lehrgang</div>
                         {% for tick in ticks %}
-                            <div class="calendar-tick{% if tick.is_weekend %} is-weekend{% endif %}{% if tick.is_today %} is-today{% endif %}" title="{{ tick.date|date:'l, d.m.Y' }}">
+                            <a class="calendar-tick calendar-tick-link{% if tick.is_weekend %} is-weekend{% endif %}{% if tick.is_today %} is-today{% endif %}" href="?{{ tick.day_query }}"
+                               aria-label="Tagesansicht {{ tick.date|date:'l, d.m.Y' }}" title="{{ tick.date|date:'l, d.m.Y' }}"{% if tick.is_today %} aria-current="date"{% endif %}>
                                 <span class="calendar-weekday">{{ tick.date|date:"D" }}</span>
                                 <strong>{{ tick.number }}</strong>
-                            </div>
+                            </a>
                         {% endfor %}
                     </div>
                     {% for group in school_groups %}
@@ -151,7 +161,7 @@
                     </table>
                 </div>
             </details>
-        {% elif view != 'year' %}
+        {% elif view == 'week' or view == 'month' %}
             <p class="calendar-empty quiet">Keine Lehrgänge in diesem Zeitraum gefunden.</p>
         {% endif %}
     </section>

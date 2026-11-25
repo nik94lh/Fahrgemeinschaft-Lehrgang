@@ -65,6 +65,20 @@ class AccessDisplayTests(TestCase):
         self.assertNotContains(response, "Letzte E-Mail-Ereignisse")
 
     @override_settings(HTTPS=True)
+    def test_overview_email_events_require_the_secure_mail_workspace(self):
+        self.login_with("view_overview", "view_bookings", "view_mail_receipts")
+        path = reverse("overview")
+
+        for headers in ({}, {"X-BMS-Live": "1"}):
+            with self.subTest(headers=headers):
+                insecure = self.client.get(path, headers=headers)
+                self.assertNotContains(insecure, "Letzte E-Mail-Ereignisse")
+                self.assertNotContains(insecure, self.person.name)
+                secure = self.client.get(path, headers=headers, secure=True)
+                self.assertContains(secure, "Letzte E-Mail-Ereignisse")
+                self.assertContains(secure, self.person.name)
+
+    @override_settings(HTTPS=True)
     def test_booking_right_alone_does_not_expose_receipt_candidates(self):
         self.login_with("edit_bookings")
         path = reverse("booking_participant", args=[self.seat.pk])

@@ -3,7 +3,7 @@
 {% block content %}
     <div class="page-heading">
         <h1>Übersicht</h1>
-        {% if request.is_secure and workspace_view.mail_receipts %}<a class="button-link" href="{% url 'mail_receipts' %}">Mail-Eingang ansehen</a>{% endif %}
+        {% if workspace_secure and workspace_view.mail_receipts %}<a class="button-link" href="{% url 'mail_receipts' %}">Mail-Eingang ansehen</a>{% endif %}
     </div>
     <dl class="stats dashboard-stats">
         {% for metric in dashboard_metrics %}
@@ -13,7 +13,7 @@
     {% if ride_overview %}
         {% url 'rides' as rides_url %}
         <section class="panel overview-courses dashboard-rides-panel" aria-labelledby="dashboard-rides-title">
-            <h2 id="dashboard-rides-title">Fahrgemeinschaftsvorschläge</h2>
+            <h2 id="dashboard-rides-title">Fahrgemeinschafts<wbr>vorschläge</h2>
             <dl class="stats dashboard-ride-stats">
                 <div class="dashboard-metric dashboard-ready">
                     <dt><a class="dashboard-metric-link" href="{{ rides_url }}?phase=ready" aria-label="Bereit zur Vermittlung">Bereit<span class="dashboard-ready-suffix"> zur Vermittlung</span></a></dt>
@@ -48,7 +48,7 @@
             <p class="quiet">Keine anstehenden Lehrgänge vorhanden.</p>
         {% endif %}
     </section>
-    {% if workspace_view.mail_receipts and workspace_view.bookings %}
+    {% if workspace_secure and workspace_view.mail_receipts and workspace_view.bookings %}
         <section class="panel" aria-labelledby="events-title">
             <h2 id="events-title">Letzte E-Mail-Ereignisse</h2>
             {% include "workspace/events.html" with events=recent_events can_review=workspace_view.review show_bookings=True only %}

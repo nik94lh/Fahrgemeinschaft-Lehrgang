@@ -45,7 +45,8 @@ class BookingIdentifierTests(WorkspaceTestCase):
                 response = self.search(query)
 
                 self.assertEqual(list(response.context["page_obj"]), [self.target])
-                self.assertContains(response, '<a href="/buchungen/13/">Buchungs-ID 13</a>', html=True)
+                detail = reverse("booking_detail", args=[self.target.pk], query={"q": query})
+                self.assertContains(response, f'<a href="{detail}">Buchungs-ID 13</a>', html=True)
                 self.assertNotContains(response, 'href="/buchungen/13/teilnehmer/"')
 
     def test_plain_number_keeps_text_matches_and_adds_exact_internal_id(self):
@@ -61,7 +62,8 @@ class BookingIdentifierTests(WorkspaceTestCase):
 
         response = self.search("Buchungs-ID 17")
 
-        self.assertContains(response, '<a href="/buchungen/17/">Buchungs-ID 17</a>', html=True)
+        detail = reverse("booking_detail", args=[17], query={"q": "Buchungs-ID 17"})
+        self.assertContains(response, f'<a href="{detail}">Buchungs-ID 17</a>', html=True)
         self.assertContains(response, "Teilnehmer nicht zugeordnet")
         self.assertNotContains(response, 'href="/buchungen/17/teilnehmer/"')
 

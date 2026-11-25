@@ -1,19 +1,40 @@
 {% extends "workspace/base.html" %}
 {% block title %}Feuerwehren{% endblock %}
+{% block page_styles %}
+    {% include "workspace/listing.css" %}
+    .brigade-filters { grid-template-columns: minmax(0, 2fr) minmax(9rem, 1fr) auto; }
+    .brigade-list th[scope="row"] { background: transparent; color: var(--ink); white-space: normal; overflow-wrap: anywhere; }
+    @media (max-width: 700px) {
+        .brigade-filters { grid-template-columns: minmax(0, 1fr); }
+        .brigade-list tbody tr { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+        .brigade-list th[scope="row"] { display: block; grid-column: 1 / -1; padding: 0; border: 0; font-size: 1rem; }
+        .brigade-list td::before { content: attr(data-label); display: block; color: var(--muted); font-size: .8rem; }
+    }
+{% endblock %}
 {% block content %}
-    <h1>Feuerwehren</h1>
-    <nav class="pagination" aria-label="Stammdatenaktionen">
-        {% if workspace_edit.brigades %}<a href="{% url 'brigade_create' %}">Feuerwehr anlegen</a>{% endif %}
-    </nav>
-    <form class="panel filters" method="get">
-        <label>Suche<input type="search" name="q" maxlength="100" value="{{ query }}"></label>
-        <button type="submit">Suchen</button>
+    <div class="page-heading">
+        <h1>Feuerwehren</h1>
+        {% if workspace_edit.brigades %}<a class="button-link" href="{% url 'brigade_create' %}{% if edit_query %}?{{ edit_query }}{% endif %}">Feuerwehr anlegen</a>{% endif %}
+    </div>
+    {% if saved %}<p class="notice" role="status">Die Feuerwehr wurde gespeichert.</p>{% endif %}
+    <form class="panel filters listing-filters brigade-filters" method="get" role="search" aria-label="Feuerwehren filtern">
+        <label>Name, Gemeinde, Ortsteil oder Adresse<input type="search" name="q" maxlength="100" value="{{ query }}"></label>
+        <label>Status
+            <select name="status">
+                <option value="">Alle Status</option>
+                {% for key, label in status_choices %}<option value="{{ key }}"{% if key == selected_status %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </label>
+        <div class="list-actions">
+            <button type="submit">Filtern</button>
+            {% if querystring %}<a class="button-link list-clear" href="{% url 'brigades' %}">Filter zurücksetzen</a>{% endif %}
+        </div>
     </form>
     <section class="panel" aria-labelledby="brigades-list">
         <h2 id="brigades-list">Stammdaten</h2>
         {% if page_obj %}
             <div class="table-scroll" tabindex="0" role="region" aria-labelledby="brigades-list">
-                <table>
+                <table class="mobile-table listing-table brigade-list" role="table">
                     <thead>
                         <tr>
                             <th scope="col">Feuerwehr</th>
@@ -24,15 +45,15 @@
                             <th scope="col">Status</th>
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody role="rowgroup">
                         {% for brigade in page_obj %}
-                            <tr>
-                                <th scope="row">{% if workspace_edit.brigades %}<a href="{% url 'brigade_edit' brigade.pk %}">{{ brigade.name }}</a>{% else %}{{ brigade.name }}{% endif %}</th>
-                                <td>{{ brigade.municipality }}</td>
-                                <td>{{ brigade.district|default:"—" }}</td>
-                                <td>{{ brigade.address|default:"—" }}</td>
-                                <td>{% if brigade.latitude is not None %}{{ brigade.latitude }} / {{ brigade.longitude }}{% else %}—{% endif %}</td>
-                                <td>{% if brigade.is_active %}Aktiv{% else %}Inaktiv{% endif %}</td>
+                            <tr role="row">
+                                <th scope="row" role="rowheader">{% if workspace_edit.brigades %}<a href="{% url 'brigade_edit' brigade.pk %}{% if edit_query %}?{{ edit_query }}{% endif %}">{{ brigade.name }}</a>{% else %}{{ brigade.name }}{% endif %}</th>
+                                <td role="cell" data-label="Gemeinde">{{ brigade.municipality }}</td>
+                                <td role="cell" data-label="Ortsteil">{{ brigade.district|default:"—" }}</td>
+                                <td role="cell" data-label="Adresse">{{ brigade.address|default:"—" }}</td>
+                                <td role="cell" data-label="Koordinaten">{% if brigade.latitude is not None %}{{ brigade.latitude }} / {{ brigade.longitude }}{% else %}—{% endif %}</td>
+                                <td role="cell" data-label="Status">{% if brigade.is_active %}<span class="status-label status-confirmed">Aktiv</span>{% else %}<span class="status-label">Inaktiv</span>{% endif %}</td>
                             </tr>
                         {% endfor %}
                     </tbody>

@@ -52,6 +52,15 @@ class RideCaseTests(TestCase):
         self.assertEqual(sync_ride_cases(now=NOW), 1)
         self.assertEqual(RideCase.objects.get().pk, case.pk)
 
+    def test_seats_are_no_longer_available_at_the_exact_departure_time(self):
+        make_seat(self.course, self.alex)
+        make_seat(self.course, self.sam)
+        self.assertEqual(sync_ride_cases(now=START - timedelta(seconds=1)), 1)
+
+        self.assertEqual(sync_ride_cases(now=START), 0)
+
+        self.assertFalse(RideCase.objects.get().currently_matches)
+
     def test_shared_start_and_end_from_different_people_or_bookings_do_not_combine(self):
         make_seat(self.course, self.alex)
         make_seat(self.course, self.sam, end=END + timedelta(days=1))

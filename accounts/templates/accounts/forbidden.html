@@ -1,0 +1,10 @@
+{% extends "workspace/base.html" %}
+{% block title %}Kein Zugriff{% endblock %}
+{% block live_region %}{% endblock %}
+{% block content %}
+    <div class="page-heading"><h1>Kein Zugriff auf diese Seite</h1></div>
+    <section class="panel">
+        <p>Für diese Seite fehlt deinem Konto die Berechtigung.</p>
+        <p class="detail-note"><a class="button-link" href="{{ workspace_home }}">Zum Arbeitsbereich</a></p>
+    </section>
+{% endblock %}

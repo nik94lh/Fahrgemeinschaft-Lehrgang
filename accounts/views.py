@@ -1,14 +1,14 @@
 from functools import wraps
 from urllib.parse import urlsplit
 
-from django.contrib.auth import get_user_model
+from django.conf import settings
+from django.contrib.auth import get_user_model, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import SetPasswordForm
-from django.contrib.auth.views import LoginView, PasswordChangeView
+from django.contrib.auth.views import LoginView, PasswordChangeView, redirect_to_login
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.decorators import method_decorator
@@ -20,9 +20,14 @@ from django.views.decorators.http import require_http_methods, require_safe
 from .access import can_view, home_url, is_workspace_admin
 from .forms import AccountCreateForm, AccountEditForm
 from .login_throttle import login_retry_after
+from .sessions import remember_session_revision, revoke_account_sessions, session_revision_is_current
 
 
 User = get_user_model()
+
+
+def _lock_current_account(user):
+    return User.objects.select_for_update().filter(pk=user.pk, is_active=True, password=user.password).first()
 
 
 class WorkspaceLoginView(LoginView):
@@ -31,11 +36,24 @@ class WorkspaceLoginView(LoginView):
     def post(self, request, *args, **kwargs):
         retry_after = login_retry_after(request)
         if retry_after is not None:
-            return HttpResponse(
-                "Zu viele Anmeldeversuche. Versuche es in Kürze erneut.",
-                status=429, content_type="text/plain", headers={"Retry-After": str(retry_after)},
+            form = self.get_form_class()(request=request)
+            return self.render_to_response(
+                self.get_context_data(form=form, retry_after=retry_after),
+                status=429, headers={"Retry-After": str(retry_after)},
             )
         return super().post(request, *args, **kwargs)
+
+    def form_valid(self, form):
+        with transaction.atomic():
+            user = _lock_current_account(form.get_user())
+            if user is None:
+                form.add_error(None, form.get_invalid_login_error())
+                return self.form_invalid(form)
+            response = super().form_valid(form)
+            # Capture the revision while ordered against account deactivation.
+            # The session may be written to storage after this transaction ends.
+            remember_session_revision(self.request, user)
+            return response
 
     def get_success_url(self):
         redirect_url = self.get_redirect_url()
@@ -56,6 +74,15 @@ class AccountPasswordChangeView(PasswordChangeView):
 
     def get_success_url(self):
         return f"{reverse('account')}?passwort=1"
+
+    def form_valid(self, form):
+        with transaction.atomic():
+            user = _lock_current_account(form.user)
+            if user is None or not session_revision_is_current(self.request, user):
+                logout(self.request)
+                return redirect_to_login(self.request.get_full_path(), settings.LOGIN_URL)
+            form.user = user
+            return super().form_valid(form)
 
 
 def administrator_required(view):
@@ -127,9 +154,14 @@ def account_edit(request, user_id):
     if request.method == "POST":
         with transaction.atomic():
             user = _normal_account(user_id, for_update=True)
+            was_active = user.is_active
             form = AccountEditForm(request.POST, instance=user)
             if form.is_valid():
-                form.save_rights(form.save())
+                user = form.save()
+                if was_active != user.is_active:
+                    # Reactivation also covers accounts disabled before revisions existed.
+                    revoke_account_sessions(user)
+                form.save_rights(user)
                 return redirect(f"{reverse('account_list')}?gespeichert=1")
     else:
         user = _normal_account(user_id)

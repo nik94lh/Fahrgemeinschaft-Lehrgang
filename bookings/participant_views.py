@@ -1,9 +1,12 @@
 """Contact details for the participant assigned to one booking."""
+from urllib.parse import urlencode
+
 from django import forms
 from django.conf import settings
 from django.core.paginator import Paginator
 from django.db.models import Case, Exists, OuterRef, Q, Value, When
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
@@ -13,6 +16,7 @@ from mailimport.email_address import normalize_contact_email
 from mailimport.models import MailReceipt
 from mailimport.participant_settings import get_functional_addresses
 
+from .booking_search import booking_list_navigation, positive_integer
 from .contact_replay import _history_matches
 from .models import BookingStatus, CourseSeat, EmailEvent
 from .services import (
@@ -91,13 +95,9 @@ def _receipt_address_matches(seat, event, email):
 def _receipt_address(seat, value):
     if seat.status not in ACTIVE_STATUSES:
         return None, ""
-    receipt_id = None
-    if value is not None:
-        if not (len(value) <= 19 and value.isascii() and value.isdecimal()):
-            return None, ""
-        receipt_id = int(value)
-        if not 0 < receipt_id <= (1 << 63) - 1:
-            return None, ""
+    receipt_id = positive_integer(value)
+    if value is not None and receipt_id is None:
+        return None, ""
 
     receipts = MailReceipt.objects.select_related("event").filter(
         event__seat=seat, event__state=EmailEvent.State.APPLIED, event__kind__in=ACTIVATION_EVENTS,
@@ -135,6 +135,9 @@ def booking_participant(request, seat_id):
     form = None
     address_receipt_id = None
     address_suggestion_issue = ""
+    bookings_url, detail_params = booking_list_navigation(request.GET)
+    mail_value = request.GET.get("mail")
+    can_suggest_address = settings.HTTPS and request.is_secure() and can_view(request.user, "mail_receipts")
     if request.method == "POST":
         form = ParticipantEmailForm(request.POST)
         status = 400
@@ -148,19 +151,26 @@ def booking_participant(request, seat_id):
             except ValueError as error:
                 form.add_error("email", str(error))
             else:
-                return redirect("booking_participant", seat_id=seat.pk)
+                return redirect(reverse("booking_participant", args=[seat.pk], query=detail_params))
     elif not seat.participant.email and can_edit(request.user, "bookings"):
         initial = {"participant_id": seat.participant_id}
-        if settings.HTTPS and request.is_secure() and can_view(request.user, "mail_receipts"):
-            suggestion, address_suggestion_issue = _receipt_address(seat, request.GET.get("mail"))
+        if can_suggest_address:
+            suggestion, address_suggestion_issue = _receipt_address(seat, mail_value)
             if suggestion:
                 initial["email"], address_receipt_id = suggestion
         form = ParticipantEmailForm(initial=initial)
 
+    profile_params = detail_params.copy()
+    if form is not None and can_suggest_address and (selected_receipt := positive_integer(mail_value)):
+        profile_params["mail"] = selected_receipt
     page = Paginator(_profile_bookings(seat.participant_id), 25).get_page(request.GET.get("page"))
     return render(request, "workspace/booking_participant.html", {
         "section": "bookings",
         "seat": seat,
+        "booking_url": reverse("booking_detail", args=[seat.pk], query=detail_params),
+        "bookings_url": bookings_url,
+        "detail_querystring": urlencode(detail_params),
+        "profile_querystring": urlencode(profile_params),
         "booking_count": page.paginator.count,
         "profile_bookings": page,
         "form": form,

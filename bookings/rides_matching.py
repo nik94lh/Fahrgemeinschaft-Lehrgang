@@ -91,7 +91,7 @@ def _open_review_exclusions():
 
 def _round_trip_matches(now: datetime):
     seats = CourseSeat.objects.filter(
-        session__starts_at__gte=now,
+        session__starts_at__gt=now,
         participant__isnull=False,
         session__school__in=[code for code, _ in IN_PERSON_SCHOOL_CHOICES],
         session__is_online=False,

@@ -107,6 +107,9 @@
                         </a>
                     {% endfor %}
                 </div>
+                {% if cancellation_changed %}
+                    <p class="note review-info">Die verknüpfte Buchung hat sich seit dem Eingang der Stornierung geändert. Prüfe den aktuellen Buchungsstand.</p>
+                {% endif %}
                 {% if form %}
                     <div id="entscheidung" class="review-decision">
                         <h3>{{ action_details.0|default:"Entscheidung korrigieren" }}</h3>
@@ -134,6 +137,10 @@
                                 {% if action == "keep_address" %}
                                     {{ form.address_snapshot }}
                                     {{ form.address_snapshot.errors }}
+                                {% elif action == "apply_cancellation" %}
+                                    {{ form.cancellation_snapshot }}
+                                    {{ form.cancellation_snapshot.errors }}
+                                    <p class="note review-info">Prüfe in der Originalnachricht, ob diese Stornierung für die Buchung gilt.</p>
                                 {% elif action == "link" or action == "reassign" %}
                                     {% if not has_candidate_seats %}
                                         {% if search %}

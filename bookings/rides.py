@@ -65,6 +65,8 @@ class _Mediation:
 
 def _mediation(case: RideCase, *, now: datetime, lead_days: int) -> _Mediation:
     if not case.currently_matches:
+        if now >= case.earliest:
+            return _Mediation("elapsed", "Terminbeginn verstrichen")
         return _Mediation("inactive", "Kein aktueller Treffer")
     if case.status == RideCase.Status.CLOSED:
         return _Mediation("closed", case.get_status_display())

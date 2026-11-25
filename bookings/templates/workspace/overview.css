@@ -42,3 +42,8 @@
     .dashboard-course-table td:first-child a { display: inline-block; margin: .1rem 0 .25rem; text-decoration: none; }
     .dashboard-course-table td:first-child a:hover { text-decoration: underline; }
 }
+
+@media (max-width: 360px) {
+    .dashboard-stats .dashboard-metric { padding-inline: .625rem; }
+    .dashboard-stats .dashboard-metric dt { font-size: .875rem; overflow-wrap: anywhere; }
+}

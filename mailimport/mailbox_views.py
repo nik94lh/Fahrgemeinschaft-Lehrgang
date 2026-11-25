@@ -11,7 +11,7 @@ from django.views.decorators.http import require_http_methods
 from bookings.contact_replay import ContactReplayResult
 
 from .contact_replay import ContactReplayError, queue_contact_replay
-from .imap_sync import mailbox_source_id
+from .imap_sync import ImapSyncError, load_configuration, mailbox_source_id
 from .mailbox_forms import FunctionalAddressesForm, MailboxForm
 from .models import ContactReplayJob, MailboxConfiguration, MailboxCursor, ParticipantRecognitionConfiguration
 from .participant_settings import get_functional_addresses
@@ -88,8 +88,22 @@ def mailbox_view(request):
 
     last_sync_at = None
     last_sync_ok = None
+    source_id = None
+    server_configured = False
+    server_configuration_error = False
     if record is not None:
         source_id = mailbox_source_id(record.host, record.port, record.username, record.mailbox)
+    else:
+        try:
+            config = load_configuration()
+        except ImapSyncError:
+            server_configuration_error = True
+        else:
+            if config is not None:
+                source_id = config.source_id
+                server_configured = True
+
+    if source_id is not None:
         status = MailboxCursor.objects.filter(source_id=source_id).values_list(
             "last_sync_at", "last_sync_ok",
         ).first()
@@ -105,7 +119,9 @@ def mailbox_view(request):
         "addresses_saved": not is_post and request.GET.get("funktionsadressen_gespeichert") == "1",
         "section": "mailbox",
         "configured": record is not None,
-        "enabled": record is not None and record.enabled,
+        "server_configured": server_configured,
+        "server_configuration_error": server_configuration_error,
+        "enabled": server_configured or (record is not None and record.enabled),
         "password_saved": bool(record and record.encrypted_password),
         "last_sync_at": last_sync_at,
         "last_sync_ok": last_sync_ok,

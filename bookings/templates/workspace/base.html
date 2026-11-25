@@ -12,12 +12,15 @@
         {% include "workspace/workspace_chrome.css" %}
         {% block page_styles %}{% endblock %}
     </style>
+    {% if request.user.is_authenticated and section != "preview" %}
+        <script src="{% url 'workspace_chrome_script' %}?v={{ bms_version }}" defer></script>
+    {% endif %}
     {% if request.method == "GET" and request.user.is_authenticated and request.resolver_match.url_name != "preview" and section != "account" and section != "accounts" %}
         <script src="{% url 'live_script' %}?v={{ bms_version }}" defer></script>
     {% endif %}
     {% block page_scripts %}{% endblock %}
 </head>
-<body>
+<body{% if section == "preview" %} class="workspace-static-chrome"{% endif %}>
     <a class="skip-link" href="#main-content">Zum Inhalt</a>
     <header class="app-header workspace-chrome{% if not request.user.is_authenticated %} workspace-chrome-public{% endif %}">
         <div class="workspace-chrome-inner">

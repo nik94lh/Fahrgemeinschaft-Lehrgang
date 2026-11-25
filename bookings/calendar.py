@@ -1,4 +1,4 @@
-"""Read-only year, month and week views for the schedule."""
+"""Read-only year, month, week and day views for the schedule."""
 from calendar import Calendar
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -80,6 +80,10 @@ def _selected_period(params, today):
         start = _week_start(_selected_date(params.get("day"), today))
         return _Period("week", start, start + WEEK, start - WEEK)
 
+    if view == "day":
+        start = _selected_date(params.get("day"), today)
+        return _Period("day", start, start + DAY, start - DAY)
+
     value = params.get("month", "")
     month_number = params.get("month_number", "")
     if not value and len(month_number) in (1, 2) and month_number.isascii() and month_number.isdigit():
@@ -94,8 +98,8 @@ def _selected_school(params):
 
 
 def _query_string(view, anchor, school):
-    if view == "week":
-        parameters = {"view": "week", "day": anchor.isoformat()}
+    if view in ("day", "week"):
+        parameters = {"view": view, "day": anchor.isoformat()}
     elif view == "year":
         parameters = {"view": "year", "year": anchor.isoformat()[:4]}
     else:
@@ -270,6 +274,13 @@ def _calendar_sessions(sessions):
     ).order_by("starts_at", "course__name", "pk")
 
 
+def _agenda_groups(sessions):
+    by_school = defaultdict(list)
+    for session in sessions:
+        by_school[session.school].append(session)
+    return [{"school": school, "sessions": by_school[school]} for school in School if school in by_school]
+
+
 @never_cache
 @require_safe
 def calendar(request):
@@ -290,6 +301,7 @@ def calendar(request):
     if period.view == "week":
         # The Thursday determines the month and year of an ISO week.
         month_anchor += timedelta(days=3)
+        day_anchor = _selected_date(request.GET.get("day"), max(today, period.start))
     else:
         if period.start <= today < period.stop:
             week_anchor = today
@@ -297,6 +309,7 @@ def calendar(request):
             week_anchor = max(period.start, timezone.localtime(sessions[0].starts_at, timezone=zone).date())
         if period.view == "year":
             month_anchor = week_anchor
+        day_anchor = week_anchor
     context = {
         "section": "calendar",
         "view": period.view,
@@ -317,6 +330,7 @@ def calendar(request):
         "current_query": _query_string(period.view, period.start, school),
         "month_query": _query_string("month", month_anchor, school),
         "week_query": _query_string("week", _week_start(week_anchor), school),
+        "day_query": _query_string("day", day_anchor, school),
         "year_query": _query_string("year", month_anchor, school),
     }
     if period.view == "year":
@@ -326,8 +340,12 @@ def calendar(request):
         center = _selected_month(request.GET.get("range", ""), period.start)
         context.update(_month_timeline(period, center, today, school))
         context["sessions"] = sessions
+    elif period.view == "day":
+        context["agenda_groups"] = _agenda_groups(sessions)
     else:
         ticks = _ticks(period.start, period.stop, today)
+        for tick in ticks:
+            tick["day_query"] = _query_string("day", tick["date"], school)
         context.update({
             "ticks": ticks,
             "day_count": len(ticks),

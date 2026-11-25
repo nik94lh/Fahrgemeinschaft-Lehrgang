@@ -7,12 +7,14 @@ from datetime import datetime
 from django.conf import settings
 from django.db.models import OuterRef, Subquery
 from django.shortcuts import get_object_or_404, render
+from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_safe
 
 from accounts.access import can_view
 from mailimport.models import MailReceipt
 
+from .booking_search import booking_list_navigation
 from .models import BookingHistory, CourseSeat, EmailEvent
 
 
@@ -58,8 +60,11 @@ def booking_detail(request, seat_id):
         pk=seat_id,
     )
     show_receipts = settings.HTTPS and request.is_secure() and can_view(request.user, "mail_receipts")
+    bookings_url, detail_params = booking_list_navigation(request.GET)
     return render(request, "workspace/booking_detail.html", {
         "section": "bookings",
         "seat": seat,
+        "bookings_url": bookings_url,
+        "participant_url": reverse("booking_participant", args=[seat.pk], query=detail_params),
         "timeline": _booking_timeline(seat, show_receipts=show_receipts),
     })

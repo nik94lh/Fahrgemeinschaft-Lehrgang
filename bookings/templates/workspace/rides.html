@@ -25,6 +25,8 @@
     .ride-card-workflow dd { margin: .15rem 0 0; }
     .ride-card-footer .button-link { margin-inline-start: auto; }
     .ride-empty .quiet { margin-block-start: .35rem; }
+    .ride-match-help { margin-block-start: 1rem; }
+    .ride-match-help .ride-page-actions { margin-block-start: .65rem; }
     @media (max-width: 560px) {
         .ride-stats div { padding: .7rem .85rem; }
         .ride-stats dt { font-size: .9rem; line-height: 1.4; }
@@ -44,7 +46,7 @@
                 </div>
             {% endif %}
         </div>
-        {% if synced %}<p class="notice" role="status">Abgleich abgeschlossen.</p>{% endif %}
+        {% if synced %}<p class="notice" role="status">Abgleich abgeschlossen.{% if not active_count %} Keine aktuell passenden Vorschläge.{% endif %}</p>{% endif %}
         <dl class="stats ride-stats">
             <div><dt>Beim letzten Abgleich passend</dt><dd>{{ active_count }}</dd></div>
             <div><dt>Davon offen oder in Prüfung</dt><dd>{{ pending_count }}</dd></div>
@@ -130,13 +132,22 @@
         {% elif archived %}
             <p class="quiet">{% if selected_status %}Keine früheren Einzelstrecken mit diesem Bearbeitungsstand.{% else %}Keine früheren Einzelstrecken vorhanden.{% endif %}</p>
         {% elif selected_phase %}
-            <p class="quiet">Keine Vorschläge passen zu den gewählten Filtern.</p>
+            <p class="quiet">Keine Vorschläge passen zu den gewählten Filtern. <a href="{% url 'rides' %}">Filter zurücksetzen</a></p>
         {% elif selected_status %}
-            <p class="quiet">Keine Vorschläge mit diesem Bearbeitungsstand.</p>
+            <p class="quiet">Keine Vorschläge mit diesem Bearbeitungsstand. <a href="{% url 'rides' %}">Filter zurücksetzen</a></p>
         {% else %}
-            <div class="panel ride-empty">
-                <p>Noch keine Fahrgemeinschaftsvorschläge.</p>
-                <p class="quiet">Ein Vorschlag braucht mindestens zwei Personen mit bestätigten Präsenzbuchungen und persönlicher E-Mail-Adresse. Die Schule sowie der Start- und Endtag müssen übereinstimmen.</p>
+            <p>Noch keine Fahrgemeinschaftsvorschläge.</p>
+        {% endif %}
+        {% if not archived and not active_count and not selected_phase and not selected_status %}
+            <div class="panel ride-empty ride-match-help">
+                <p>Ein Vorschlag braucht mindestens zwei verschiedene Personen mit vollständigen, bestätigten Präsenzbuchungen an derselben Schule und mit gleichem Start- und Endtag.</p>
+                <p class="quiet">Prüfe persönliche E-Mail-Adressen, offene Klärungsfälle und mögliche Doppelbuchungen.</p>
+                {% if workspace_view.bookings or workspace_view.review %}
+                    <div class="ride-page-actions">
+                        {% if workspace_view.bookings %}<a class="button-link" href="{% url 'bookings' %}?status=confirmed">Bestätigte Buchungen ansehen</a>{% endif %}
+                        {% if workspace_view.review %}<a class="button-link" href="{% url 'review' %}">Offene Klärungsfälle ansehen</a>{% endif %}
+                    </div>
+                {% endif %}
             </div>
         {% endif %}
         {% if has_legacy %}<p class="ride-archive-link"><a href="?archiv=1">Frühere Einzelstrecken</a></p>{% endif %}

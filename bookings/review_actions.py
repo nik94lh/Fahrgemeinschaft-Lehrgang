@@ -21,12 +21,16 @@ from mailimport.email_address import normalize_contact_email
 
 from .booking_search import booking_id_query, positive_integer
 from .models import BookingHistory, BookingStatus, CourseSeat, EmailEvent, ImportLock, Participant, School
-from .services import _normalized_name
+from .services import ACTIVE_STATUSES, CANCELLATION_EVENTS, _cancellation_snapshot, _normalized_name
 
 
 RESULT_LIMIT = 20
 SEAT_ACTIONS = ("link", "reassign")
 ACTIONS = {
+    "apply_cancellation": (
+        "Stornierung in BMS übernehmen",
+        "Setzt die zugeordnete Buchung auf „Storniert“ und dokumentiert deine Entscheidung.",
+    ),
     "keep_address": (
         "Gespeicherte Adresse behalten",
         "Ordnet die Nachricht der Buchung zu und verwendet weiter die gespeicherte E-Mail-Adresse.",
@@ -85,6 +89,7 @@ class ParticipantChoiceField(forms.ModelChoiceField):
 
 
 class ReviewForm(forms.Form):
+    APPLY_CANCELLATION = "apply_cancellation"
     KEEP_ADDRESS = "keep_address"
     LINK = "link"
     REASSIGN = "reassign"
@@ -112,6 +117,7 @@ class ReviewForm(forms.Form):
         required=False,
     )
     address_snapshot = forms.CharField(max_length=64, required=False, widget=forms.HiddenInput)
+    cancellation_snapshot = forms.CharField(max_length=64, required=False, widget=forms.HiddenInput)
     confirm = forms.BooleanField(label="Ich habe die Angaben geprüft und bestätige die Entscheidung.")
 
     def __init__(self, *args, event, seat_ids, actions, **kwargs):
@@ -141,8 +147,10 @@ class ReviewForm(forms.Form):
         return fields
 
 
-def _actions(event, can_keep_address):
+def _actions(event, can_keep_address, can_apply_cancellation):
     available = {ReviewForm.LINK, ReviewForm.DISMISS}
+    if can_apply_cancellation:
+        available.add(ReviewForm.APPLY_CANCELLATION)
     if can_keep_address:
         available.add(ReviewForm.KEEP_ADDRESS)
     if event.kind == EmailEvent.Kind.REASSIGNMENT:
@@ -256,11 +264,13 @@ def _context(request, event):
     if event.state != EmailEvent.State.NEEDS_REVIEW:
         return context
 
-    can_keep_address = (
-        can_edit(request.user, "review") and can_edit(request.user, "bookings")
-        and _can_keep_address(event, recognized, comparison_seat)
+    can_decide = can_edit(request.user, "review") and can_edit(request.user, "bookings")
+    can_keep_address = can_decide and _can_keep_address(event, recognized, comparison_seat)
+    cancellation_snapshot = _current_cancellation_snapshot(event, comparison_seat) if can_decide else None
+    actions = _actions(event, can_keep_address, bool(cancellation_snapshot))
+    context["cancellation_changed"] = bool(
+        can_decide and not cancellation_snapshot and _recorded_cancellation_snapshot(event)
     )
-    actions = _actions(event, can_keep_address)
     data = request.POST if request.method == "POST" else None
     requested = data.get("action") if data is not None else request.GET.get("aktion")
     action = requested if requested in actions else None
@@ -285,6 +295,8 @@ def _context(request, event):
     initial = {"action": action}
     if action == ReviewForm.KEEP_ADDRESS:
         initial["address_snapshot"] = _address_snapshot(event, comparison_seat)
+    elif action == ReviewForm.APPLY_CANCELLATION:
+        initial["cancellation_snapshot"] = cancellation_snapshot
     if event.seat_id in seat_ids and not search:
         initial["seat"] = event.seat_id
     context.update(
@@ -353,6 +365,25 @@ def _address_snapshot(event, seat):
     ).hexdigest()
 
 
+def _recorded_cancellation_snapshot(event):
+    if (
+        event.kind in CANCELLATION_EVENTS and event.review_reason == EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR
+        and isinstance(event.review_context, dict)
+    ):
+        snapshot = event.review_context.get("cancellation_snapshot")
+        if isinstance(snapshot, str):
+            return snapshot
+    return None
+
+
+def _current_cancellation_snapshot(event, seat):
+    recorded = _recorded_cancellation_snapshot(event)
+    if not recorded or seat is None or event.seat_id != seat.pk or not seat.participant_id or seat.status not in ACTIVE_STATUSES:
+        return None
+    current = _cancellation_snapshot(event, seat)
+    return current if constant_time_compare(recorded, current) else None
+
+
 @never_cache
 @require_http_methods(["GET", "HEAD", "POST"])
 @csrf_protect
@@ -383,10 +414,11 @@ def _apply_decision(form, event):
         event.state = EmailEvent.State.DISMISSED
         event.review_resolution = data["reason"]
     else:
-        seat_id = event.seat_id if action == ReviewForm.KEEP_ADDRESS else data["seat"].pk
+        fixed_seat = action in (ReviewForm.KEEP_ADDRESS, ReviewForm.APPLY_CANCELLATION)
+        seat_id = event.seat_id if fixed_seat else data["seat"].pk
         seat = CourseSeat.objects.select_for_update().filter(pk=seat_id).first()
         if seat is None:
-            field = None if action == ReviewForm.KEEP_ADDRESS else "seat"
+            field = None if fixed_seat else "seat"
             form.add_error(field, "Der Lehrgangsplatz ist nicht mehr vorhanden.")
             return False
         event.review_resolution = EmailEvent.ReviewResolution.LINKED
@@ -401,6 +433,10 @@ def _apply_decision(form, event):
                 form.add_error(None, "Teilnehmer oder Adresse haben sich geändert. Öffne den Klärungsfall erneut.")
                 return False
             event.review_resolution = EmailEvent.ReviewResolution.ADDRESS_KEPT
+        elif action == ReviewForm.APPLY_CANCELLATION:
+            if not _apply_cancellation(form, event, seat):
+                return False
+            event.review_resolution = EmailEvent.ReviewResolution.CANCELLED
         elif action == ReviewForm.REASSIGN:
             if not _reassign(form, event, seat):
                 return False
@@ -409,6 +445,21 @@ def _apply_decision(form, event):
         event.state = EmailEvent.State.REVIEWED
     event.reviewed_at = timezone.now()
     event.save(update_fields=["state", "review_resolution", "reviewed_at", "seat"])
+    return True
+
+
+def _apply_cancellation(form, event, seat):
+    current = _current_cancellation_snapshot(event, seat)
+    if not current or not constant_time_compare(form.cleaned_data["cancellation_snapshot"], current):
+        form.add_error(None, "Die Buchung oder die geprüfte Zuordnung hat sich geändert. Öffne den Klärungsfall erneut.")
+        return False
+
+    BookingHistory.objects.create(
+        seat=seat, previous_participant_id=seat.participant_id, participant_id=seat.participant_id,
+        previous_status=seat.status, status=BookingStatus.CANCELLED, source_event=event,
+    )
+    seat.status = BookingStatus.CANCELLED
+    seat.save(update_fields=["status"])
     return True
 
 

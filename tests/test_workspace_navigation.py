@@ -40,6 +40,23 @@ class WorkspaceNavigationTests(WorkspaceTestCase):
         self.assertContains(response, '<main id="main-content"')
         self.assertNotContains(response, 'class="workspace-nav-desktop"')
         self.assertNotContains(response, 'id="live-update-status"')
+        self.assertNotContains(response, 'src="/assets/workspace-chrome.js')
+
+    def test_workspace_menu_script_is_available_without_a_live_region(self):
+        account = self.client.get("/konto/")
+
+        self.assertContains(account, 'src="/assets/workspace-chrome.js')
+        self.assertNotContains(account, 'src="/assets/live.js')
+        script = Client().get("/assets/workspace-chrome.js")
+        self.assertEqual(script.status_code, 200)
+        self.assertIn("text/javascript", script.headers["Content-Type"])
+
+    def test_mail_preview_uses_the_scriptless_navigation_fallback(self):
+        for response in (self.client.get("/vorschau/"), self.client.post("/importieren/")):
+            with self.subTest(path=response.wsgi_request.path):
+                self.assertNotIn("script-src", response.headers["Content-Security-Policy"])
+                self.assertNotContains(response, 'src="/assets/workspace-chrome.js', status_code=response.status_code)
+                self.assertContains(response, 'class="workspace-static-chrome"', status_code=response.status_code)
 
 
 class WorkspaceNavigationPermissionsTests(TestCase):
@@ -70,6 +87,15 @@ class WorkspaceNavigationPermissionsTests(TestCase):
         self.assertNotContains(insecure, 'href="/postfach/"')
         self.assertContains(secure, 'href="/postfach/"', count=2)
         self.assertNotContains(secure, 'href="/mail-eingang/"')
+
+    @override_settings(HTTPS=False)
+    def test_secure_secondary_links_require_https_to_be_enabled(self):
+        self.sign_in_with("view_calendar", "view_mailbox", "view_mail_receipts")
+
+        response = self.client.get("/konto/", secure=True)
+
+        self.assertNotContains(response, 'href="/postfach/"')
+        self.assertNotContains(response, 'href="/mail-eingang/"')
 
     def test_public_login_still_has_version_without_account_or_workspace_navigation(self):
         response = self.client.get("/anmelden/")

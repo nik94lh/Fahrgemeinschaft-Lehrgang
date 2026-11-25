@@ -1,9 +1,9 @@
 {% extends "workspace/base.html" %}
 {% block title %}Teilnehmer zur Buchung{% endblock %}
 {% block content %}
-    <p class="back-link"><a href="{% url 'bookings' %}">‹ Zurück zu den Buchungen</a></p>
+    <p class="back-link"><a href="{{ booking_url }}">‹ Zurück zur Buchung</a> · <a href="{{ bookings_url }}">Buchungsliste</a></p>
     <h1>Teilnehmer zur Buchung</h1>
-    <p class="intro"><a href="{% url 'booking_detail' seat.pk %}">Buchungs-ID {{ seat.pk|stringformat:"d" }}</a> · {{ seat.session.course.name }} · {{ seat.session.get_venue_display }} · {% include "workspace/session_period.html" with session=seat.session only %}</p>
+    <p class="intro">Buchungs-ID {{ seat.pk|stringformat:"d" }} · {{ seat.session.course.name }} · {{ seat.session.get_venue_display }} · {% include "workspace/session_period.html" with session=seat.session only %}</p>
     <section class="panel participant-profile" aria-label="Teilnehmerprofil">
         <dl class="details">
             <div><dt>Name</dt><dd>{{ seat.participant.name }}</dd></div>
@@ -39,8 +39,8 @@
                         <tr>
                             <td data-label="Lehrgangsbuchung">
                                 <span>
-                                    <a href="{% url 'booking_participant' booking.pk %}"{% if booking.pk == seat.pk %} aria-current="page"{% endif %}>{{ booking.session.course.name }}</a><br>
-                                    <small>{{ booking.session.get_venue_display }} · <a href="{% url 'booking_detail' booking.pk %}">Buchungs-ID {{ booking.pk|stringformat:"d" }}</a>{% if booking.external_reference %} · Referenz {{ booking.external_reference }}{% endif %}</small>
+                                    <a href="{% url 'booking_participant' booking.pk %}{% if detail_querystring %}?{{ detail_querystring }}{% endif %}"{% if booking.pk == seat.pk %} aria-current="page"{% endif %}>{{ booking.session.course.name }}</a><br>
+                                    <small>{{ booking.session.get_venue_display }} · <a href="{% url 'booking_detail' booking.pk %}{% if detail_querystring %}?{{ detail_querystring }}{% endif %}">Buchungs-ID {{ booking.pk|stringformat:"d" }}</a>{% if booking.external_reference %} · Referenz {{ booking.external_reference }}{% endif %}</small>
                                 </span>
                             </td>
                             <td data-label="Zeitraum">{% include "workspace/session_period.html" with session=booking.session only %}</td>
@@ -58,6 +58,6 @@
                 </tbody>
             </table>
         </div>
-        {% include "workspace/pagination.html" with page_obj=profile_bookings only %}
+        {% include "workspace/pagination.html" with page_obj=profile_bookings querystring=profile_querystring only %}
     </section>
 {% endblock %}

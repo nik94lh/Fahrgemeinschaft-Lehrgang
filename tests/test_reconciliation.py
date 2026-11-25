@@ -199,6 +199,28 @@ class ReconciliationTests(TestCase):
         self.assertEqual(result.review_reason, EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR)
         self.assertEqual(result.seat.status, BookingStatus.CONFIRMED)
 
+    def test_undated_cancellation_does_not_override_undated_confirmation(self):
+        confirmation = ingest(eml("Teilnahmebestätigung", reference="TEST-41"))
+
+        cancellation = ingest(eml("Stornierung", reference="TEST-41"))
+
+        self.assertEqual(cancellation.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(cancellation.review_reason, EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR)
+        self.assertEqual(cancellation.seat_id, confirmation.seat_id)
+        confirmation.seat.refresh_from_db()
+        self.assertEqual(confirmation.seat.status, BookingStatus.CONFIRMED)
+        self.assertEqual(confirmation.seat.history.count(), 1)
+
+    def test_newer_dated_cancellation_still_applies_to_a_confirmation(self):
+        instant = datetime(2027, 4, 25, tzinfo=UTC)
+        confirmation = ingest(eml("Teilnahmebestätigung"), occurred_at=instant)
+
+        cancellation = ingest(eml("Stornierung"), occurred_at=instant + timedelta(days=1))
+
+        self.assertEqual(cancellation.state, EmailEvent.State.APPLIED)
+        self.assertEqual(cancellation.seat_id, confirmation.seat_id)
+        self.assertEqual(cancellation.seat.status, BookingStatus.CANCELLED)
+
     def test_incomplete_fields_have_distinct_safe_reasons(self):
         reasons = {
             "course": EmailEvent.ReviewReason.COURSE_UNCLEAR,
