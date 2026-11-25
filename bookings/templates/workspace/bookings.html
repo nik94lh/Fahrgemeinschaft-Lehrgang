@@ -10,17 +10,31 @@
         <button type="submit">Filtern</button>
     </form>
     <section class="panel">
-        {% if page_obj %}
+        {% if booking_rows %}
             <div class="table-scroll" tabindex="0">
                 <table class="mobile-table">
                     <thead><tr><th scope="col">Lehrgang</th><th scope="col">Schulungsort</th><th scope="col">Zeitraum</th><th scope="col">Teilnehmer/in</th><th scope="col">Status</th></tr></thead>
-                    <tbody>{% for seat in page_obj %}
+                    <tbody>{% for row in booking_rows %}{% with seat=row.seat %}
                         <tr>
                             <td data-label="Lehrgang">{{ seat.session.course.name }}</td><td data-label="Schulungsort">{{ seat.session.get_venue_display }}</td>
                             <td data-label="Zeitraum">{% include "workspace/session_period.html" with session=seat.session only %}</td><td data-label="Teilnehmer/in">{% if seat.participant %}<a href="{% url 'booking_participant' seat.pk %}">{{ seat.participant.name }}</a>{% else %}—{% endif %}</td>
-                            <td data-label="Status"><span class="status-label status-{{ seat.status }}">{{ seat.get_status_display }}</span></td>
+                            <td data-label="Status" class="booking-status-cell">
+                                <div>
+                                    <span class="status-label status-{{ seat.status }}">{{ seat.get_status_display }}</span>
+                                    <dl class="booking-progress">
+                                        {% for card in row.status_cards %}
+                                            <div class="booking-progress-card booking-progress-{{ card.tone }}">
+                                                <dt>{{ card.label }}</dt><dd>{{ card.value }}</dd>
+                                            </div>
+                                        {% endfor %}
+                                    </dl>
+                                    <p class="booking-completeness">
+                                        {% if row.missing_fields %}Fehlt: {{ row.missing_fields|join:", " }}{% else %}Buchungsdaten vollständig{% endif %}
+                                    </p>
+                                </div>
+                            </td>
                         </tr>
-                    {% endfor %}</tbody>
+                    {% endwith %}{% endfor %}</tbody>
                 </table>
             </div>
         {% else %}

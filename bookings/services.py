@@ -2,7 +2,7 @@
 
 from dataclasses import replace
 from datetime import datetime
-from itertools import islice
+from itertools import chain, islice
 from unicodedata import normalize
 
 from django.db import transaction
@@ -71,7 +71,7 @@ def set_participant_email(seat_id: int, email: str, *, expected_participant_id: 
         seat.save(update_fields=["participant"])
         BookingHistory.objects.create(
             seat=seat, previous_participant=previous, participant=participant,
-            previous_status=seat.status, status=seat.status,
+            previous_status=seat.status, status=seat.status, profile_linked=True,
         )
     return participant
 
@@ -319,7 +319,7 @@ def _reconcile_by_details(event: EmailEvent, mail: ParsedMail, *, receipt: MailR
         return _flag_review(event, mail, EmailEvent.ReviewReason.MULTIPLE_SESSIONS)
     session = sessions[0] if sessions else None
     if session is not None:
-        seats = _seats_with_name(eligible, name)
+        seats = _seats_with_name(eligible, name, verified_email=mail.participant_email)
         if len(seats) > 1:
             return _flag_review(event, mail, EmailEvent.ReviewReason.MULTIPLE_SEATS)
         if seats:
@@ -352,11 +352,21 @@ def _reconcile_by_details(event: EmailEvent, mail: ParsedMail, *, receipt: MailR
     return _update_booking(event, CourseSeat(session=session, participant=participant), mail, receipt=receipt)
 
 
-def _seats_with_name(sessions, name: str) -> list[CourseSeat]:
+def _seats_with_name(sessions, name: str, *, verified_email: str | None = None) -> list[CourseSeat]:
     candidates = CourseSeat.objects.filter(session__in=sessions, participant__isnull=False).select_related(
         "participant", "session__course",
     ).iterator()
-    return list(islice((seat for seat in candidates if _normalized_name(seat.participant.name) == name), 2))
+    named = (seat for seat in candidates if _normalized_name(seat.participant.name) == name)
+    matches = list(islice(named, 2))
+    if len(matches) < 2 or not verified_email or len(sessions[:2]) != 1:
+        return matches
+
+    # Use the address only after the session is unique.
+    exact = (
+        seat for seat in chain(matches, named)
+        if normalize_contact_email(seat.participant.email) == verified_email
+    )
+    return list(islice(exact, 2)) or matches
 
 
 def _apply_matching_seat(
@@ -371,14 +381,16 @@ def _reconcile_online_follow_up(
     event: EmailEvent, mail: ParsedMail, schedule, *, receipt: MailReceipt | None,
 ) -> EmailEvent | None:
     name = _normalized_name(mail.participant_name)
+    email = mail.participant_email
     if mail.school == School.ONLINE:
-        seats = _seats_with_name(schedule, name)
+        seats = _seats_with_name(schedule, name, verified_email=email)
     else:
         # A course can run online and in person at the same time under the same organizer.
-        seats = _seats_with_name(schedule.filter(school=mail.school, is_online=True), name)
+        sessions = schedule.filter(school=mail.school, is_online=True)
+        seats = _seats_with_name(sessions, name, verified_email=email)
         if not seats:
             possible = schedule.filter(Q(school=mail.school) | Q(school=School.ONLINE))
-            seats = _seats_with_name(possible, name)
+            seats = _seats_with_name(possible, name, verified_email=email)
 
     if len(seats) > 1:
         return _flag_review(event, mail, EmailEvent.ReviewReason.MULTIPLE_SEATS)
@@ -387,7 +399,7 @@ def _reconcile_online_follow_up(
 
     seat = seats[0]
     if mail.school == School.ONLINE and seat.session.school != School.ONLINE and not seat.session.is_online:
-        if not mail.participant_email or normalize_contact_email(seat.participant.email) != mail.participant_email:
+        if not email or normalize_contact_email(seat.participant.email) != email:
             return _flag_review(
                 event, mail, EmailEvent.ReviewReason.PARTICIPANT_IDENTITY_UNCLEAR, candidate_seat_id=seat.pk,
             )
@@ -468,9 +480,10 @@ def _update_booking(
             participant=seat.participant,
             previous_status=previous_status,
             status=status,
+            profile_linked="participant" in changed and previous_participant is not None,
             source_event=event,
         )
-    return _record(event, EmailEvent.State.APPLIED, seat)
+    return _record(event, EmailEvent.State.APPLIED, seat, processed_participant_id=seat.participant_id)
 
 
 def _update_online_session(session: CourseSession, mail: ParsedMail) -> None:
@@ -518,10 +531,15 @@ def _flag_review(
     return _record(event, EmailEvent.State.NEEDS_REVIEW, seat)
 
 
-def _record(event: EmailEvent, state: str, seat: CourseSeat | None = None) -> EmailEvent:
+def _record(
+    event: EmailEvent, state: str, seat: CourseSeat | None = None, *, processed_participant_id: int | None = None,
+) -> EmailEvent:
     event.state = state
     event.seat = seat
     update_fields = ["state", "seat", "review_reason"]
+    if processed_participant_id is not None:
+        event.processed_participant_id = processed_participant_id
+        update_fields.append("processed_participant")
     if state == EmailEvent.State.NEEDS_REVIEW:
         update_fields.append("review_context")
     event.save(update_fields=update_fields)

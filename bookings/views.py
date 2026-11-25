@@ -6,6 +6,10 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_safe
 
+from mailimport.participant_settings import get_functional_addresses
+
+from .booking_state import booking_missing_fields
+from .booking_status import booking_status_cards, booking_status_prefetches
 from .models import BookingStatus, CourseSeat, CourseSession, EmailEvent, School
 
 
@@ -58,10 +62,22 @@ def bookings(request):
         )
     params = request.GET.copy()
     params.pop("page", None)
+    seats = seats.prefetch_related(*booking_status_prefetches())
+    page_obj = Paginator(seats, 25).get_page(request.GET.get("page"))
+    functional_addresses = set(get_functional_addresses()) if page_obj else set()
+    booking_rows = [
+        {
+            "seat": seat,
+            "status_cards": booking_status_cards(seat),
+            "missing_fields": booking_missing_fields(seat, functional_addresses=functional_addresses),
+        }
+        for seat in page_obj
+    ]
     return render(request, "workspace/bookings.html", {
         "section": "bookings",
         "imported": request.GET.get("importiert") == "1",
-        "page_obj": Paginator(seats, 25).get_page(request.GET.get("page")),
+        "page_obj": page_obj,
+        "booking_rows": booking_rows,
         "status_choices": BookingStatus.choices,
         "school_choices": School.choices,
         "selected_status": selected_status,

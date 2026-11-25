@@ -215,6 +215,13 @@ class EmailEvent(models.Model):
         blank=True,
         related_name="email_events",
     )
+    processed_participant = models.ForeignKey(
+        Participant,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="processed_email_events",
+    )
     occurred_at = models.DateTimeField(null=True, blank=True)
     imported_at = models.DateTimeField(auto_now_add=True)
     review_reason = models.CharField(max_length=32, choices=ReviewReason.choices, blank=True)
@@ -241,6 +248,7 @@ class BookingHistory(models.Model):
     )
     previous_status = models.CharField(max_length=24, choices=BookingStatus.choices, blank=True)
     status = models.CharField(max_length=24, choices=BookingStatus.choices)
+    profile_linked = models.BooleanField(default=False, db_default=False)
     source_event = models.ForeignKey(
         EmailEvent,
         on_delete=models.SET_NULL,

@@ -94,6 +94,83 @@ class BookingMailMergeTests(TestCase):
         self.assertEqual(result.seat.participant.email, PERSONAL)
         self.assertEqual(result.seat.status, BookingStatus.CONFIRMED)
 
+    def test_verified_email_joins_mails_to_the_third_same_name_booking(self):
+        first = ingest(booking_mail(address="other@example.invalid"))
+        second = CourseSeat.objects.create(
+            session=first.seat.session, participant=Participant.objects.create(name="Alex Beispiel"),
+        )
+        target = CourseSeat.objects.create(
+            session=first.seat.session, participant=Participant.objects.create(name="ALEX  Beispiel", email=PERSONAL),
+            status=BookingStatus.APPROVED,
+        )
+
+        approval = ingest(booking_mail(address="ALEX@EXAMPLE.INVALID"))
+        raw_confirmation = booking_mail(kind="confirmation", address=PERSONAL)
+        confirmation = ingest(raw_confirmation)
+
+        self.assertEqual(approval.state, EmailEvent.State.APPLIED)
+        self.assertEqual(confirmation.state, EmailEvent.State.APPLIED)
+        self.assertEqual(approval.seat_id, target.pk)
+        self.assertEqual(confirmation.seat_id, target.pk)
+        self.assertEqual(ingest(raw_confirmation).pk, confirmation.pk)
+        self.assertCountEqual(target.email_events.all(), [approval, confirmation])
+        target.refresh_from_db()
+        first.seat.refresh_from_db()
+        second.refresh_from_db()
+        self.assertEqual(target.status, BookingStatus.CONFIRMED)
+        self.assertEqual(first.seat.status, BookingStatus.APPROVED)
+        self.assertEqual(second.status, BookingStatus.NEEDS_REVIEW)
+        self.assertEqual(second.participant.email, "")
+        self.assertEqual(CourseSeat.objects.count(), 3)
+
+    def test_verified_email_does_not_resolve_two_records_for_the_same_person(self):
+        original = ingest(booking_mail(address=PERSONAL))
+        CourseSeat.objects.create(session=original.seat.session, participant=original.seat.participant)
+
+        result = ingest(booking_mail(kind="confirmation", address=PERSONAL))
+
+        self.assertEqual(result.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.MULTIPLE_SEATS)
+        self.assertIsNone(result.seat_id)
+        self.assertEqual(CourseSeat.objects.count(), 2)
+
+    def test_verified_email_does_not_resolve_duplicate_sessions(self):
+        original = ingest(booking_mail(address=PERSONAL)).seat
+        session = original.session
+        CourseSession.objects.create(
+            course=session.course, school=session.school, starts_at=session.starts_at, ends_at=session.ends_at,
+        )
+
+        result = ingest(booking_mail(kind="confirmation", address=PERSONAL))
+
+        self.assertEqual(result.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(result.review_reason, EmailEvent.ReviewReason.MULTIPLE_SESSIONS)
+        self.assertIsNone(result.seat_id)
+        original.refresh_from_db()
+        self.assertEqual(original.status, BookingStatus.APPROVED)
+
+    def test_verified_email_cannot_override_a_different_booking_reference(self):
+        first = ingest(booking_mail(address="other@example.invalid", reference="TEST-70"))
+        target = CourseSeat.objects.create(
+            session=first.seat.session, participant=Participant.objects.create(name="Alex Beispiel", email=PERSONAL),
+            external_reference=REFERENCE, status=BookingStatus.APPROVED,
+        )
+
+        conflicting = ingest(booking_mail(kind="confirmation", address=PERSONAL, reference="TEST-70"))
+        unknown = ingest(booking_mail(kind="confirmation", address=PERSONAL, reference="TEST-72"))
+
+        self.assertEqual(conflicting.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(conflicting.review_reason, EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT)
+        self.assertEqual(conflicting.seat_id, first.seat_id)
+        self.assertEqual(unknown.state, EmailEvent.State.NEEDS_REVIEW)
+        self.assertEqual(unknown.review_reason, EmailEvent.ReviewReason.REFERENCE_MISMATCH)
+        self.assertEqual(unknown.review_context["candidate_seat_id"], target.pk)
+        target.refresh_from_db()
+        first.seat.refresh_from_db()
+        self.assertEqual(target.status, BookingStatus.APPROVED)
+        self.assertEqual(first.seat.status, BookingStatus.APPROVED)
+        self.assertEqual(CourseSeat.objects.count(), 2)
+
     def test_redelivered_partial_confirmation_can_fill_an_address_without_changing_status(self):
         config = ParticipantRecognitionConfiguration.objects.create(functional_addresses=[PERSONAL])
         original = ingest(eml("Lehrgangsgenehmigung", reference=REFERENCE))
@@ -156,6 +233,21 @@ class BookingMailMergeTests(TestCase):
         self.assertEqual(result.seat.session.school, School.WUERZBURG)
         self.assertTrue(result.seat.session.is_online)
         self.assertEqual(CourseSeat.objects.count(), 1)
+
+    def test_online_follow_up_uses_verified_email_with_same_name_in_one_session(self):
+        original = ingest(booking_mail(address=PERSONAL))
+        CourseSeat.objects.create(
+            session=original.seat.session, participant=Participant.objects.create(name="Alex Beispiel"),
+        )
+
+        result = ingest(online_confirmation(to=f"Alex Beispiel <{PERSONAL}>"))
+
+        self.assertEqual(result.state, EmailEvent.State.APPLIED)
+        self.assertEqual(result.seat_id, original.seat_id)
+        self.assertEqual(result.seat.status, BookingStatus.CONFIRMED)
+        self.assertEqual(result.seat.session.school, School.WUERZBURG)
+        self.assertTrue(result.seat.session.is_online)
+        self.assertEqual(CourseSeat.objects.count(), 2)
 
     def test_online_follow_up_without_reference_or_matching_address_goes_to_review(self):
         original = ingest(booking_mail(address=PERSONAL))

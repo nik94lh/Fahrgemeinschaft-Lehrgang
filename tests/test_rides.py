@@ -22,9 +22,9 @@ class RideSuggestionTests(WorkspaceTestCase):
     def setUpTestData(cls):
         cls.course = Course.objects.create(name="Übungslehrgang")
         cls.date = (timezone.now() + timedelta(days=3)).replace(hour=9, minute=0, second=0, microsecond=0)
-        cls.first = Participant.objects.create(name="Alex Person Eins")
-        cls.second = Participant.objects.create(name="Sam Person Zwei")
-        cls.third = Participant.objects.create(name="Jules Person Drei")
+        cls.first = Participant.objects.create(name="Alex Person Eins", email="alex.eins@example.invalid")
+        cls.second = Participant.objects.create(name="Sam Person Zwei", email="sam.zwei@example.invalid")
+        cls.third = Participant.objects.create(name="Jules Person Drei", email="jules.drei@example.invalid")
 
     def seat(self, participant, start, end, school=School.WUERZBURG, status=BookingStatus.CONFIRMED):
         session = CourseSession.objects.create(course=self.course, school=school, starts_at=start, ends_at=end)

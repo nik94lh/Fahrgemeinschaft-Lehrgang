@@ -61,6 +61,9 @@ class ParticipantContactTests(WorkspaceTestCase):
         self.assertEqual(self.person.email, "alex.beispiel@example.invalid")
         self.assertContains(self.client.get(self.url), "alex.beispiel@example.invalid")
         self.assertNotContains(self.client.get(self.url), "Adresse speichern")
+        bookings = self.client.get(reverse("bookings"))
+        self.assertContains(bookings, "Buchungsdaten vollständig")
+        self.assertNotContains(bookings, "alex.beispiel@example.invalid")
 
     def test_stale_assignment_and_unverified_post_cannot_store_email(self):
         old_participant = self.person

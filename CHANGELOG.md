@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.12.0
+
+- Der Import kann gleichnamige Buchungen im selben eindeutigen Lehrgangstermin anhand einer eindeutig erkannten und bereits hinterlegten Teilnehmeradresse unterscheiden.
+- Die Buchungsübersicht zeigt Angemeldet, Genehmigt und Storniert als einzelne Statuskacheln. Sie weist auf fehlende Buchungsdaten hin.
+- Fahrgemeinschaftsvorschläge berücksichtigen vollständige bestätigte Präsenzbuchungen mit persönlicher E-Mail-Adresse. Offene Klärungsfälle und mögliche Doppelbuchungen sperren die betroffenen Plätze.
+
 ## 0.11.0
 
 - BMS schützt den Arbeitsbereich mit persönlichen Benutzerkonten. Administratoren können Konten anlegen, deaktivieren und für jeden Reiter die Rechte Ansehen oder Bearbeiten vergeben.

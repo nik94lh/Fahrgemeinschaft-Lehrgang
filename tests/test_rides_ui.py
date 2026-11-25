@@ -36,7 +36,7 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
         )
         CourseSeat.objects.create(
             session=later_session,
-            participant=Participant.objects.create(name="Zweite Testperson"),
+            participant=Participant.objects.create(name="Zweite Testperson", email="zweite.testperson@example.invalid"),
             status=BookingStatus.CONFIRMED,
         )
 
