@@ -82,7 +82,20 @@ class AccessDisplayTests(TestCase):
         response = self.client.get(reverse("mail_receipt", args=[self.receipt.pk]), secure=True)
 
         self.assertContains(response, "Adressvorschlag aus dem ursprünglichen An-Feld")
-        self.assertNotContains(response, "Diese Mail enthält einen Adressvorschlag für die Buchung.")
+        self.assertNotContains(response, "Adressvorschlag bei der Buchung prüfen")
+
+    @override_settings(HTTPS=True)
+    def test_receipt_reader_cannot_see_the_current_profile_address(self):
+        current = "geprueft@example.invalid"
+        self.person.email = current
+        self.person.save(update_fields=["email"])
+        self.login_with("view_mail_receipts")
+
+        response = self.client.get(reverse("mail_receipt", args=[self.receipt.pk]), secure=True)
+
+        self.assertContains(response, "vorschlag@example.invalid")
+        self.assertNotContains(response, current)
+        self.assertNotContains(response, "Adresse an der Buchung aktuell")
 
     def test_preview_stays_usable_for_readers_and_hides_the_import_action(self):
         self.login_with("view_preview")

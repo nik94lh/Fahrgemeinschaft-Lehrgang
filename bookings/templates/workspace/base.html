@@ -9,6 +9,7 @@
     <style>
         {% include "mailimport/preview.css" %}
         {% include "workspace/workspace.css" %}
+        {% include "workspace/workspace_chrome.css" %}
         {% block page_styles %}{% endblock %}
     </style>
     {% if request.method == "GET" and request.user.is_authenticated and request.resolver_match.url_name != "preview" and section != "account" and section != "accounts" %}
@@ -17,21 +18,34 @@
 </head>
 <body>
     <a class="skip-link" href="#main-content">Zum Inhalt</a>
-    <header class="app-header">
-        <div class="header-inner">
-            <a class="brand" href="{{ workspace_home }}"><strong>BMS</strong><span>Lehrgangsverwaltung</span></a>
-            <div class="header-status">
-                <span class="mode">Testbetrieb</span>
-                <span class="version">Version {{ bms_version }}</span>
-                <span id="live-update-status" role="status" hidden></span>
+    <header class="app-header workspace-chrome{% if not request.user.is_authenticated %} workspace-chrome-public{% endif %}">
+        <div class="workspace-chrome-inner">
+            <a class="workspace-chrome-brand" href="{{ workspace_home }}"><strong>BMS</strong><span>Lehrgangsverwaltung</span></a>
+            <div class="workspace-chrome-actions">
+                <div class="workspace-chrome-environment">
+                    <span>Testbetrieb</span>
+                    <span class="version">Version {{ bms_version }}</span>
+                </div>
                 {% if request.user.is_authenticated %}
-                    <form class="workspace-logout" method="post" action="{% url 'logout' %}">
-                        {% csrf_token %}
-                        <button class="secondary-button" type="submit">Abmelden</button>
-                    </form>
+                    <details class="workspace-account-menu" name="workspace-menu">
+                        <summary class="workspace-menu-trigger">Mein Konto</summary>
+                        <div class="workspace-menu-panel workspace-account-panel">
+                            <a href="{% url 'account' %}"{% if request.resolver_match.url_name == 'account' %} aria-current="page"{% endif %}>Mein Konto</a>
+                            <a href="{% url 'account_password_change' %}"{% if request.resolver_match.url_name == 'account_password_change' %} aria-current="page"{% endif %}>Passwort ändern</a>
+                            <form class="workspace-menu-logout" method="post" action="{% url 'logout' %}">
+                                {% csrf_token %}
+                                <button type="submit">Abmelden</button>
+                            </form>
+                            <div class="workspace-account-environment">
+                                <span>Testbetrieb</span>
+                                <span class="version">Version {{ bms_version }}</span>
+                            </div>
+                        </div>
+                    </details>
                 {% endif %}
             </div>
         </div>
+        <p id="live-update-status" class="workspace-live-status" role="status" hidden></p>
     </header>
     {% include "workspace/navigation.html" %}
 {% endif %}

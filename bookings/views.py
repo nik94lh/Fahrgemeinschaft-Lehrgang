@@ -1,9 +1,10 @@
 """Server-rendered views for the BMS operations workspace."""
-from datetime import timedelta
+from urllib.parse import urlencode
 
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.shortcuts import render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_safe
@@ -14,8 +15,12 @@ from mailimport.participant_settings import get_functional_addresses
 from .booking_state import booking_missing_fields
 from .booking_status import booking_status_cards, booking_status_prefetches
 from .models import BookingStatus, CourseSeat, CourseSession, EmailEvent, RideCase, School
+from .review_actions import _recognized
+from .rides import ride_phase_filters
 from .ride_settings import get_ride_lead_days
-from .rides_matching import BERLIN
+
+
+PENDING_BOOKING_STATUSES = (BookingStatus.APPROVED, BookingStatus.AWAITING_CONFIRMATION)
 
 
 def _seats():
@@ -31,28 +36,38 @@ def overview(request):
     seats = CourseSeat.objects.aggregate(
         total=Count("pk"),
         confirmed=Count("pk", filter=Q(status=BookingStatus.CONFIRMED)),
-        pending=Count("pk", filter=Q(status__in=[
-            BookingStatus.APPROVED, BookingStatus.AWAITING_CONFIRMATION,
-        ])),
+        pending=Count("pk", filter=Q(status__in=PENDING_BOOKING_STATUSES)),
     )
     upcoming_sessions = CourseSession.objects.filter(starts_at__gte=now).select_related(
         "course",
     ).order_by("starts_at", "pk")[:6]
     ride_overview = None
     if can_view(request.user, "rides"):
-        window_end = timezone.localdate(now, timezone=BERLIN) + timedelta(days=get_ride_lead_days())
-        ride_overview = RideCase.objects.filter(
-            direction=RideCase.ROUND_TRIP,
-            currently_matches=True,
-            earliest__gt=now,
-        ).exclude(status=RideCase.Status.CLOSED).aggregate(
-            ready=Count("pk", filter=Q(travel_date__lte=window_end)),
-            standby=Count("pk", filter=Q(travel_date__gt=window_end)),
+        eligible, phases = ride_phase_filters(now=now, lead_days=get_ride_lead_days())
+        ride_overview = RideCase.objects.filter(eligible).aggregate(
+            ready=Count("pk", filter=phases["ready"]),
+            standby=Count("pk", filter=phases["standby"]),
         )
+    review_count = EmailEvent.objects.filter(state=EmailEvent.State.NEEDS_REVIEW).count()
+    booking_url = reverse("bookings") if can_view(request.user, "bookings") else ""
+    review_url = reverse("review") if can_view(request.user, "review") else ""
+    dashboard_metrics = (
+        {"label": "Buchungen", "value": seats["total"], "url": booking_url},
+        {
+            "label": "Bestätigt", "value": seats["confirmed"],
+            "url": f"{booking_url}?status=confirmed" if booking_url else "",
+        },
+        {
+            "label": "Bestätigung offen", "value": seats["pending"],
+            "url": f"{booking_url}?status=pending" if booking_url else "",
+        },
+        {"label": "Klärungsbedarf", "value": review_count, "url": review_url},
+    )
     return render(request, "workspace/overview.html", {
         "section": "overview",
         "seats": seats,
-        "review_count": EmailEvent.objects.filter(state=EmailEvent.State.NEEDS_REVIEW).count(),
+        "review_count": review_count,
+        "dashboard_metrics": dashboard_metrics,
         "ride_overview": ride_overview,
         "upcoming_sessions": upcoming_sessions,
         "recent_events": EmailEvent.objects.select_related("seat__session__course", "seat__participant").order_by("-imported_at", "-pk")[:8],
@@ -66,7 +81,9 @@ def bookings(request):
     selected_school = request.GET.get("school", "")
     query = request.GET.get("q", "").strip()[:100]
     seats = _seats()
-    if selected_status in BookingStatus.values:
+    if selected_status == "pending":
+        seats = seats.filter(status__in=PENDING_BOOKING_STATUSES)
+    elif selected_status in BookingStatus.values:
         seats = seats.filter(status=selected_status)
     if selected_school == School.ONLINE:
         seats = seats.filter(Q(session__school=School.ONLINE) | Q(session__is_online=True))
@@ -96,7 +113,7 @@ def bookings(request):
         "imported": request.GET.get("importiert") == "1",
         "page_obj": page_obj,
         "booking_rows": booking_rows,
-        "status_choices": BookingStatus.choices,
+        "status_choices": [("pending", "Bestätigung offen"), *BookingStatus.choices],
         "school_choices": School.choices,
         "selected_status": selected_status,
         "selected_school": selected_school,
@@ -108,10 +125,33 @@ def bookings(request):
 @never_cache
 @require_safe
 def review(request):
-    events = EmailEvent.objects.filter(state=EmailEvent.State.NEEDS_REVIEW).select_related(
-        "seat__session__course", "seat__participant",
-    ).order_by("-imported_at", "-pk")
+    events = EmailEvent.objects.filter(state=EmailEvent.State.NEEDS_REVIEW).order_by("-imported_at", "-pk")
+    reason = request.GET.get("grund", "")
+    if reason not in EmailEvent.ReviewReason.values:
+        reason = ""
+    if reason:
+        events = events.filter(review_reason=reason)
+    page_obj = Paginator(events, 25).get_page(request.GET.get("page"))
+    queue_params = {"grund": reason} if reason else {}
+    detail_params = dict(queue_params)
+    if page_obj.number > 1:
+        detail_params["page"] = page_obj.number
+    cases = []
+    for event in page_obj:
+        recognized = _recognized(event)
+        school = recognized.get("school")
+        cases.append({
+            "event": event,
+            "participant": recognized.get("participant_name"),
+            "course": recognized.get("course_name"),
+            "school": School(school).label if school else "",
+        })
     return render(request, "workspace/review.html", {
         "section": "review",
-        "page_obj": Paginator(events, 25).get_page(request.GET.get("page")),
+        "page_obj": page_obj,
+        "cases": cases,
+        "reason": reason,
+        "reason_choices": [(key, label) for key, label in EmailEvent.ReviewReason.choices if key],
+        "querystring": urlencode(queue_params),
+        "detail_querystring": urlencode(detail_params),
     })

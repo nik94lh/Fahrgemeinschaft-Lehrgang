@@ -1,5 +1,13 @@
 # Änderungen
 
+## 0.15.0
+
+- Bei unterstützten persönlichen Genehmigungen und Teilnahmebestätigungen kann BMS eine einzelne Originaladresse ohne Namensbestandteile übernehmen. Die Anrede muss eindeutig zur teilnehmenden Person passen.
+- Die Klärung zeigt offene Fälle als Kacheln mit Grund, erkannten Buchungsangaben und direktem Zugang zur Prüfung. Fälle lassen sich nach Grund filtern.
+- Bei einem Adresskonflikt zeigt die Klärung die vorhandenen und erkannten Adressangaben entsprechend den Zugriffsrechten. Bei eindeutiger Buchungszuordnung lässt sich die gespeicherte Adresse ausdrücklich beibehalten und der Fall damit abschließen.
+- Das Dashboard führt von den Kennzahlen direkt zu den passenden gefilterten Listen. Navigation, Buchungen, Personen und Mail-Eingang sind auf kleinen Bildschirmen kompakter. Beim Wechsel in Details bleiben Auswahl und Filter erhalten.
+- Die Live-Aktualisierung läuft nach einer zurückgenommenen Formulareingabe wieder weiter. Auswertungen unterscheiden weiterhin Vorschläge, Klärungsfälle und Simulationsergebnisse.
+
 ## 0.14.1
 
 - Der Monatskalender verbindet das vollständige Wochenraster mit beschrifteten Schulblöcken und farbigen Balken für Lehrgänge. Mehrtägige Termine bleiben innerhalb einer Woche zusammenhängend. Pfeile markieren Fortsetzungen über Wochen- oder Monatsgrenzen.

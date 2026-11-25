@@ -6,7 +6,7 @@
     const controlSelector = "input:not([type=hidden]), select, textarea, [contenteditable]";
     const interval = 15_000;
     const status = document.getElementById("live-update-status");
-    const dirtyControls = new WeakSet();
+    const originalControlValues = new WeakMap();
     let timer;
     let activeRequest;
     let suspended = false;
@@ -23,12 +23,19 @@
         }
     }
 
-    function markDirty(event) {
-        if (event.target instanceof Element) {
-            const control = event.target.closest(controlSelector);
-            if (control) {
-                dirtyControls.add(control);
-            }
+    function controlValue(control) {
+        if (control instanceof HTMLSelectElement) {
+            return Array.from(control.selectedOptions, (option) => option.index).join(",");
+        }
+        if (control instanceof HTMLInputElement && (control.type === "checkbox" || control.type === "radio")) {
+            return control.checked;
+        }
+        return control.value ?? control.innerHTML;
+    }
+
+    function rememberControls(region) {
+        for (const control of region.querySelectorAll(controlSelector)) {
+            originalControlValues.set(control, controlValue(control));
         }
     }
 
@@ -44,8 +51,9 @@
                 }
             }
         }
-        return Array.from(region.querySelectorAll(controlSelector)).some(
-            (control) => dirtyControls.has(control) || (control.type === "file" && control.files?.length),
+        return Array.from(region.querySelectorAll(controlSelector)).some((control) =>
+            controlValue(control) !== originalControlValues.get(control) || control.validity?.badInput
+            || (control.type === "file" && control.files?.length),
         );
     }
 
@@ -76,6 +84,7 @@
         const state = preservedState(current);
         const {scrollLeft, scrollTop} = current;
         current.replaceChildren(...incoming.childNodes);
+        rememberControls(current);
         for (const element of current.querySelectorAll(stateSelector)) {
             const saved = state.get(element.id);
             if (saved) {
@@ -190,18 +199,6 @@
         }
     }
 
-    document.addEventListener("input", markDirty);
-    document.addEventListener("change", markDirty);
-    document.addEventListener("reset", (event) => {
-        const form = event.target;
-        queueMicrotask(() => {
-            if (!event.defaultPrevented && form instanceof HTMLFormElement) {
-                for (const control of form.elements) {
-                    dirtyControls.delete(control);
-                }
-            }
-        });
-    });
     document.addEventListener("submit", (event) => {
         suspended = true;
         cancel();
@@ -236,5 +233,6 @@
         });
     }
 
+    rememberControls(document);
     schedule();
 })();

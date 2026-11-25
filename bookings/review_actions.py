@@ -1,16 +1,23 @@
 """Explicit, local operator decisions for a mail import review."""
 
+from urllib.parse import urlencode
+
 from django import forms
 from django.conf import settings
 from django.db import transaction
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.utils import timezone
+from django.utils.crypto import constant_time_compare, salted_hmac
 from django.utils.dateparse import parse_datetime
 from django.utils.formats import date_format
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
+
+from accounts.access import can_edit, can_view
+from mailimport.email_address import normalize_contact_email
 
 from .models import BookingHistory, BookingStatus, CourseSeat, EmailEvent, ImportLock, Participant, School
 from .services import _normalized_name
@@ -19,6 +26,10 @@ from .services import _normalized_name
 RESULT_LIMIT = 20
 SEAT_ACTIONS = ("link", "reassign")
 ACTIONS = {
+    "keep_address": (
+        "Gespeicherte Adresse behalten",
+        "Ordnet die Nachricht der Buchung zu und verwendet weiter die gespeicherte E-Mail-Adresse.",
+    ),
     "link": (
         "E-Mail zuordnen",
         "Verknüpft die Nachricht mit einer Lehrgangsbuchung und schließt den Fall. Die Aktion ändert ausschließlich den Klärungsfall.",
@@ -50,7 +61,9 @@ REASON_GUIDANCE = {
     EmailEvent.ReviewReason.NO_MATCHING_BOOKING: "Suche die Buchung nach Referenz, Person oder Lehrgang.",
     EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR: "Vergleiche das Datum und den gemeldeten Status mit den bisherigen Buchungsänderungen.",
     EmailEvent.ReviewReason.PROTECTED_STATUS: "Vergleiche den in der Nachricht gemeldeten Status mit dem aktuellen Buchungsstatus.",
-    EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT: "Vergleiche Name und Teilnehmeradresse in der Originalnachricht mit der Buchung.",
+    EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT: (
+        "Vergleiche die E-Mail-Adresse aus der Nachricht mit dem Teilnehmerprofil und prüfe, zu welcher Buchung die Nachricht gehört."
+    ),
     EmailEvent.ReviewReason.PARTICIPANT_IDENTITY_UNCLEAR: "Prüfe anhand der Originalnachricht, zu welcher Person die Buchung gehört.",
 }
 
@@ -71,6 +84,7 @@ class ParticipantChoiceField(forms.ModelChoiceField):
 
 
 class ReviewForm(forms.Form):
+    KEEP_ADDRESS = "keep_address"
     LINK = "link"
     REASSIGN = "reassign"
     DISMISS = "dismiss"
@@ -96,11 +110,12 @@ class ReviewForm(forms.Form):
         choices=[("", "Bitte auswählen"), *((reason.value, reason.label) for reason in DISMISS_REASONS)],
         required=False,
     )
+    address_snapshot = forms.CharField(max_length=64, required=False, widget=forms.HiddenInput)
     confirm = forms.BooleanField(label="Ich habe die Angaben geprüft und bestätige die Entscheidung.")
 
-    def __init__(self, *args, event, seat_ids, **kwargs):
+    def __init__(self, *args, event, seat_ids, actions, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["action"].choices = [(key, details[0]) for key, details in _actions(event).items()]
+        self.fields["action"].choices = [(key, details[0]) for key, details in actions.items()]
         self.fields["seat"].queryset = _seats().filter(pk__in=seat_ids)
         if event.kind == EmailEvent.Kind.REASSIGNMENT:
             participants = Participant.objects.order_by("name", "pk")
@@ -125,18 +140,20 @@ class ReviewForm(forms.Form):
         return fields
 
 
-def _actions(event):
-    return {
-        key: details for key, details in ACTIONS.items()
-        if key != ReviewForm.REASSIGN or event.kind == EmailEvent.Kind.REASSIGNMENT
-    }
+def _actions(event, can_keep_address):
+    available = {ReviewForm.LINK, ReviewForm.DISMISS}
+    if can_keep_address:
+        available.add(ReviewForm.KEEP_ADDRESS)
+    if event.kind == EmailEvent.Kind.REASSIGNMENT:
+        available.add(ReviewForm.REASSIGN)
+    return {key: details for key, details in ACTIONS.items() if key in available}
 
 
 def _seats():
     return CourseSeat.objects.select_related("participant", "session__course").order_by("-session__starts_at", "pk")
 
 
-def _positive_pk(value):
+def _positive_integer(value):
     if value and value.isascii() and value.isdecimal() and len(value) <= 19:
         number = int(value)
         if 0 < number <= (1 << 63) - 1:
@@ -176,7 +193,7 @@ def _candidate_seats(event, recognized, action, search):
     if action == ReviewForm.REASSIGN and event.seat_id:
         return seats.filter(pk=event.seat_id)
     if search:
-        if pk := _positive_pk(search):
+        if pk := _positive_integer(search):
             return seats.filter(Q(pk=pk) | Q(external_reference__iexact=search))
         if len(search) < 2:
             return seats.filter(external_reference__iexact=search)
@@ -203,27 +220,51 @@ def _candidate_seats(event, recognized, action, search):
     return seats.filter(criteria)
 
 
+def _queue_params(request):
+    reason = request.POST.get("grund", request.GET.get("grund", ""))
+    page = _positive_integer(request.POST.get("page", request.GET.get("page")))
+    params = {}
+    if reason and reason in EmailEvent.ReviewReason.values:
+        params["grund"] = reason
+    if page is not None:
+        params["page"] = page
+    return params
+
+
 def _context(request, event):
     recognized = _recognized(event)
     comparison_seat = _comparison_seat(event)
+    address_conflict = event.review_reason == EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT
+    queue_params = _queue_params(request)
     context = {
         "section": "review",
         "event": event,
+        "queue_params": queue_params,
+        "queue_query": urlencode(queue_params),
         "recognized": recognized,
         "has_recognized_data": any(recognized.values()),
         "school_name": dict(School.choices).get(recognized.get("school")),
         "comparison_seat": comparison_seat,
         "differences": _current_booking_differences(event, recognized, comparison_seat),
+        "address_conflict": address_conflict,
         "guidance": REASON_GUIDANCE.get(
             event.review_reason, "Vergleiche die erkannten Angaben mit der Originalnachricht und der Lehrgangsbuchung.",
         ),
     }
-    if settings.HTTPS and request.is_secure():
-        context["receipt_id"] = event.mail_receipts.order_by("-observed_at", "-pk").values_list("pk", flat=True).first()
+    if settings.HTTPS and request.is_secure() and can_view(request.user, "mail_receipts"):
+        _receipt_context(request, event, context)
+        if context.get("incoming_address") and comparison_seat and comparison_seat.participant_id:
+            current_address = normalize_contact_email(comparison_seat.participant.email)
+            if current_address and current_address != context["incoming_address"]:
+                context["differences"].append("E-Mail-Adresse weicht ab")
     if event.state != EmailEvent.State.NEEDS_REVIEW:
         return context
 
-    actions = _actions(event)
+    can_keep_address = (
+        can_edit(request.user, "review") and can_edit(request.user, "bookings")
+        and _can_keep_address(event, recognized, comparison_seat)
+    )
+    actions = _actions(event, can_keep_address)
     data = request.POST if request.method == "POST" else None
     requested = data.get("action") if data is not None else request.GET.get("aktion")
     action = requested if requested in actions else None
@@ -241,11 +282,13 @@ def _context(request, event):
             _candidate_seats(event, recognized, action, search).values_list("pk", flat=True)[:RESULT_LIMIT + 1],
         )
     seat_ids = set(candidate_ids[:RESULT_LIMIT])
-    if data is not None and (submitted := _positive_pk(data.get("seat"))):
+    if data is not None and (submitted := _positive_integer(data.get("seat"))):
         # An intentional selection remains valid even when the operator changes the search.
         seat_ids.add(submitted)
 
     initial = {"action": action}
+    if action == ReviewForm.KEEP_ADDRESS:
+        initial["address_snapshot"] = _address_snapshot(event, comparison_seat)
     if event.seat_id in seat_ids and not search:
         initial["seat"] = event.seat_id
     context.update(
@@ -253,7 +296,7 @@ def _context(request, event):
         results_capped=len(candidate_ids) > RESULT_LIMIT,
         has_candidate_seats=bool(candidate_ids),
         seat_search_available=seat_search_available,
-        form=ReviewForm(data, event=event, seat_ids=seat_ids, initial=initial),
+        form=ReviewForm(data, event=event, seat_ids=seat_ids, actions=actions, initial=initial),
     )
     return context
 
@@ -266,6 +309,17 @@ def _comparison_seat(event):
         if isinstance(candidate_id, int):
             return _seats().filter(pk=candidate_id).first()
     return None
+
+
+def _receipt_context(request, event, context):
+    receipts = event.mail_receipts.order_by("-observed_at", "-pk")
+    if context["address_conflict"] and can_view(request.user, "bookings"):
+        receipt = receipts.filter(fields__has_key="participant_email").first()
+        address = receipt.fields.get("participant_email") if receipt and isinstance(receipt.fields, dict) else None
+        if isinstance(address, str) and (normalized := normalize_contact_email(address)):
+            context.update(receipt_id=receipt.pk, incoming_address=normalized)
+            return
+    context["receipt_id"] = receipts.values_list("pk", flat=True).first()
 
 
 def _current_booking_differences(event, recognized, seat):
@@ -285,6 +339,24 @@ def _current_booking_differences(event, recognized, seat):
     return [f"{label} weicht ab" for label, incoming, current in comparisons if incoming and incoming != current]
 
 
+def _can_keep_address(event, recognized, seat):
+    return bool(
+        event.review_reason == EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT
+        and seat and event.seat_id == seat.pk and seat.participant_id
+        and normalize_contact_email(seat.participant.email)
+        and _normalized_name(recognized.get("participant_name", ""))
+        and not _current_booking_differences(event, recognized, seat)
+    )
+
+
+def _address_snapshot(event, seat):
+    return salted_hmac(
+        "bookings.review.keep_address",
+        f"{event.pk}:{seat.pk}:{seat.participant_id}:{seat.participant.email}",
+        algorithm="sha256",
+    ).hexdigest()
+
+
 @never_cache
 @require_http_methods(["GET", "HEAD", "POST"])
 @csrf_protect
@@ -301,7 +373,7 @@ def review_detail(request, event_id):
                 return render(request, "workspace/review_detail.html", context, status=409)
             form = context["form"]
             if form.is_valid() and _apply_decision(form, event):
-                return redirect("review")
+                return redirect(reverse("review", query=context["queue_params"]))
     else:
         event = get_object_or_404(cases.select_related("seat__participant", "seat__session__course"), pk=event_id)
         context = _context(request, event)
@@ -315,12 +387,25 @@ def _apply_decision(form, event):
         event.state = EmailEvent.State.DISMISSED
         event.review_resolution = data["reason"]
     else:
-        seat = CourseSeat.objects.select_for_update().filter(pk=data["seat"].pk).first()
+        seat_id = event.seat_id if action == ReviewForm.KEEP_ADDRESS else data["seat"].pk
+        seat = CourseSeat.objects.select_for_update().filter(pk=seat_id).first()
         if seat is None:
-            form.add_error("seat", "Der Lehrgangsplatz ist nicht mehr vorhanden.")
+            field = None if action == ReviewForm.KEEP_ADDRESS else "seat"
+            form.add_error(field, "Der Lehrgangsplatz ist nicht mehr vorhanden.")
             return False
         event.review_resolution = EmailEvent.ReviewResolution.LINKED
-        if action == ReviewForm.REASSIGN:
+        if action == ReviewForm.KEEP_ADDRESS:
+            participant = Participant.objects.select_for_update().filter(pk=seat.participant_id).first()
+            if participant:
+                seat.participant = participant
+            if (
+                not _can_keep_address(event, _recognized(event), seat)
+                or not constant_time_compare(data["address_snapshot"], _address_snapshot(event, seat))
+            ):
+                form.add_error(None, "Teilnehmer oder Adresse haben sich geändert. Öffne den Klärungsfall erneut.")
+                return False
+            event.review_resolution = EmailEvent.ReviewResolution.ADDRESS_KEPT
+        elif action == ReviewForm.REASSIGN:
             if not _reassign(form, event, seat):
                 return False
             event.review_resolution = EmailEvent.ReviewResolution.REASSIGNED

@@ -1,40 +1,37 @@
 {% extends "workspace/base.html" %}
-{% block page_styles %}
-    .dashboard-rides { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
-    .dashboard-subhead { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .75rem; margin-block-end: .75rem; }
-    .dashboard-subhead h2 { margin: 0; }
-    .dashboard-rides div { background: #eef3fa; box-shadow: none; }
-{% endblock %}
+{% block page_styles %}{% include "workspace/overview.css" %}{% endblock %}
 {% block content %}
     <div class="page-heading">
-        <div>
-            <h1>Übersicht</h1>
-        </div>
+        <h1>Übersicht</h1>
         {% if request.is_secure and workspace_view.mail_receipts %}<a class="button-link" href="{% url 'mail_receipts' %}">Mail-Eingang ansehen</a>{% endif %}
     </div>
-    <dl class="stats">
-        <div><dt>Buchungen</dt><dd>{{ seats.total }}</dd></div>
-        <div><dt>Bestätigt</dt><dd>{{ seats.confirmed }}</dd></div>
-        <div><dt>Bestätigung offen</dt><dd>{{ seats.pending }}</dd></div>
-        <div><dt>Klärungsbedarf</dt><dd>{{ review_count }}</dd></div>
+    <dl class="stats dashboard-stats">
+        {% for metric in dashboard_metrics %}
+            {% include "workspace/dashboard_metric.html" with metric=metric only %}
+        {% endfor %}
     </dl>
     {% if ride_overview %}
-        <section class="panel overview-courses" aria-labelledby="dashboard-rides-title">
-            <div class="dashboard-subhead">
-                <h2 id="dashboard-rides-title">Fahrgemeinschaftsvorschläge</h2>
-                <a class="button-link" href="{% url 'rides' %}">Vorschläge ansehen</a>
-            </div>
-            <dl class="stats dashboard-rides">
-                <div><dt>Bereit zur Vermittlung</dt><dd>{{ ride_overview.ready }}</dd></div>
-                <div><dt>Standby</dt><dd>{{ ride_overview.standby }}</dd></div>
+        {% url 'rides' as rides_url %}
+        <section class="panel overview-courses dashboard-rides-panel" aria-labelledby="dashboard-rides-title">
+            <h2 id="dashboard-rides-title">Fahrgemeinschaftsvorschläge</h2>
+            <dl class="stats dashboard-ride-stats">
+                <div class="dashboard-metric dashboard-ready">
+                    <dt><a class="dashboard-metric-link" href="{{ rides_url }}?phase=ready" aria-label="Bereit zur Vermittlung">Bereit<span class="dashboard-ready-suffix"> zur Vermittlung</span></a></dt>
+                    <dd>{{ ride_overview.ready }}</dd>
+                </div>
+                <div class="dashboard-metric dashboard-standby">
+                    <dt><a class="dashboard-metric-link" href="{{ rides_url }}?phase=standby">Standby</a></dt>
+                    <dd>{{ ride_overview.standby }}</dd>
+                </div>
             </dl>
+            <a class="button-link dashboard-ride-action" href="{{ rides_url }}">Vorschläge ansehen</a>
         </section>
     {% endif %}
     <section class="panel overview-courses" aria-labelledby="upcoming-title">
         <h2 id="upcoming-title">Anstehende Lehrgänge</h2>
         {% if upcoming_sessions %}
             <div class="table-scroll" tabindex="0" role="region" aria-labelledby="upcoming-title">
-                <table class="mobile-table">
+                <table class="mobile-table dashboard-course-table">
                     <thead><tr><th scope="col">Lehrgang</th><th scope="col">Schulungsort</th><th scope="col">Zeitraum</th></tr></thead>
                     <tbody>
                         {% for session in upcoming_sessions %}

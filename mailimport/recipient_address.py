@@ -17,6 +17,9 @@ FUNCTIONAL_MAILBOX_PARTS = frozenset({
     "contact", "info", "kontakt", "mail", "office", "personal", "post",
     "postfach", "sekretariat", "service", "shared", "support", "team", "verwaltung",
 })
+PERSONAL_FALLBACK_ROLE_PARTS = FUNCTIONAL_MAILBOX_PARTS | {
+    "ausbildungsbuero", "einsatzleitung", "lehrgangsstelle", "noreply", "stelle",
+}
 
 
 def header_addresses(values: list[str]) -> tuple[Address, ...]:
@@ -86,9 +89,14 @@ def _address_matches_name(email: str, name: str) -> bool:
     return local == "mail" and "." not in suffix and domain_name in ("".join(parts), "-".join(parts))
 
 
+def _common_role_address(email: str) -> bool:
+    local, _ = email.rsplit("@", 1)
+    return local == "no-reply" or any(part in PERSONAL_FALLBACK_ROLE_PARTS for part in re.split(r"[._+-]", local))
+
+
 def select_participant_address(
     recipients: tuple[Address, ...], participant_name: str, functional_addresses: Iterable[str],
-    *, allow_name_in_address: bool, allow_approval_fallback: bool,
+    *, allow_name_in_address: bool, allow_approval_fallback: bool, personally_addressed: bool,
 ) -> AddressSelection:
     excluded = {value for entry in functional_addresses if (value := normalize_contact_email(entry))}
     remaining = []
@@ -122,6 +130,8 @@ def select_participant_address(
                 allow_approval_fallback and not display and excluded_from_original
             ):
                 return AddressSelection(email=email)
+            if personally_addressed and len(recipients) == 1 and not _common_role_address(email):
+                return AddressSelection(email=email, note="Persönliche Anrede und ein einzelner Originalempfänger.")
             return AddressSelection(
                 note="Das Original nennt eine Adresse ohne eindeutigen Bezug zum vollständigen Teilnehmernamen.",
                 candidate=email,

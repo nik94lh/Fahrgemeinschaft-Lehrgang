@@ -64,12 +64,25 @@
                         {% endfor %}
                     </select>
                 </div>
+                {% if not archived %}
+                    <div>
+                        <label for="ride-phase-filter">Vermittlungsphase</label>
+                        <select name="phase" id="ride-phase-filter">
+                            <option value="">Alle</option>
+                            {% for value, label in phase_choices %}
+                                <option value="{{ value }}"{% if value == selected_phase %} selected{% endif %}>{{ label }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                {% endif %}
                 <button type="submit" class="secondary-button">Filtern</button>
             </form>
             {% if not archived and workspace_edit.rides %}
                 <form method="post" action="{% url 'rides_sync' %}">
                     {% csrf_token %}
                     {% if selected_status %}<input type="hidden" name="status" value="{{ selected_status }}">{% endif %}
+                    {% if selected_phase %}<input type="hidden" name="phase" value="{{ selected_phase }}">{% endif %}
+                    {% if page_obj.number > 1 %}<input type="hidden" name="page" value="{{ page_obj.number }}">{% endif %}
                     <button type="submit">Abgleich starten</button>
                 </form>
             {% endif %}
@@ -90,7 +103,7 @@
                     <tbody>
                         {% for item in page_obj %}
                             <tr>
-                                <td data-label="Einzelstrecke"><a href="{% url 'ride_detail' item.pk %}">Nr. {{ item.pk }} öffnen</a></td>
+                                <td data-label="Einzelstrecke"><a href="{% url 'ride_detail' item.pk %}{% if detail_query %}?{{ detail_query }}{% endif %}">Nr. {{ item.pk }} öffnen</a></td>
                                 <td data-label="Richtung">{{ item.get_direction_display }}</td>
                                 <td data-label="Datum und Uhrzeit">
                                     <span><time datetime="{{ item.travel_date|date:'Y-m-d' }}">{{ item.travel_date|date:"d.m.Y" }}</time>
@@ -110,12 +123,14 @@
         {% elif ride_cards %}
             <ul class="ride-grid" role="list">
                 {% for row in ride_cards %}
-                    <li>{% include "workspace/ride_card.html" with item=row.case mediation=row.mediation only %}</li>
+                    <li>{% include "workspace/ride_card.html" with item=row.case mediation=row.mediation detail_query=detail_query only %}</li>
                 {% endfor %}
             </ul>
             {% include "workspace/pagination.html" %}
         {% elif archived %}
             <p class="quiet">{% if selected_status %}Keine früheren Einzelstrecken mit diesem Bearbeitungsstand.{% else %}Keine früheren Einzelstrecken vorhanden.{% endif %}</p>
+        {% elif selected_phase %}
+            <p class="quiet">Keine Vorschläge passen zu den gewählten Filtern.</p>
         {% elif selected_status %}
             <p class="quiet">Keine Vorschläge mit diesem Bearbeitungsstand.</p>
         {% else %}

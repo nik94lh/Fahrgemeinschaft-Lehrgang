@@ -18,6 +18,51 @@ class ReviewActionTests(WorkspaceTestCase):
     def detail_url(self):
         return reverse("review_detail", kwargs={"event_id": self.reassignment.pk})
 
+    def test_filtered_queue_links_to_detail_with_the_current_page(self):
+        EmailEvent.objects.bulk_create([
+            EmailEvent(
+                sha256=f"{number:064x}", kind=EmailEvent.Kind.REASSIGNMENT,
+                state=EmailEvent.State.NEEDS_REVIEW, review_reason=EmailEvent.ReviewReason.REASSIGNMENT,
+            )
+            for number in range(1, 26)
+        ])
+
+        response = self.client.get(reverse("review"), {"grund": "reassignment", "page": "2"})
+
+        self.assertContains(response, f'href="{self.detail_url()}?grund=reassignment&amp;page=2"')
+
+    def test_detail_keeps_the_filtered_queue_context_through_action_and_search(self):
+        detail = self.client.get(self.detail_url(), {"grund": "reassignment", "page": "2"})
+        search = self.client.get(self.detail_url(), {
+            "grund": "reassignment", "page": "2", "aktion": "link", "platzsuche": "TEST-17",
+        })
+
+        for response in (detail, search):
+            self.assertContains(response, f'href="{reverse("review")}?grund=reassignment&amp;page=2"')
+        self.assertContains(detail, 'href="?aktion=link&amp;grund=reassignment&amp;page=2#entscheidung"')
+        self.assertContains(search, '<input type="hidden" name="grund" value="reassignment">', count=2)
+        self.assertContains(search, '<input type="hidden" name="page" value="2">', count=2)
+
+    def test_decision_preserves_queue_context_after_invalid_and_successful_submissions(self):
+        data = {"action": "link", "seat": self.booking.pk, "grund": "reassignment", "page": "2"}
+
+        invalid = self.client.post(self.detail_url(), data)
+        self.assertIn("confirm", invalid.context["form"].errors)
+        self.assertContains(invalid, f'href="{reverse("review")}?grund=reassignment&amp;page=2"')
+        self.assertContains(invalid, '<input type="hidden" name="page" value="2">', count=2)
+
+        response = self.client.post(self.detail_url(), {**data, "confirm": "on"})
+
+        self.assertRedirects(response, f'{reverse("review")}?grund=reassignment&page=2')
+
+    def test_decision_ignores_invalid_queue_context_and_external_return_url(self):
+        response = self.client.post(self.detail_url(), {
+            "action": "link", "seat": self.booking.pk, "confirm": "on",
+            "grund": "unknown", "page": "-1", "next": "https://example.invalid/",
+        })
+
+        self.assertRedirects(response, reverse("review"))
+
     def test_resolution_requires_post_csrf_and_explicit_confirmation(self):
         payload = {"action": "link", "seat": self.booking.pk, "confirm": "on"}
         client = self.authenticated_client(enforce_csrf_checks=True)

@@ -14,7 +14,7 @@ from mailimport.imap_sync import ImapConfig, sync_mailbox
 from mailimport.models import ContactReplayJob, MailReceipt, MailboxCursor
 from mailimport.parser import MAX_EML_BYTES, parse_eml
 from tests.test_imap_sync import body_result, mock_mailbox
-from tests.test_participant_email_parser import booking_message, nested_booking_forward
+from tests.test_participant_email_parser import APPROVAL, booking_message, nested_booking_forward
 from tests.test_participant_identity import PERSONAL, booking_mail
 from tests.test_reconciliation import JUNE, eml
 from tests.workspace_client import WorkspaceTestCase
@@ -71,6 +71,45 @@ class MailReceiptTests(WorkspaceTestCase):
         different_person = ingest(booking_mail(name="Jana Testperson", to=alias, period=JUNE))
         self.assertNotEqual(different_person.seat.participant_id, seat.participant_id)
         self.assertEqual(different_person.seat.participant.email, "")
+
+    def test_personal_confirmation_saves_single_original_alias_on_existing_booking(self):
+        original = ingest(booking_mail())
+        alias = "lernplatz97@example.invalid"
+        body = APPROVAL.replace(
+            "Ihre Teilnahme an folgendem Lehrgangstermin wurde genehmigt:",
+            "Sie sind für den folgenden Lehrgangstermin angemeldet:",
+        )
+        mail = booking_message(alias, subject="Ihr Lehrgangstermin wurde bestätigt", body=body)
+
+        self.sync({1: nested_booking_forward(mail).as_bytes()})
+
+        receipt = MailReceipt.objects.get()
+        self.assertEqual(receipt.outcome, MailReceipt.Outcome.ADDRESS_ADDED)
+        self.assertEqual(receipt.fields["participant_email"], alias)
+        self.assertEqual(receipt.event.seat_id, original.seat_id)
+        self.assertEqual(receipt.event.seat.status, BookingStatus.CONFIRMED)
+        self.assertEqual(receipt.event.seat.participant.email, alias)
+        self.assertEqual(CourseSeat.objects.count(), 1)
+
+    def test_personal_confirmation_with_different_single_alias_creates_an_address_conflict(self):
+        original = ingest(booking_mail(address=PERSONAL))
+        alias = "lernplatz97@example.invalid"
+        body = APPROVAL.replace(
+            "Ihre Teilnahme an folgendem Lehrgangstermin wurde genehmigt:",
+            "Sie haben Ihre Teilnahme an folgendem Lehrgangstermin bestätigt:",
+        )
+        mail = booking_message(alias, subject="Bestätigung Ihrer Lehrgangsanmeldung", body=body)
+
+        self.sync({1: mail.as_bytes()})
+
+        receipt = MailReceipt.objects.get()
+        self.assertEqual(receipt.outcome, MailReceipt.Outcome.REVIEW)
+        self.assertEqual(receipt.fields["participant_email"], alias)
+        self.assertEqual(receipt.event.review_reason, EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT)
+        self.assertEqual(receipt.event.seat_id, original.seat_id)
+        self.assertEqual(receipt.event.seat.status, BookingStatus.APPROVED)
+        self.assertEqual(receipt.event.seat.participant.email, PERSONAL)
+        self.assertEqual(CourseSeat.objects.count(), 1)
 
     def test_redelivery_records_address_backfill_even_when_status_is_unchanged(self):
         raw = booking_mail(address=PERSONAL)

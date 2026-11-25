@@ -1,3 +1,12 @@
-.people-search { grid-template-columns: minmax(0, 1fr) auto; max-inline-size: 44rem; }
-.people-search button { grid-column: auto; }
+.people-search { grid-template-columns: minmax(0, 1fr) auto; max-inline-size: 48rem; }
 .people-booking { display: grid; gap: .25rem; justify-items: start; }
+.people-booking small, .person-email { color: var(--muted); }
+
+@media (max-width: 700px) {
+    .people-search { grid-template-columns: minmax(0, 1fr); }
+    .people-directory tbody tr { grid-template-columns: minmax(0, 1fr) auto; }
+    .people-directory .person-name, .people-directory .person-course { grid-column: 1 / -1; }
+    .people-directory .person-name { font-size: 1.06rem; }
+    .people-directory .person-email, .people-directory [data-label="Buchungen"] { font-size: .88rem; }
+    .people-directory [data-label="Buchungen"]::before { content: attr(data-label) " "; }
+}

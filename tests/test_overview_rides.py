@@ -6,7 +6,7 @@ from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
-from bookings.models import RideCase, School
+from bookings.models import BookingStatus, Course, CourseSeat, CourseSession, RideCase, School
 from tests.workspace_client import WorkspaceTestCase
 
 
@@ -39,7 +39,30 @@ class DashboardTests(WorkspaceTestCase):
         self.assertContains(response, "Standby")
         self.assertContains(response, "Bereit zur Vermittlung")
         self.assertEqual(response.context["ride_overview"], {"ready": 1, "standby": 1})
+        for phase in ("ready", "standby"):
+            self.assertContains(response, f'href="{reverse("rides")}?phase={phase}"')
+            listing = self.client.get(reverse("rides"), {"phase": phase})
+            self.assertEqual(listing.context["page_obj"].paginator.count, 1)
         self.assertEqual(RideCase.objects.count(), 5)
+
+    def test_pending_dashboard_link_matches_both_pending_booking_statuses(self):
+        start = timezone.now() + timedelta(days=4)
+        session = CourseSession.objects.create(
+            course=Course.objects.create(name="Synthetischer Termin"), school=School.WUERZBURG,
+            starts_at=start, ends_at=start + timedelta(days=1),
+        )
+        for status in (BookingStatus.APPROVED, BookingStatus.AWAITING_CONFIRMATION, BookingStatus.CONFIRMED):
+            CourseSeat.objects.create(session=session, status=status)
+        target = f"{reverse('bookings')}?status=pending"
+
+        overview = self.client.get(reverse("overview"))
+        self.assertEqual(overview.context["seats"]["pending"], 2)
+        self.assertContains(overview, f'href="{target}"')
+        listing = self.client.get(target)
+        self.assertEqual(
+            {seat.status for seat in listing.context["page_obj"]},
+            {BookingStatus.APPROVED, BookingStatus.AWAITING_CONFIRMATION},
+        )
 
     def test_ride_metrics_respect_the_independent_view_grant(self):
         user = get_user_model().objects.create_user("dashboard-reader")
@@ -50,6 +73,8 @@ class DashboardTests(WorkspaceTestCase):
 
         self.assertIsNone(response.context["ride_overview"])
         self.assertNotContains(response, "Fahrgemeinschaftsvorschläge")
+        self.assertNotContains(response, f'href="{reverse("bookings")}?status=pending"')
+        self.assertNotContains(response, f'href="{reverse("review")}"')
 
     def test_favicon_is_available_on_the_public_login(self):
         client = Client()
