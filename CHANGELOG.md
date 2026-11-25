@@ -1,5 +1,9 @@
 # Änderungen
 
+## 0.14.1
+
+- Der Monatskalender verbindet das vollständige Wochenraster mit farbigen Balken für Lehrgänge. Mehrtägige Termine bleiben innerhalb einer Woche zusammenhängend. Pfeile markieren Fortsetzungen über Wochen- oder Monatsgrenzen.
+
 ## 0.14.0
 
 - Die Teilnehmerabfrage lässt sich mit drei fiktiven Personen, Einmallinks und einer Kachel für die Rückmeldungen im angemeldeten Bereich testen. Die Simulation versendet keine E-Mails.

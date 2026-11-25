@@ -31,7 +31,7 @@ class CalendarTests(WorkspaceTestCase):
 
     @staticmethod
     def add_session(name, school, start, end):
-        CourseSession.objects.create(
+        return CourseSession.objects.create(
             course=Course.objects.create(name=name), school=school, starts_at=start, ends_at=end,
         )
 
@@ -52,6 +52,7 @@ class CalendarTests(WorkspaceTestCase):
         self.assertNotContains(response, "Musterlehrgang Regensburg")
         self.assertContains(response, "?month=2031-04&amp;school=wuerzburg")
         self.assertContains(response, "?month=2031-06&amp;school=wuerzburg")
+        self.assertEqual(response.context["month_schools"], [School.WUERZBURG])
 
     def test_invalid_month_falls_back_to_the_current_month(self):
         default_response = self.client.get("/kalender/")
@@ -70,9 +71,11 @@ class CalendarTests(WorkspaceTestCase):
         for day in range(1, 32):
             self.assertContains(response, f'<time datetime="2031-05-{day:02d}"', count=1)
         weeks = response.context["month_weeks"]
-        self.assertEqual([len(week) for week in weeks], [7] * 5)
-        self.assertEqual(weeks[0][0]["date"], date(2031, 4, 28))
-        self.assertEqual(weeks[-1][-1]["date"], date(2031, 6, 1))
+        self.assertEqual([len(week["days"]) for week in weeks], [7] * 5)
+        self.assertEqual(weeks[0]["days"][0]["date"], date(2031, 4, 28))
+        self.assertEqual(weeks[-1]["days"][-1]["date"], date(2031, 6, 1))
+        self.assertTrue(all(week["bars"] == [] and week["lane_count"] == 1 for week in weeks))
+        self.assertEqual(response.context["month_schools"], [])
         self.assertContains(response, '?month=2031-06&amp;school=geretsried')
 
     def test_month_grid_uses_berlin_days_and_clips_overlapping_courses(self):
@@ -88,20 +91,71 @@ class CalendarTests(WorkspaceTestCase):
         response = self.client.get("/kalender/", {"month": "2031-05"})
 
         self.assertEqual(response.status_code, 200)
-        days_by_course = {}
-        for week in response.context["month_weeks"]:
-            for day in week:
-                for session in day["sessions"]:
-                    days_by_course.setdefault(session.course.name, []).append(day["date"])
-        self.assertEqual(days_by_course, {
-            "Übergreifender Musterlehrgang": [date(2031, 5, 1), date(2031, 5, 2)],
-            "Musterlehrgang Regensburg": [date(2031, 5, 12)],
-            "Abschluss um Mitternacht": [date(2031, 5, 13)],
-            "Monatswechsel am Ende": [date(2031, 5, 30), date(2031, 5, 31)],
+        bars = {
+            bar["session"].course.name: (
+                week["days"][bar["start_column"] - 1]["date"],
+                week["days"][bar["end_column"] - 2]["date"],
+                bar["starts_before"], bar["ends_after"],
+            )
+            for week in response.context["month_weeks"]
+            for bar in week["bars"]
+        }
+        self.assertEqual(bars, {
+            "Übergreifender Musterlehrgang": (date(2031, 5, 1), date(2031, 5, 2), True, False),
+            "Musterlehrgang Regensburg": (date(2031, 5, 12), date(2031, 5, 12), False, False),
+            "Abschluss um Mitternacht": (date(2031, 5, 13), date(2031, 5, 13), False, False),
+            "Monatswechsel am Ende": (date(2031, 5, 30), date(2031, 5, 31), False, True),
         })
         self.assertContains(response, "Terminliste mit Uhrzeiten")
         session = CourseSession.objects.get(course__name="Musterlehrgang Regensburg")
         self.assertContains(response, f'href="/kalender/{session.pk}/?month=2031-05"', count=2)
+
+    def test_month_renders_one_bar_link_per_week_and_keeps_school_in_detail_links(self):
+        session = self.add_session(
+            "Lehrgang über das Wochenende", School.WUERZBURG,
+            datetime(2031, 5, 9, 8, tzinfo=UTC), datetime(2031, 5, 14, 14, tzinfo=UTC),
+        )
+
+        response = self.client.get("/kalender/", {"month": "2031-05", "school": School.WUERZBURG})
+
+        self.assertContains(response, f'href="/kalender/{session.pk}/?month=2031-05&amp;school=wuerzburg"', count=3)
+        self.assertContains(response, 'school-wuerzburg continues-before"', count=2)
+        self.assertContains(response, 'school-wuerzburg continues-after"', count=1)
+
+    def test_month_splits_at_week_boundary_and_reuses_lanes_for_disjoint_bars(self):
+        over_weekend = self.add_session(
+            "Lehrgang über das Wochenende", School.WUERZBURG,
+            datetime(2031, 5, 9, 8, tzinfo=UTC), datetime(2031, 5, 14, 14, tzinfo=UTC),
+        )
+        tuesday = self.add_session(
+            "Kurs am Dienstag", School.WUERZBURG,
+            datetime(2031, 5, 13, 8, tzinfo=UTC), datetime(2031, 5, 13, 10, tzinfo=UTC),
+        )
+        ends_sunday = self.add_session(
+            "Ende um Mitternacht zum Wochenwechsel", School.WUERZBURG,
+            datetime(2031, 5, 24, 8, tzinfo=UTC), datetime(2031, 5, 25, 22, tzinfo=UTC),
+        )
+        regensburg = CourseSession.objects.get(course__name="Musterlehrgang Regensburg")
+
+        response = self.client.get("/kalender/", {"month": "2031-05"})
+
+        _, first, second, third, fourth = response.context["month_weeks"]
+        self.assertEqual([week["lane_count"] for week in (first, second, third, fourth)], [1, 2, 1, 1])
+        fields = ("session", "start_column", "end_column", "lane", "starts_before", "ends_after")
+        self.assertEqual(
+            [tuple(bar[field] for field in fields) for bar in first["bars"]],
+            [(over_weekend, 5, 8, 2, False, True)],
+        )
+        self.assertEqual(
+            [tuple(bar[field] for field in fields) for bar in second["bars"]],
+            [(over_weekend, 1, 4, 2, True, False), (regensburg, 1, 2, 3, False, False),
+             (tuesday, 2, 3, 3, False, False)],
+        )
+        self.assertEqual(
+            [tuple(bar[field] for field in fields) for bar in third["bars"]],
+            [(ends_sunday, 6, 8, 2, False, False)],
+        )
+        self.assertEqual(fourth["bars"], [])
 
     def test_week_shows_an_iso_week_and_retains_school_in_zoom_links(self):
         response = self.client.get("/kalender/", {
@@ -221,7 +275,7 @@ class CalendarTests(WorkspaceTestCase):
         self.assertContains(response, 'inputmode="numeric"')
         self.assertNotContains(response, 'type="month"')
         weekday = format_date(date(2031, 5, 1), "D")
-        self.assertContains(response, f'<abbr title="Donnerstag">{weekday}</abbr>')
+        self.assertContains(response, f'<span title="Donnerstag">{weekday}</span>')
         self.assertContains(response, "Musterlehrgang Regensburg")
         self.assertNotContains(response, "Übergreifender Musterlehrgang")
         self.assertEqual(response.context["current_query"], "month=2031-05&school=regensburg")
