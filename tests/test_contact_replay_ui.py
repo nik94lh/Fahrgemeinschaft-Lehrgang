@@ -1,13 +1,14 @@
 from unittest.mock import patch
 
-from django.test import Client, TestCase, override_settings
+from django.test import override_settings
 
 from mailimport.contact_replay import ContactReplayError
 from mailimport.models import ContactReplayJob
+from tests.workspace_client import WorkspaceTestCase
 
 
 @override_settings(HTTPS=True)
-class ContactReplayViewTests(TestCase):
+class ContactReplayViewTests(WorkspaceTestCase):
     def test_secure_mailbox_page_exposes_status_and_counts(self):
         ContactReplayJob.objects.create(
             status=ContactReplayJob.Status.RUNNING, source_id="1" * 64,
@@ -40,7 +41,7 @@ class ContactReplayViewTests(TestCase):
     def test_manual_request_is_protected_and_calls_the_queue_only(self):
         payload = {"action": "start-contact-replay"}
         with patch("mailimport.mailbox_views.queue_contact_replay") as queue:
-            denied = Client(enforce_csrf_checks=True).post("/postfach/", payload, secure=True)
+            denied = self.authenticated_client(enforce_csrf_checks=True).post("/postfach/", payload, secure=True)
             insecure = self.client.post("/postfach/", payload)
             response = self.client.post("/postfach/", payload, secure=True)
 

@@ -1,0 +1,38 @@
+{% extends "workspace/base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_styles %}{% include "accounts/styles.css" %}{% endblock %}
+{% block live_region %}{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'account_list' %}">‹ Zurück zur Benutzerverwaltung</a></p>
+    <div class="page-heading"><h1>{{ title }}</h1></div>
+    <form method="post">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        <div class="account-layout">
+            <section class="panel account-form-fields" aria-labelledby="account-details-title">
+                <h2 id="account-details-title">Konto</h2>
+                {% if creating %}
+                    <div class="account-field">{{ form.username.as_field_group }}</div>
+                    <div class="account-field">{{ form.password1.as_field_group }}</div>
+                    <div class="account-field">{{ form.password2.as_field_group }}</div>
+                {% else %}
+                    <dl class="details"><div><dt>Benutzername</dt><dd>{{ managed_user.get_username }}</dd></div></dl>
+                    <p>{{ form.is_active }} {{ form.is_active.label_tag }}</p>
+                    {{ form.is_active.errors }}
+                {% endif %}
+            </section>
+            <section class="panel" aria-labelledby="account-access-title">
+                <h2 id="account-access-title">Tab-Rechte</h2>
+                <div class="access-fields">
+                    {% for field in form.access_fields %}
+                        <div>
+                            <div class="access-field">{{ field.label_tag }}{{ field }}</div>
+                            {{ field.errors }}
+                        </div>
+                    {% endfor %}
+                </div>
+            </section>
+        </div>
+        <div class="account-controls"><button type="submit">Speichern</button></div>
+    </form>
+{% endblock %}

@@ -67,6 +67,7 @@ td { vertical-align: top; }
 
 .secondary-button { margin-block-start: -.45rem; background: white; color: var(--accent); border-color: var(--line); }
 .secondary-button:hover { background: #edf2ff; }
+.workspace-logout button { width: auto; margin: 0; padding: .35rem .65rem; }
 .notice { margin-block-end: 1rem; padding: .75rem 1rem; background: #e8f4ee; border: 1px solid #a7cbb6; border-radius: .5rem; }
 .notice a { color: var(--accent); }
 

@@ -1,10 +1,12 @@
 from pathlib import Path
 
+from django.contrib.auth.views import LogoutView
 from django.http import FileResponse, JsonResponse
 from django.urls import path
 from django.views.decorators.cache import cache_control
 from django.views.decorators.http import require_safe
 
+from accounts import views as account_views
 from bookings import views
 from bookings.brigades import brigade_edit, brigades
 from bookings.calendar import calendar, calendar_detail
@@ -16,6 +18,7 @@ from mailimport.receipt_views import mail_receipt, mail_receipt_recheck, mail_re
 from mailimport.views import manual_import, preview, sample_eml
 
 
+@require_safe
 def health(request):
     return JsonResponse({"status": "ok"})
 
@@ -28,6 +31,14 @@ def live_script(request):
 
 urlpatterns = [
     path("assets/live.js", live_script, name="live_script"),
+    path("anmelden/", account_views.WorkspaceLoginView.as_view(), name="login"),
+    path("abmelden/", LogoutView.as_view(), name="logout"),
+    path("konto/", account_views.account_home, name="account"),
+    path("konto/passwort/", account_views.AccountPasswordChangeView.as_view(), name="account_password_change"),
+    path("benutzer/", account_views.account_list, name="account_list"),
+    path("benutzer/neu/", account_views.account_create, name="account_create"),
+    path("benutzer/<int:user_id>/", account_views.account_edit, name="account_edit"),
+    path("benutzer/<int:user_id>/passwort/", account_views.account_password_reset, name="account_password_reset"),
     path("", views.overview, name="overview"),
     path("buchungen/", views.bookings, name="bookings"),
     path("buchungen/<int:seat_id>/teilnehmer/", booking_participant, name="booking_participant"),

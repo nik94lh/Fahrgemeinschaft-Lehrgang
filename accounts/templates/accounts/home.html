@@ -1,0 +1,15 @@
+{% extends "workspace/base.html" %}
+{% block title %}Mein Konto{% endblock %}
+{% block page_styles %}{% include "accounts/styles.css" %}{% endblock %}
+{% block content %}
+    <div class="page-heading"><h1>Mein Konto</h1></div>
+    {% if password_changed %}<p class="notice" role="status">Dein Passwort wurde geändert.</p>{% endif %}
+    <section class="panel account-narrow" aria-label="Kontodaten">
+        <dl class="details">
+            <div><dt>Benutzername</dt><dd>{{ request.user.get_username }}</dd></div>
+        </dl>
+        <div class="account-controls">
+            <a class="button-link" href="{% url 'account_password_change' %}">Passwort ändern</a>
+        </div>
+    </section>
+{% endblock %}

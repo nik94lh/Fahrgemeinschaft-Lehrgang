@@ -37,7 +37,7 @@
                 </div>
                 <button type="submit" class="secondary-button">Filtern</button>
             </form>
-            {% if not archived %}
+            {% if not archived and workspace_edit.rides %}
                 <form method="post" action="{% url 'rides_sync' %}">
                     {% csrf_token %}
                     {% if selected_status %}<input type="hidden" name="status" value="{{ selected_status }}">{% endif %}

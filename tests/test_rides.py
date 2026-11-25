@@ -1,6 +1,5 @@
 from datetime import timedelta
 
-from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -15,9 +14,10 @@ from bookings.models import (
     Participant,
     School,
 )
+from tests.workspace_client import WorkspaceTestCase
 
 
-class RideSuggestionTests(TestCase):
+class RideSuggestionTests(WorkspaceTestCase):
     @classmethod
     def setUpTestData(cls):
         cls.course = Course.objects.create(name="Übungslehrgang")

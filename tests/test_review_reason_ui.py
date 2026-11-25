@@ -1,9 +1,8 @@
-from django.test import TestCase
-
 from bookings.models import EmailEvent
+from tests.workspace_client import WorkspaceTestCase
 
 
-class ReviewReasonViewTests(TestCase):
+class ReviewReasonViewTests(WorkspaceTestCase):
     def test_legacy_case_label_is_explicit_and_not_a_guess(self):
         event = EmailEvent.objects.create(
             sha256="1" * 64,

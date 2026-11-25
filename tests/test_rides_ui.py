@@ -1,14 +1,14 @@
 from datetime import timedelta
 from unittest.mock import patch
 
-from django.test import Client, TestCase
 from django.urls import reverse
 from django.utils import timezone
 
 from bookings.models import BookingStatus, Carpool, Course, CourseSeat, CourseSession, Participant, RideCase, School
+from tests.workspace_client import WorkspaceTestCase
 
 
-class RideCaseWorkspaceTests(TestCase):
+class RideCaseWorkspaceTests(WorkspaceTestCase):
     @classmethod
     def setUpTestData(cls):
         start = timezone.localtime(timezone.now() + timedelta(days=4)).replace(hour=8, minute=15, second=0, microsecond=0)
@@ -52,7 +52,8 @@ class RideCaseWorkspaceTests(TestCase):
         self.assertContains(listing, "Noch keine Fahrgemeinschaftsvorschläge")
         self.assertNotContains(listing, "Frühere Einzelstrecken")
         self.assertEqual(self.client.get(reverse("rides_sync")).status_code, 405)
-        self.assertEqual(Client(enforce_csrf_checks=True).post(reverse("rides_sync")).status_code, 403)
+        client = self.authenticated_client(enforce_csrf_checks=True)
+        self.assertEqual(client.post(reverse("rides_sync")).status_code, 403)
 
         with patch("django.core.mail.send_mail", side_effect=AssertionError("Kein Mailversand erwartet")):
             case = self.sync()
@@ -145,7 +146,8 @@ class RideCaseWorkspaceTests(TestCase):
         detail = reverse("ride_detail", args=[case.pk])
         form = {"status": "in_review", "expected_status": "open"}
 
-        self.assertEqual(Client(enforce_csrf_checks=True).post(detail, form).status_code, 403)
+        client = self.authenticated_client(enforce_csrf_checks=True)
+        self.assertEqual(client.post(detail, form).status_code, 403)
         self.assertRedirects(self.client.post(detail, form), f"{detail}?gespeichert=1")
 
         stale = self.client.post(detail, {"status": "closed", "expected_status": "open"})

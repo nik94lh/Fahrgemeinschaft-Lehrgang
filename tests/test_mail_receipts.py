@@ -4,7 +4,7 @@ from email.parser import BytesParser
 from dataclasses import replace
 from unittest.mock import patch
 
-from django.test import Client, TestCase, override_settings
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -17,9 +17,10 @@ from tests.test_imap_sync import body_result, mock_mailbox
 from tests.test_participant_email_parser import booking_message, nested_booking_forward
 from tests.test_participant_identity import PERSONAL, booking_mail
 from tests.test_reconciliation import JUNE, eml
+from tests.workspace_client import WorkspaceTestCase
 
 
-class MailReceiptTests(TestCase):
+class MailReceiptTests(WorkspaceTestCase):
     config = ImapConfig("imap.example.invalid", 993, "test", "test-password")
 
     def sync(self, entries):
@@ -174,7 +175,7 @@ class MailReceiptTests(TestCase):
         receipt = MailReceipt.objects.get(uid=2)
         detail = reverse("mail_receipt", args=[receipt.pk])
         action = f"{detail}adresse-pruefen/"
-        client = Client(enforce_csrf_checks=True)
+        client = self.authenticated_client(enforce_csrf_checks=True)
 
         with (
             patch("mailimport.receipt_views.load_configuration", return_value=self.config),

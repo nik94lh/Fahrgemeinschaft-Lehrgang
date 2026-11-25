@@ -1,9 +1,10 @@
-from django.test import Client, TestCase, override_settings
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from mailimport.imap_sync import mailbox_source_id
 from mailimport.mailbox_settings import MailboxSettingsError, load_mailbox_settings
 from mailimport.models import MailboxConfiguration, MailboxCursor
+from tests.workspace_client import WorkspaceTestCase
 
 
 @override_settings(HTTPS=True)
@@ -23,7 +24,7 @@ class StoredMailboxSettingsTests(TestCase):
 
 
 @override_settings(HTTPS=True)
-class MailboxSettingsViewTests(TestCase):
+class MailboxSettingsViewTests(WorkspaceTestCase):
     def config(self, **overrides):
         settings = {
             "host": "imap.example.org",
@@ -46,7 +47,7 @@ class MailboxSettingsViewTests(TestCase):
         self.assertFalse(MailboxConfiguration.objects.exists())
 
     def test_post_requires_csrf_token(self):
-        response = Client(enforce_csrf_checks=True).post("/postfach/", self.config(), secure=True)
+        response = self.authenticated_client(enforce_csrf_checks=True).post("/postfach/", self.config(), secure=True)
         self.assertEqual(response.status_code, 403)
         self.assertFalse(MailboxConfiguration.objects.exists())
 

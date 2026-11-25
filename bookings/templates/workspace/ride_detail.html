@@ -30,6 +30,7 @@
             <div><dt>Bearbeitungsstand</dt><dd>{{ case.get_status_display }}</dd></div>
         </dl>
         {% if conflict %}<p class="errorlist" role="alert">{{ conflict }}</p>{% endif %}
+        {% if workspace_edit.rides %}
         <form class="ride-case-status" method="post">
             {% csrf_token %}
             {{ form.non_field_errors }}
@@ -40,6 +41,7 @@
             {{ form.status }}
             <button type="submit">Bearbeitungsstand speichern</button>
         </form>
+        {% endif %}
     </section>
 
     <section class="panel" aria-labelledby="ride-bookings">
@@ -56,10 +58,10 @@
                         {% for seat in seats %}
                             <tr>
                                 <td data-label="Buchung">
-                                    {% if seat.participant %}<a href="{% url 'booking_participant' seat.pk %}">Buchung {{ seat.pk }}</a>{% else %}Buchung {{ seat.pk }}{% endif %}
+                                    {% if seat.participant and workspace_view.bookings %}<a href="{% url 'booking_participant' seat.pk %}">Buchung {{ seat.pk }}</a>{% else %}Buchung {{ seat.pk }}{% endif %}
                                 </td>
                                 <td data-label="Teilnehmer/in">{{ seat.participant.name|default:"Ohne Zuordnung" }}</td>
-                                <td data-label="Lehrgang"><a href="{% url 'calendar_detail' seat.session_id %}">{{ seat.session.course.name }}</a></td>
+                                <td data-label="Lehrgang">{% if workspace_view.calendar %}<a href="{% url 'calendar_detail' seat.session_id %}">{{ seat.session.course.name }}</a>{% else %}{{ seat.session.course.name }}{% endif %}</td>
                                 <td data-label="Lehrgangsbeginn">{{ seat.session.starts_at|date:"d.m.Y, H:i" }}</td>
                                 <td data-label="Lehrgangsende">{{ seat.session.ends_at|date:"d.m.Y, H:i" }}</td>
                                 <td data-label="Buchungsstatus">{{ seat.get_status_display }}</td>

@@ -10,7 +10,7 @@
         {% include "workspace/workspace.css" %}
         {% block page_styles %}{% endblock %}
     </style>
-    {% if request.method == "GET" and request.resolver_match.url_name != "preview" %}
+    {% if request.method == "GET" and request.user.is_authenticated and request.resolver_match.url_name != "preview" and section != "account" and section != "accounts" %}
         <script src="{% url 'live_script' %}?v={{ bms_version }}" defer></script>
     {% endif %}
 </head>
@@ -18,11 +18,17 @@
     <a class="skip-link" href="#main-content">Zum Inhalt</a>
     <header class="app-header">
         <div class="header-inner">
-            <a class="brand" href="{% url 'overview' %}"><strong>BMS</strong><span>Lehrgangsverwaltung</span></a>
+            <a class="brand" href="{{ workspace_home }}"><strong>BMS</strong><span>Lehrgangsverwaltung</span></a>
             <div class="header-status">
                 <span class="mode">Testbetrieb</span>
                 <span class="version">Version {{ bms_version }}</span>
                 <span id="live-update-status" role="status" hidden></span>
+                {% if request.user.is_authenticated %}
+                    <form class="workspace-logout" method="post" action="{% url 'logout' %}">
+                        {% csrf_token %}
+                        <button class="secondary-button" type="submit">Abmelden</button>
+                    </form>
+                {% endif %}
             </div>
         </div>
     </header>

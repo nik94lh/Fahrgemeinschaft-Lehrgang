@@ -5,7 +5,7 @@
         <div>
             <h1>Mail-Eingang</h1>
         </div>
-        <a class="button-link" href="{% url 'mailbox' %}">Postfachstatus</a>
+        {% if workspace_view.mailbox %}<a class="button-link" href="{% url 'mailbox' %}">Postfachstatus</a>{% endif %}
     </div>
     <div class="status-strip{% if cursor and not cursor.last_sync_ok %} status-strip-warning{% endif %}">
         {% if cursor %}
@@ -53,12 +53,12 @@
                             {% for event in page_obj %}
                                 <tr>
                                     <td data-label="Abruf"><span>{{ event.imported_at|date:"d.m.Y, H:i" }}<small>Ereignis {{ event.pk }}</small></span></td>
-                                    <td data-label="Erkannte Mail"><span><strong>{{ event.get_kind_display }}</strong>{% if event.seat %}<small>{{ event.seat.participant.name|default:"Ohne Teilnehmer" }} · {{ event.seat.session.course.name }}</small>{% endif %}</span></td>
+                                    <td data-label="Erkannte Mail"><span><strong>{{ event.get_kind_display }}</strong>{% if event.seat and workspace_view.bookings %}<small>{{ event.seat.participant.name|default:"Ohne Teilnehmer" }} · {{ event.seat.session.course.name }}</small>{% endif %}</span></td>
                                     <td data-label="Ergebnis"><span class="status-label status-{{ event.state }}">{{ event.get_state_display }}</span></td>
                                     <td data-label="Details">
-                                        {% if event.state in case_states %}
+                                        {% if event.state in case_states and workspace_view.review %}
                                             <a href="{% url 'review_detail' event.pk %}">Klärungsfall ansehen</a>
-                                        {% elif event.seat.participant_id %}
+                                        {% elif event.seat.participant_id and workspace_view.bookings %}
                                             <a href="{% url 'booking_participant' event.seat_id %}">Buchung ansehen</a>
                                         {% else %}
                                             <span class="quiet">Keine weiteren Angaben</span>
@@ -93,7 +93,7 @@
                     <h2>Keine Mail zur Suche gefunden</h2>
                 {% else %}
                     <h2>Hier ist noch kein neuer Eingang erfasst</h2>
-                    <p class="quiet">Bei einer erwarteten Mail prüfe den letzten Abruf und den eingestellten Ordner unter <a href="{% url 'mailbox' %}">Postfach</a>.</p>
+                    {% if workspace_view.mailbox %}<p class="quiet">Bei einer erwarteten Mail prüfe den letzten Abruf und den eingestellten Ordner unter <a href="{% url 'mailbox' %}">Postfach</a>.</p>{% endif %}
                 {% endif %}
             </div>
         {% endif %}

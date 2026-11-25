@@ -3,7 +3,7 @@
 {% block content %}
     <h1>Feuerwehren</h1>
     <nav class="pagination" aria-label="Stammdatenaktionen">
-        <a href="{% url 'brigade_create' %}">Feuerwehr anlegen</a>
+        {% if workspace_edit.brigades %}<a href="{% url 'brigade_create' %}">Feuerwehr anlegen</a>{% endif %}
     </nav>
     <form class="panel filters" method="get">
         <label>Suche<input type="search" name="q" maxlength="100" value="{{ query }}"></label>
@@ -27,7 +27,7 @@
                     <tbody>
                         {% for brigade in page_obj %}
                             <tr>
-                                <th scope="row"><a href="{% url 'brigade_edit' brigade.pk %}">{{ brigade.name }}</a></th>
+                                <th scope="row">{% if workspace_edit.brigades %}<a href="{% url 'brigade_edit' brigade.pk %}">{{ brigade.name }}</a>{% else %}{{ brigade.name }}{% endif %}</th>
                                 <td>{{ brigade.municipality }}</td>
                                 <td>{{ brigade.district|default:"—" }}</td>
                                 <td>{{ brigade.address|default:"—" }}</td>

@@ -2,6 +2,8 @@
 
 LFM verwaltet Lehrgänge und Buchungen für die Feuerwehren eines Landkreises. Die Anwendung enthält eine Buchungsübersicht, einen Kalender mit Wochen-, Monats- und Jahresansicht, eine EML-Vorschau und einen optionalen lesenden IMAP-Import. Sie zeigt Fahrgemeinschaftsvorschläge für gemeinsame Hin- und Rückfahrten anhand bestätigter Lehrgänge. Einladung, Teilnahme und Kontaktfreigabe folgen in späteren Entwicklungsphasen.
 
+Der BMS-Arbeitsbereich verwendet persönliche Konten. Administratoren legen unter **Benutzer** weitere Konten an und wählen je Reiter **Kein Zugriff**, **Ansehen** oder **Bearbeiten**. Unter **Mein Konto** kannst du dein Passwort ändern. Die Einrichtung des ersten Administrators und der Wechsel vom gemeinsamen Testzugang sind in der [Architektur-Dokumentation](docs/ARCHITEKTUR.md#persönliche-konten-für-den-testserver) beschrieben.
+
 ## Lokaler Start mit Docker Compose
 
 Voraussetzungen sind Docker und Docker Compose v2. Lege beim ersten Start eine lokale Konfiguration aus der Vorlage an:
@@ -12,6 +14,12 @@ docker compose -f compose.yaml -f compose.dev.yaml up -d --wait db
 docker compose -f compose.yaml -f compose.dev.yaml run --no-deps --rm --build web python manage.py migrate
 docker compose -f compose.yaml -f compose.dev.yaml up -d --wait web
 curl --fail http://127.0.0.1:8000/health/
+```
+
+Beim ersten Start legst du ein persönliches Administratorkonto an. Django fragt das Passwort im Terminal ab.
+
+```bash
+docker compose -f compose.yaml -f compose.dev.yaml exec web python manage.py createsuperuser
 ```
 
 Die Weboberfläche erreichst du unter http://127.0.0.1:8000/. Über `/health/` kannst du den Start technisch prüfen. Der Entwicklungsport ist nur lokal gebunden. PostgreSQL bleibt im Docker-Netz des Projekts.

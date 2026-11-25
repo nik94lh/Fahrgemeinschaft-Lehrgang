@@ -1,12 +1,13 @@
-from django.test import Client, TestCase, override_settings
+from django.test import override_settings
 
 from mailimport.mailbox_settings import load_mailbox_settings
 from mailimport.models import ParticipantRecognitionConfiguration
 from mailimport.participant_settings import get_functional_addresses
+from tests.workspace_client import WorkspaceTestCase
 
 
 @override_settings(HTTPS=True)
-class FunctionalAddressesTests(TestCase):
+class FunctionalAddressesTests(WorkspaceTestCase):
     def save_addresses(self, addresses, *, secure=True):
         return self.client.post("/postfach/", {
             "action": "save-functional-addresses",
@@ -52,7 +53,8 @@ class FunctionalAddressesTests(TestCase):
 
     def test_addresses_require_existing_https_and_csrf_guards(self):
         data = {"action": "save-functional-addresses", "functional_addresses": "postfach@example.org"}
-        self.assertEqual(Client(enforce_csrf_checks=True).post("/postfach/", data, secure=True).status_code, 403)
+        client = self.authenticated_client(enforce_csrf_checks=True)
+        self.assertEqual(client.post("/postfach/", data, secure=True).status_code, 403)
         self.assertIn(self.save_addresses(data["functional_addresses"], secure=False).status_code, (301, 404))
         with override_settings(HTTPS=False):
             self.assertEqual(self.save_addresses(data["functional_addresses"]).status_code, 404)

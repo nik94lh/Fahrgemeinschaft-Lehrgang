@@ -24,6 +24,7 @@ TEMPLATES = [
         "APP_DIRS": True,
         "OPTIONS": {"context_processors": [
             "django.template.context_processors.request",
+            "accounts.access.workspace_permissions",
             "config.version.version_context",
         ]},
     },
@@ -34,6 +35,7 @@ INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
+    "accounts",
     "bookings",
     "mailimport",
 ]
@@ -42,9 +44,20 @@ MIDDLEWARE = [
     "config.middleware.ContentPolicyMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    "accounts.middleware.WorkspaceAccessMiddleware",
+    "django.middleware.csrf.CsrfViewMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+]
+
+LOGIN_URL = "login"
+LOGIN_REDIRECT_URL = "account"
+LOGOUT_REDIRECT_URL = "login"
+AUTH_PASSWORD_VALIDATORS = [
+    {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
+    {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
+    {"NAME": "django.contrib.auth.password_validation.CommonPasswordValidator"},
+    {"NAME": "django.contrib.auth.password_validation.NumericPasswordValidator"},
 ]
 
 if os.environ.get("DB_HOST"):

@@ -1,0 +1,15 @@
+{% extends "workspace/base.html" %}
+{% block title %}Anmelden{% endblock %}
+{% block page_styles %}{% include "accounts/styles.css" %}{% endblock %}
+{% block live_region %}{% endblock %}
+{% block content %}
+    <div class="page-heading"><h1>Anmelden</h1></div>
+    <section class="panel account-narrow" aria-label="Anmeldung">
+        <form method="post" class="account-form-fields">
+            {% csrf_token %}
+            {{ form.as_p }}
+            {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+            <div class="account-controls"><button type="submit">Anmelden</button></div>
+        </form>
+    </section>
+{% endblock %}

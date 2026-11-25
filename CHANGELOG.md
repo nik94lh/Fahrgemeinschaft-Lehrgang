@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.11.0
+
+- BMS schützt den Arbeitsbereich mit persönlichen Benutzerkonten. Administratoren können Konten anlegen, deaktivieren und für jeden Reiter die Rechte Ansehen oder Bearbeiten vergeben.
+- Rechte gelten auch für direkte Aufrufe, Formulare und Live-Aktualisierungen. Der Kalender zeigt personenbezogene Buchungsdetails mit dem Recht für Buchungen an.
+
 ## 0.10.4
 
 - BMS findet den ursprünglichen Buchungsblock auch über bis zu zwölf zusammenhängende Weiterleitungsstufen aus Klartext, HTML und EML-Anhängen. Geänderte Zwischenbetreffe und umgebrochene Empfängerzeilen bleiben auswertbar.

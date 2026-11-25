@@ -1,11 +1,10 @@
 from decimal import Decimal
 
-from django.test import Client, TestCase
-
 from bookings.models import FireBrigade
+from tests.workspace_client import WorkspaceTestCase
 
 
-class BrigadeRegisterTests(TestCase):
+class BrigadeRegisterTests(WorkspaceTestCase):
     @classmethod
     def setUpTestData(cls):
         cls.existing = FireBrigade.objects.create(name="Musterwehr", municipality="Testgemeinde")
@@ -60,6 +59,6 @@ class BrigadeRegisterTests(TestCase):
         self.assertEqual(FireBrigade.objects.count(), 2)
 
     def test_write_requires_csrf(self):
-        response = Client(enforce_csrf_checks=True).post("/feuerwehren/neu/", self.form_data())
+        response = self.authenticated_client(enforce_csrf_checks=True).post("/feuerwehren/neu/", self.form_data())
         self.assertEqual(response.status_code, 403)
         self.assertEqual(FireBrigade.objects.count(), 2)

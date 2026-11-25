@@ -11,6 +11,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt, csrf_protect
 from django.views.decorators.http import require_http_methods, require_safe
 
+from accounts.access import can_view
 from bookings.models import EmailEvent, School
 from bookings.services import ingest
 
@@ -91,7 +92,9 @@ def _render_preview(request, handler, *, persist):
                 if persist:
                     event = ingest(raw)
                     if event.state == EmailEvent.State.NEEDS_REVIEW:
-                        return redirect("review_detail", event_id=event.pk)
+                        if can_view(request.user, "review"):
+                            return redirect("review_detail", event_id=event.pk)
+                        return redirect(f"{reverse('preview')}?klaerung=1")
                     return redirect(f"{reverse('bookings')}?importiert=1")
                 result = parse_eml(raw, functional_addresses=get_functional_addresses())
             except MailParseError as error:
@@ -102,6 +105,7 @@ def _render_preview(request, handler, *, persist):
         "section": "preview",
         "form": form,
         "result": result,
+        "review_created": request.GET.get("klaerung") == "1",
         "event_label": EmailEvent.Kind(result.event_type).label if result else None,
         "school_label": School(result.school).label if result and result.school else None,
     }
