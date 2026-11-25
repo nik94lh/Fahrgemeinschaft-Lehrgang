@@ -80,7 +80,7 @@ Der Hintergrunddienst gleicht die Buchungen standardmäßig alle zwei Minuten ab
 
 ## Versionen und Testbereitstellung
 
-Der FFP-Testserver verfolgt `feat/bms-foundation`. Änderungen werden lokal geprüft und erst danach als Fast-Forward auf diesen Branch gepusht. Der beim Einrichten konfigurierte systemd-Timer plant den nächsten Deployment-Lauf zwei Minuten nach Ende des letzten Laufs ein. Findet ein Lauf einen neuen Stand, holt der Server die Änderungen, baut das Image, migriert die Datenbank und startet Webdienst und Postfachdienst. Build, Migration und Neustart dauern zusätzlich zur Wartezeit.
+Entwicklungsänderungen gehen per Pull Request nach `main`. Der FFP-Testserver verfolgt `feat/bms-foundation`. Für eine Testbereitstellung wird dieser Branch per Fast-Forward auf den geprüften Commit von `main` gesetzt. Der beim Einrichten konfigurierte systemd-Timer plant den nächsten Deployment-Lauf zwei Minuten nach Ende des letzten Laufs ein. Findet ein Lauf einen neuen Stand, holt der Server die Änderungen, baut das Image, migriert die Datenbank und startet Webdienst und Postfachdienst. Build, Migration und Neustart dauern zusätzlich zur Wartezeit.
 
 Für eine sofortige Bereitstellung den eingerichteten Dienst auf dem FFP-Server manuell starten. Anschließend den installierten Commit im Protokoll mit dem erwarteten Commit vergleichen und die BMS-Seite neu öffnen.
 
@@ -91,6 +91,6 @@ sudo journalctl -u bms-deploy.service --grep='BMS erfolgreich installiert:' -n 1
 
 Die Meldung muss den erwarteten vollständigen Commit enthalten. Ist der Commit älter oder fehlt die Meldung, zeigt `sudo journalctl -u bms-deploy.service -n 60 --no-pager` den letzten Lauf. Ein erfolgreicher Push oder ein aktiver Timer allein bestätigt die Installation noch nicht.
 
-Ein annotierter Tag `vMAJOR.MINOR.PATCH` bezeichnet einen geprüften Stand. GitHub Actions wiederholt die PostgreSQL-Tests und veröffentlicht bei Erfolg die Notizen aus dem Tag als Vorabversion. Die Änderungen stehen im [Changelog](CHANGELOG.md).
+Ein annotierter Tag `vMAJOR.MINOR.PATCH` bezeichnet einen geprüften Stand. GitHub Actions wiederholt die PostgreSQL-Tests und veröffentlicht bei Erfolg eine Vorabversion mit dem passenden Abschnitt aus dem [Changelog](CHANGELOG.md) des getaggten Commits. Fehlt der Abschnitt oder ist er leer, verwendet GitHub Actions die Notiz des Tags.
 
 BMS zeigt die Version aus `config/version.py` oben rechts an. Aktualisiere `BMS_VERSION` im Release-Commit und verwende dieselbe Nummer für den Changelog-Eintrag und den Git-Tag mit vorangestelltem `v`.
