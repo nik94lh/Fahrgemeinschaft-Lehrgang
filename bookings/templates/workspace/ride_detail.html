@@ -7,11 +7,11 @@
 {% endblock %}
 {% block content %}
     {% if round_trip %}
-        <p class="back-link"><a href="{% url 'rides' %}">‹ Zurück zu den Fahrgemeinschaftsvorschlägen</a></p>
+        <p class="back-link"><a href="{% url 'rides' %}{% if list_query %}?{{ list_query }}{% endif %}">‹ Zurück zu den Fahrgemeinschaftsvorschlägen</a></p>
         <h1 class="ride-heading">Fahrgemeinschaftsvorschlag {{ case.pk }}</h1>
         <p class="intro">{{ case.get_school_display }}</p>
     {% else %}
-        <p class="back-link"><a href="{% url 'rides' %}?archiv=1">‹ Zurück zu den früheren Einzelstrecken</a></p>
+        <p class="back-link"><a href="{% url 'rides' %}?{{ list_query }}">‹ Zurück zu den früheren Einzelstrecken</a></p>
         <h1>Frühere Einzelstrecke {{ case.pk }}</h1>
         <p class="intro">{{ case.get_direction_display }} · {{ case.get_school_display }}</p>
     {% endif %}

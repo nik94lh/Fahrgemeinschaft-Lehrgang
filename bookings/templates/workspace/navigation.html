@@ -1,22 +1,34 @@
-{% if request.user.is_authenticated %}
-<nav class="workspace-nav" aria-label="Hauptnavigation">
-    <div>
-        {% if workspace_view.overview %}<a href="{% url 'overview' %}"{% if section == 'overview' %} aria-current="page"{% endif %}>Übersicht</a>{% endif %}
-        {% if workspace_view.bookings %}<a href="{% url 'bookings' %}"{% if section == 'bookings' %} aria-current="page"{% endif %}>Buchungen</a>{% endif %}
-        {% if workspace_view.people %}<a href="{% url 'people' %}"{% if section == 'people' %} aria-current="page"{% endif %}>Personen</a>{% endif %}
-        {% if workspace_view.calendar %}<a href="{% url 'calendar' %}"{% if section == 'calendar' %} aria-current="page"{% endif %}>Kalender</a>{% endif %}
-        {% if workspace_view.rides %}<a href="{% url 'rides' %}"{% if section == 'rides' %} aria-current="page"{% endif %}>Fahrgemeinschaften</a>{% endif %}
-        {% if workspace_view.brigades %}<a href="{% url 'brigades' %}"{% if section == 'brigades' %} aria-current="page"{% endif %}>Feuerwehren</a>{% endif %}
-        {% if workspace_view.review %}<a href="{% url 'review' %}"{% if section == 'review' %} aria-current="page"{% endif %}>Klärung</a>{% endif %}
-        {% if request.is_secure and workspace_view.mail_receipts %}
-            <a href="{% url 'mail_receipts' %}"{% if section == 'mail_receipts' %} aria-current="page"{% endif %}>Mail-Eingang</a>
-        {% endif %}
-        {% if workspace_view.preview %}<a href="{% url 'preview' %}"{% if section == 'preview' %} aria-current="page"{% endif %}>E-Mail-Vorschau</a>{% endif %}
-        {% if request.is_secure and workspace_view.mailbox %}
-            <a href="{% url 'mailbox' %}"{% if section == 'mailbox' %} aria-current="page"{% endif %}>Postfach</a>
-        {% endif %}
-        {% if workspace_admin %}<a href="{% url 'account_list' %}"{% if section == 'accounts' %} aria-current="page"{% endif %}>Benutzer</a>{% endif %}
-        <a href="{% url 'account' %}"{% if section == 'account' %} aria-current="page"{% endif %}>Mein Konto</a>
+{% if workspace_primary_navigation or workspace_secondary_navigation %}
+<nav class="workspace-navigation" aria-label="Hauptnavigation">
+    <div class="workspace-nav-inner">
+        <div class="workspace-nav-desktop">
+            {% include "workspace/navigation_links.html" with links=workspace_primary_navigation %}
+            {% if workspace_secondary_navigation %}
+                <details class="workspace-nav-more" name="workspace-menu">
+                    <summary class="workspace-menu-trigger">Weitere</summary>
+                    <div class="workspace-menu-panel">
+                        {% include "workspace/navigation_links.html" with links=workspace_secondary_navigation %}
+                    </div>
+                </details>
+            {% endif %}
+        </div>
+        {% with links=workspace_primary_navigation|add:workspace_secondary_navigation %}
+            <div class="workspace-nav-mobile">
+                {% if section == 'account' %}
+                    <strong class="workspace-nav-current">Mein Konto</strong>
+                {% else %}
+                    {% for link in links %}
+                        {% if link.section == section %}<strong class="workspace-nav-current">{{ link.label }}</strong>{% endif %}
+                    {% endfor %}
+                {% endif %}
+                <details class="workspace-nav-disclosure" name="workspace-menu">
+                    <summary class="workspace-nav-trigger">Navigation</summary>
+                    <div class="workspace-menu-panel workspace-mobile-panel">
+                        {% include "workspace/navigation_links.html" %}
+                    </div>
+                </details>
+            </div>
+        {% endwith %}
     </div>
 </nav>
 {% endif %}

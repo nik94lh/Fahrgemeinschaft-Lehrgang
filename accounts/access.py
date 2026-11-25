@@ -16,6 +16,8 @@ SECTIONS = {
 }
 HTTPS_SECTIONS = frozenset({"mailbox", "mail_receipts"})
 READ_ONLY_SECTIONS = frozenset({"people"})
+PRIMARY_NAVIGATION = ("overview", "bookings", "people", "calendar", "rides", "review")
+SECONDARY_NAVIGATION = ("brigades", "mail_receipts", "preview", "mailbox")
 
 
 def section_actions(section):
@@ -60,11 +62,28 @@ def home_url(user):
     return reverse("account")
 
 
+def _navigation_items(sections, view_permissions, is_secure):
+    return [
+        {"section": section, "label": SECTIONS[section], "href": reverse(section)}
+        for section in sections
+        if view_permissions[section] and (is_secure or section not in HTTPS_SECTIONS)
+    ]
+
+
 def workspace_permissions(request):
     user = request.user
+    view_permissions = {section: can_view(user, section) for section in SECTIONS}
+    admin = is_workspace_admin(user)
+    secure = request.is_secure()
+    primary = _navigation_items(PRIMARY_NAVIGATION, view_permissions, secure)
+    secondary = _navigation_items(SECONDARY_NAVIGATION, view_permissions, secure)
+    if admin:
+        secondary.append({"section": "accounts", "label": "Benutzer", "href": reverse("account_list")})
     return {
-        "workspace_view": {section: can_view(user, section) for section in SECTIONS},
+        "workspace_view": view_permissions,
         "workspace_edit": {section: can_edit(user, section) for section in SECTIONS},
-        "workspace_admin": is_workspace_admin(user),
+        "workspace_admin": admin,
         "workspace_home": home_url(user),
+        "workspace_primary_navigation": primary,
+        "workspace_secondary_navigation": secondary,
     }

@@ -13,7 +13,9 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST, require_safe
 
+from accounts.access import can_edit, can_view
 from bookings.models import EmailEvent, School
+from bookings.participant_views import _receipt_address
 from bookings.services import ACTIVATION_EVENTS, ACTIVE_STATUSES
 
 from .contact_replay import ACTIVE_STATES, ContactReplayError, queue_receipt_contact_replay
@@ -140,13 +142,33 @@ def mail_receipt(request, receipt_id):
         if value := fields.get(field):
             fields[field] = date.fromisoformat(value)
 
+    show_profile = bool(
+        can_view(request.user, "bookings") and seat and seat.participant_id
+        and receipt.event.state in (EmailEvent.State.APPLIED, EmailEvent.State.REVIEWED)
+    )
+    current_profile_address = seat.participant.email if show_profile else ""
+    address_handoff = False
+    address_handoff_issue = ""
+    if (
+        show_profile and not current_profile_address and can_edit(request.user, "bookings")
+        and receipt.event.state == EmailEvent.State.APPLIED
+        and fields.get("participant_email_candidate") and not fields.get("participant_email")
+    ):
+        suggestion, issue = _receipt_address(seat, str(receipt.pk))
+        address_handoff = suggestion is not None
+        if not address_handoff:
+            address_handoff_issue = issue or "unavailable"
+
     return render(request, "mailimport/receipt_detail.html", {
         "section": "mail_receipts",
         "receipt": receipt,
         "fields": fields,
         "school_name": dict(School.choices).get(fields.get("school")),
         "has_review": receipt.event and receipt.event.state in CASE_STATES,
-        "has_current_address": bool(seat and seat.participant_id and seat.participant.email),
+        "show_profile": show_profile,
+        "current_profile_address": current_profile_address,
+        "address_handoff": address_handoff,
+        "address_handoff_issue": address_handoff_issue,
         "mailbox": config.mailbox if config and config.source_id == receipt.source_id else "",
         "can_recheck": can_recheck,
         "recheck_job": _receipt_recheck_job(receipt) if can_recheck else None,

@@ -71,7 +71,7 @@ class PeopleOverviewTests(TestCase):
 
         response = self.client.get(self.url)
 
-        self.assertContains(response, '<td data-label="Buchungen">2</td>', html=True)
+        self.assertContains(response, '<td role="cell" data-label="Buchungen">2</td>', html=True)
         self.assertContains(response, self.booking.session.course.name)
         self.assertContains(response, "SFS Regensburg")
         self.assertContains(response, "Bestätigt")

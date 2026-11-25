@@ -1,5 +1,12 @@
 {% extends "workspace/base.html" %}
 {% block title %}Mail-Eingang {{ receipt.uid }}{% endblock %}
+{% block page_styles %}
+    .receipt-handoff-button { background: var(--accent); border-color: var(--accent); color: white; }
+    .receipt-handoff-button:hover { background: #123b80; color: white; }
+    @media (max-width: 680px) {
+        .receipt-address-details > div { grid-template-columns: minmax(0, 1fr); gap: .15rem; }
+    }
+{% endblock %}
 {% block content %}
     <p class="back-link"><a href="{% url 'mail_receipts' %}">← Zum Mail-Eingang</a></p>
     <h1>Mail-Eingang {{ receipt.uid }}</h1>
@@ -8,28 +15,61 @@
     <section class="panel diagnostic-panel{% if receipt.outcome == 'review' or receipt.outcome == 'skipped' %} diagnostic-warning{% endif %}" aria-labelledby="receipt-outcome">
         <h2 id="receipt-outcome">{{ receipt.get_outcome_display }}</h2>
         <p>{{ receipt.detail }}</p>
-        {% if has_review and workspace_view.review %}
-            <p><a href="{% url 'review_detail' receipt.event_id %}">Klärungsfall {{ receipt.event_id }} ansehen</a></p>
-        {% elif receipt.event.seat.participant_id and workspace_view.bookings %}
-            <p><a href="{% url 'booking_participant' receipt.event.seat_id %}">Verknüpfte Buchung ansehen</a></p>
-            <p><strong>Adresse an der Buchung aktuell</strong> · {% if has_current_address %}Hinterlegt{% else %}Fehlt{% endif %}</p>
-            {% if receipt.event.state == 'applied' and not has_current_address and fields.participant_email_candidate and not fields.participant_email %}<p class="note">Diese Mail enthält einen Adressvorschlag für die Buchung.</p>{% endif %}
-        {% endif %}
-        {% if receipt.address_checked_at %}
-            <h3>Letzter Adressabgleich</h3>
-            <p>{{ receipt.address_checked_at|date:"d.m.Y, H:i" }} Uhr · {{ receipt.address_check_detail }}</p>
-        {% endif %}
-        {% if recheck_error %}<p class="errorlist detail-note" role="alert">{{ recheck_error }}</p>{% endif %}
-        {% if recheck_job and recheck_job.status != 'failed' %}
-            <p class="detail-note" role="status">{% if recheck_job.status == 'queued' %}Adressprüfung vorgemerkt.{% else %}Adressprüfung läuft.{% endif %}</p>
-            {% if recheck_job.error_message %}<p class="note">{{ recheck_job.error_message }}</p>{% endif %}
-        {% elif can_recheck and workspace_edit.mail_receipts and workspace_edit.bookings %}
-            {% if recheck_job.error_message %}<p class="errorlist detail-note" role="alert">{{ recheck_job.error_message }}</p>{% endif %}
-            <form class="detail-note" method="post" action="{% url 'mail_receipt_recheck' receipt.pk %}">
-                {% csrf_token %}
-                <button type="submit">Adresse erneut prüfen</button>
-            </form>
-        {% endif %}
+        <div class="receipt-detail-layout detail-note">
+            <div>
+                <h3>Teilnehmeradresse</h3>
+                {% if show_profile %}
+                    <p><strong>Adresse an der Buchung aktuell</strong> · {% if current_profile_address %}Hinterlegt{% else %}Fehlt{% endif %}</p>
+                {% elif workspace_view.bookings %}
+                    <p class="note">Zu dieser Mail ist kein Teilnehmerprofil fest zugeordnet.</p>
+                {% endif %}
+                <dl class="details receipt-address-details">
+                    {% if current_profile_address %}
+                        <div><dt>Im Profil gespeichert</dt><dd>{{ current_profile_address }}</dd></div>
+                    {% endif %}
+                    {% if fields.participant_email %}
+                        <div><dt>Adresse beim Abruf erkannt</dt><dd>{{ fields.participant_email }}</dd></div>
+                    {% elif fields.participant_email_candidate %}
+                        <div><dt>Adressvorschlag aus dem ursprünglichen An-Feld</dt><dd>{{ fields.participant_email_candidate }}</dd></div>
+                    {% else %}
+                        <div><dt>Adresse aus der Originalmail</dt><dd>Nicht erkannt</dd></div>
+                    {% endif %}
+                </dl>
+                {% if fields.address_note and not receipt.address_checked_at %}<p class="note detail-note">{{ fields.address_note }}</p>{% endif %}
+            </div>
+            <div>
+                {% if has_review and workspace_view.review %}
+                    <p><a class="button-link" href="{% url 'review_detail' receipt.event_id %}">Klärungsfall {{ receipt.event_id }} ansehen</a></p>
+                {% elif address_handoff %}
+                    <p><a class="button-link receipt-handoff-button" href="{% url 'booking_participant' receipt.event.seat_id %}?mail={{ receipt.pk }}" aria-describedby="receipt-handoff">Adressvorschlag bei der Buchung prüfen</a></p>
+                    <p id="receipt-handoff" class="note">Die geprüfte Adresse speicherst du im Teilnehmerprofil.</p>
+                {% elif show_profile %}
+                    {% if address_handoff_issue == 'open_review' %}
+                        <p class="note">Zu dieser Buchung ist ein Klärungsfall offen.</p>
+                    {% elif address_handoff_issue == 'conflict' %}
+                        <p class="note">Mehrere Adressvorschläge passen zu dieser Buchung. Vergleiche die Originalnachrichten.</p>
+                    {% elif address_handoff_issue == 'unavailable' %}
+                        <p class="note">Der Vorschlag kann dem aktuellen Teilnehmerprofil nicht sicher zugeordnet werden.</p>
+                    {% endif %}
+                    <p><a href="{% url 'booking_participant' receipt.event.seat_id %}">Verknüpfte Buchung ansehen</a></p>
+                {% endif %}
+                {% if receipt.address_checked_at %}
+                    <h3 class="detail-note">Letzter Adressabgleich</h3>
+                    <p>{{ receipt.address_checked_at|date:"d.m.Y, H:i" }} Uhr · {{ receipt.address_check_detail }}</p>
+                {% endif %}
+                {% if recheck_error %}<p class="errorlist detail-note" role="alert">{{ recheck_error }}</p>{% endif %}
+                {% if recheck_job and recheck_job.status != 'failed' %}
+                    <p class="detail-note" role="status">{% if recheck_job.status == 'queued' %}Adressprüfung vorgemerkt.{% else %}Adressprüfung läuft.{% endif %}</p>
+                    {% if recheck_job.error_message %}<p class="note">{{ recheck_job.error_message }}</p>{% endif %}
+                {% elif can_recheck and workspace_edit.mail_receipts and workspace_edit.bookings and address_handoff_issue != 'open_review' %}
+                    {% if recheck_job.error_message %}<p class="errorlist detail-note" role="alert">{{ recheck_job.error_message }}</p>{% endif %}
+                    <form class="detail-note" method="post" action="{% url 'mail_receipt_recheck' receipt.pk %}">
+                        {% csrf_token %}
+                        <button{% if address_handoff %} class="secondary-button"{% endif %} type="submit">Adresse erneut prüfen</button>
+                    </form>
+                {% endif %}
+            </div>
+        </div>
     </section>
 
     <div class="receipt-detail-layout">
@@ -42,11 +82,6 @@
                     <div><dt>Mailtyp</dt><dd>{{ fields.mail_type|default:"Unbekannt" }}</dd></div>
                     <div><dt>Teilnehmer</dt><dd>{{ fields.participant_name|default:"Nicht eindeutig erkannt" }}</dd></div>
                     {% if fields.previous_participant_name %}<div><dt>Bisheriger Teilnehmer</dt><dd>{{ fields.previous_participant_name }}</dd></div>{% endif %}
-                    {% if fields.participant_email_candidate and not fields.participant_email %}
-                        <div><dt>Adressvorschlag aus dem ursprünglichen An-Feld</dt><dd>{{ fields.participant_email_candidate }}</dd></div>
-                    {% else %}
-                        <div><dt>Teilnehmeradresse</dt><dd>{{ fields.participant_email|default:"Nicht erkannt" }}</dd></div>
-                    {% endif %}
                     <div><dt>Lehrgang</dt><dd>{{ fields.course_name|default:"Nicht eindeutig erkannt" }}</dd></div>
                     <div><dt>Schule</dt><dd>{{ school_name|default:"Nicht eindeutig erkannt" }}</dd></div>
                     {% if fields.is_online %}<div><dt>Durchführung</dt><dd>Online</dd></div>{% endif %}
@@ -56,10 +91,6 @@
                     {% if fields.confirmation_deadline %}<div><dt>Bestätigungsfrist</dt><dd>{{ fields.confirmation_deadline|date:"d.m.Y" }}</dd></div>{% endif %}
                     {% if fields.cancellation_date %}<div><dt>Stornierungsdatum</dt><dd>{{ fields.cancellation_date|date:"d.m.Y" }}</dd></div>{% endif %}
                 </dl>
-                {% if fields.address_note and not receipt.address_checked_at %}<p class="note detail-note">{{ fields.address_note }}</p>{% endif %}
-                {% if fields.participant_email_candidate and not fields.participant_email and receipt.event.state == 'applied' and receipt.event.seat.participant_id and not has_current_address and workspace_edit.bookings %}
-                    <p class="detail-note"><a href="{% url 'booking_participant' receipt.event.seat_id %}?mail={{ receipt.pk }}">Adressvorschlag bei der Buchung prüfen</a></p>
-                {% endif %}
                 {% if fields.warnings %}
                     <aside class="warnings">
                         <h3>Hinweise zur Auswertung</h3>
@@ -76,8 +107,8 @@
                 <p>Die Mail wurde über eine aktuell nicht aktive Postfachverbindung abgerufen. Suche im damals verwendeten Importordner.</p>
             {% endif %}
             <dl class="details detail-note">
-                <div><dt>IMAP-Nachrichtennummer</dt><dd>{{ receipt.uid }}</dd></div>
-                <div><dt>IMAP-Ordnergeneration</dt><dd>{{ receipt.uid_validity }}</dd></div>
+                <div><dt>IMAP-UID</dt><dd>{{ receipt.uid }}</dd></div>
+                <div><dt>Ordnergeneration</dt><dd>{{ receipt.uid_validity }}</dd></div>
                 {% if receipt.event_id %}<div><dt>BMS-Ereignis</dt><dd>{{ receipt.event_id }} · {{ receipt.event.get_state_display }}</dd></div>{% endif %}
             </dl>
         </section>

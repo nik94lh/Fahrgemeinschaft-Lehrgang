@@ -15,6 +15,7 @@ APPROVAL = (
     "Lehrgangstermin: 10.05.2027 09:45 Uhr – 14.05.2027 15:00 Uhr\n"
     "Schulungsort: SFS Würzburg"
 )
+APPROVAL_WITHOUT_GREETING = APPROVAL.replace("Sehr geehrte Frau Alex Beispiel,", "Teilnehmer: Alex Beispiel")
 FUNCTIONAL = ("funktionspostfach@example.invalid",)
 BOOKING_SUBJECT = "Ihre Lehrgangsanmeldung"
 CONFIRMATION = APPROVAL.replace(
@@ -258,7 +259,7 @@ class ParticipantEmailParserTests(TestCase):
 
                 parsed = parse_eml(message.as_bytes())
 
-                self.assertEqual(parsed.participant_email_candidate, address)
+                self.assertEqual(parsed.participant_email, address)
                 self.assertEqual(replace(parsed, fingerprint=expected.fingerprint, address_note=expected.address_note), expected)
 
     def test_folded_original_to_in_renamed_forward_does_not_use_outer_address(self):
@@ -294,8 +295,8 @@ class ParticipantEmailParserTests(TestCase):
 
         parsed = parse_eml(forwarded.as_bytes())
 
-        self.assertEqual(parsed.participant_email_candidate, address)
-        self.assertIsNone(parsed.participant_email)
+        self.assertEqual(parsed.participant_email, address)
+        self.assertIsNone(parsed.participant_email_candidate)
 
         forwarded.set_content(plain.replace(f"mailto:{address}", "mailto:falsch@example.invalid"))
         mismatch = parse_eml(forwarded.as_bytes())
@@ -399,8 +400,8 @@ class ParticipantEmailParserTests(TestCase):
                 parsed = parse_eml(mail.as_bytes())
 
                 self.assertEqual(parsed.event_type, "approval")
-                self.assertEqual(parsed.participant_email_candidate, address)
-                self.assertIsNone(parsed.participant_email)
+                self.assertEqual(parsed.participant_email, address)
+                self.assertIsNone(parsed.participant_email_candidate)
 
     def test_additional_given_name_preserves_name_particles_and_transliterated_umlaut(self):
         address = "alex.marie.van.der.moeller@example.invalid"
@@ -422,7 +423,7 @@ class ParticipantEmailParserTests(TestCase):
         for local in local_parts:
             with self.subTest(local=local):
                 address = f"{local}@example.invalid"
-                original = booking_message(f'"{address}" <{address}>')
+                original = booking_message(f'"{address}" <{address}>', body=APPROVAL_WITHOUT_GREETING)
 
                 self.assertIsNone(parse_eml(nested_booking_forward(original).as_bytes()).participant_email)
 
@@ -469,7 +470,8 @@ class ParticipantEmailParserTests(TestCase):
         )
         for address in addresses:
             with self.subTest(address=address):
-                self.assertIsNone(parse_eml(booking_message(address).as_bytes()).participant_email)
+                mail = booking_message(address, body=APPROVAL_WITHOUT_GREETING)
+                self.assertIsNone(parse_eml(mail.as_bytes()).participant_email)
 
     def test_full_name_with_transliterated_umlaut_matches_a_single_original_address(self):
         address = "alex.moeller@example.invalid"
@@ -501,10 +503,10 @@ class ParticipantEmailParserTests(TestCase):
     def test_surname_first_hyphen_does_not_expand_address_evidence(self):
         address = "beispiel-alex@example.invalid"
         for original in (
-            booking_message("beispiel-a@example.invalid"),
+            booking_message("beispiel-a@example.invalid", body=APPROVAL_WITHOUT_GREETING),
             booking_message("beispiel-a@example.invalid", body=APPROVAL.replace("Alex Beispiel", "A Beispiel")),
-            booking_message("beispiel-alex97@example.invalid"),
-            booking_message("beispiel-alex-marie@example.invalid", body=APPROVAL.replace("Alex", "Alex Marie")),
+            booking_message("beispiel-alex97@example.invalid", body=APPROVAL_WITHOUT_GREETING),
+            booking_message("beispiel-alex-marie@example.invalid", body=APPROVAL_WITHOUT_GREETING.replace("Alex", "Alex Marie")),
             booking_message(f"{address}, andere@example.invalid"),
             booking_message(address, subject="Teilnahmebestätigung", body=CONFIRMATION),
         ):
@@ -512,19 +514,94 @@ class ParticipantEmailParserTests(TestCase):
                 self.assertIsNone(parse_eml(original.as_bytes()).participant_email)
         self.assertIsNone(parse_eml(booking_message(address).as_bytes(), functional_addresses=(address,)).participant_email)
 
-    def test_personal_confirmation_explains_why_surname_alias_cannot_be_assigned(self):
+    def test_personally_addressed_original_can_link_an_opaque_single_recipient(self):
+        address = "lernplatz97@example.invalid"
+        for subject, statement in (
+            (BOOKING_SUBJECT, "Ihre Teilnahme an folgendem Lehrgangstermin wurde genehmigt:"),
+            ("Ihr Lehrgangstermin wurde bestätigt", "Sie sind für den folgenden Lehrgangstermin angemeldet:"),
+            ("Bestätigung Ihrer Lehrgangsanmeldung", "Sie haben Ihre Teilnahme an folgendem Lehrgangstermin bestätigt:"),
+        ):
+            body = APPROVAL.replace("Ihre Teilnahme an folgendem Lehrgangstermin wurde genehmigt:", statement)
+            original = booking_message(f'"{address}" <{address}>', subject=subject, body=body)
+            for mail in (original, nested_booking_forward(original)):
+                with self.subTest(subject=mail["Subject"]):
+                    parsed = parse_eml(mail.as_bytes())
+                    self.assertEqual(parsed.participant_email, address)
+                    self.assertIsNone(parsed.participant_email_candidate)
+                    self.assertIn("Persönliche Anrede", parsed.address_note)
+
+    def test_personal_template_needs_a_complete_matching_greeting_and_one_original_recipient(self):
+        address = "lernplatz97@example.invalid"
+        for message, excluded in (
+            (booking_message(address, body=APPROVAL + "\nTeilnehmer: Robin Muster\n"), ()),
+            (booking_message(address, body=APPROVAL.replace("Alex Beispiel", "A Beispiel")), ()),
+            (booking_message(address, body=APPROVAL + "\nSehr geehrte Frau Robin Muster,\n"), ()),
+            (booking_message(address, subject="Lehrgangsgenehmigung"), ()),
+            (booking_message(address, subject="Teilnahmebestätigung", body=CONFIRMATION), ()),
+            (booking_message(f"Robin Muster <{address}>"), ()),
+            (booking_message(f"{address}, zweite-adresse@example.invalid"), ()),
+            (booking_message(f'"{address}" <{address}>, {FUNCTIONAL[0]}'), FUNCTIONAL),
+            (booking_message(address), (address,)),
+            (booking_message("postfach@example.invalid"), ()),
+            (booking_message("stelle@example.invalid"), ()),
+            (booking_message("ausbildung-verein@example.invalid"), ()),
+            (booking_message("no-reply@example.invalid"), ()),
+            (booking_message("einsatzleitung@example.invalid"), ()),
+            (booking_message("ausbildungsbuero@example.invalid"), ()),
+            (booking_message("lehrgangsstelle@example.invalid"), ()),
+        ):
+            with self.subTest(subject=message["Subject"], recipient=message["To"]):
+                self.assertIsNone(parse_eml(message.as_bytes(), functional_addresses=excluded).participant_email)
+
+    def test_personal_alias_role_filter_does_not_change_explicit_recipient_proof(self):
+        address = "einsatzleitung@example.invalid"
+        original = booking_message(f"Alex Beispiel <{address}>")
+
+        result = parse_eml(original.as_bytes())
+
+        self.assertEqual(result.participant_email, address)
+        self.assertNotIn("Persönliche Anrede", result.address_note)
+
+    def test_personal_template_requires_agreement_between_plain_and_html_greetings(self):
+        address = "lernplatz97@example.invalid"
+        body = APPROVAL + "\nTeilnehmer: Alex Beispiel\n"
+        conflicting_greeting = body.replace("Sehr geehrte Frau Alex Beispiel,", "Sehr geehrte Frau Robin Muster,")
+        for html_body in (body, conflicting_greeting):
+            direct = booking_message(address, body=body)
+            direct.add_alternative("<div>" + escape(html_body).replace("\n", "<br>") + "</div>", subtype="html")
+            for raw in (direct.as_bytes(), self.multipart_forward(address, address, html_body=html_body)):
+                with self.subTest(greeting_matches=html_body == body):
+                    parsed = parse_eml(raw)
+                    if html_body == body:
+                        self.assertEqual(parsed.participant_email, address)
+                    else:
+                        self.assertIsNone(parsed.participant_email)
+                        self.assertEqual(parsed.participant_email_candidate, address)
+
+    def test_personal_template_requires_same_booking_across_direct_alternatives(self):
+        address = "lernplatz97@example.invalid"
+        direct = booking_message(address)
+        html = "<div>" + escape(APPROVAL.replace("Gruppenführer", "Zugführer")).replace("\n", "<br>") + "</div>"
+        direct.add_alternative(html, subtype="html")
+
+        parsed = parse_eml(direct.as_bytes())
+        self.assertIsNone(parsed.participant_email)
+        self.assertEqual(parsed.participant_email_candidate, address)
+
+    def test_personal_confirmation_without_affirmative_statement_leaves_alias_for_review(self):
         mail = booking_message(
             '"beispiel97@example.invalid" <beispiel97@example.invalid>',
             subject="Bestätigung Ihrer Lehrgangsanmeldung",
             body=APPROVAL.replace(
                 "Ihre Teilnahme an folgendem Lehrgangstermin wurde genehmigt:",
-                "Sie haben Ihre Teilnahme an folgendem Lehrgangstermin bestätigt:",
+                "Informationen zu Ihrem Lehrgangstermin:",
             ),
         )
         parsed = parse_eml(mail.as_bytes())
 
         self.assertEqual(parsed.event_type, "confirmation")
         self.assertIsNone(parsed.participant_email)
+        self.assertEqual(parsed.participant_email_candidate, "beispiel97@example.invalid")
         self.assertIn("vollständigen Teilnehmernamen", parsed.address_note)
 
     @staticmethod
@@ -554,7 +631,7 @@ class ParticipantEmailParserTests(TestCase):
 
     def test_mailbox_display_is_no_evidence_for_another_name_or_confirmation(self):
         for candidate, subject, body in (
-            ("andere.person", BOOKING_SUBJECT, APPROVAL),
+            ("andere.person", BOOKING_SUBJECT, APPROVAL_WITHOUT_GREETING),
             ("alex.beispiel", "Teilnahmebestätigung", CONFIRMATION),
         ):
             with self.subTest(subject=subject):
@@ -596,7 +673,7 @@ class ParticipantEmailParserTests(TestCase):
         self.assertFalse(parse_eml(booking_message(body=body).as_bytes()).is_online)
 
     def test_unlabeled_recipient_requires_evidence_from_original_to(self):
-        message = booking_message("alex@example.invalid")
+        message = booking_message("alex@example.invalid", body=APPROVAL_WITHOUT_GREETING)
         self.assertIsNone(parse_eml(message.as_bytes()).participant_email)
         self.assertIsNone(
             parse_eml(message.as_bytes(), functional_addresses=("nur-ein-name",)).participant_email
@@ -607,8 +684,8 @@ class ParticipantEmailParserTests(TestCase):
 
     def test_original_recipient_is_available_for_manual_review_without_automatic_assignment(self):
         address = "lernplatz97@example.invalid"
-        direct = booking_message(address)
-        forwarded = nested_booking_forward(booking_message(f'"{address}" <{address}>'))
+        direct = booking_message(address, body=APPROVAL_WITHOUT_GREETING)
+        forwarded = nested_booking_forward(booking_message(f'"{address}" <{address}>', body=APPROVAL_WITHOUT_GREETING))
         confirmation = booking_message(address, subject="Teilnahmebestätigung", body=CONFIRMATION)
         for message in (direct, forwarded, confirmation):
             with self.subTest(subject=message["Subject"]):

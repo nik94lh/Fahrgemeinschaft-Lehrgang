@@ -88,7 +88,9 @@ class ParticipantContactTests(WorkspaceTestCase):
         mail_detail = self.client.get(reverse("mail_receipt", args=[receipt.pk]), secure=True)
         self.assertContains(mail_detail, f'href="{review_url}"')
         self.assertContains(mail_detail, OPAQUE_ADDRESS)
-        self.assertContains(mail_detail, "Diese Mail enthält einen Adressvorschlag für die Buchung.")
+        self.assertContains(mail_detail, "Die geprüfte Adresse speicherst du im Teilnehmerprofil.")
+        content = mail_detail.content.decode()
+        self.assertLess(content.index("Adressvorschlag bei der Buchung prüfen"), content.index("Erkannte Angaben beim Abruf"))
 
         profile = self.client.get(self.url, secure=True)
         self.assertEqual(profile.context["form"]["email"].value(), OPAQUE_ADDRESS)
@@ -108,7 +110,21 @@ class ParticipantContactTests(WorkspaceTestCase):
         saved_mail = self.client.get(reverse("mail_receipt", args=[receipt.pk]), secure=True)
         self.assertContains(saved_mail, "Adresse an der Buchung aktuell</strong> · Hinterlegt")
         self.assertContains(saved_mail, "Adressvorschlag aus dem ursprünglichen An-Feld")
-        self.assertNotContains(saved_mail, "Diese Mail enthält einen Adressvorschlag für die Buchung.")
+        self.assertNotContains(saved_mail, "Adressvorschlag bei der Buchung prüfen")
+
+    @override_settings(HTTPS=True)
+    def test_receipt_separates_an_original_suggestion_from_a_different_saved_address(self):
+        receipt = self.make_address_receipt()
+        current = "geprueft@example.invalid"
+        self.person.email = current
+        self.person.save(update_fields=["email"])
+
+        response = self.client.get(reverse("mail_receipt", args=[receipt.pk]), secure=True)
+
+        self.assertContains(response, current)
+        self.assertContains(response, OPAQUE_ADDRESS)
+        self.assertContains(response, "Adressvorschlag aus dem ursprünglichen An-Feld")
+        self.assertNotContains(response, "Adressvorschlag bei der Buchung prüfen")
 
     @override_settings(HTTPS=True)
     def test_conflicting_eligible_mail_candidates_leave_the_profile_form_empty(self):
@@ -143,6 +159,10 @@ class ParticipantContactTests(WorkspaceTestCase):
             sha256="d" * 64, seat=self.seat, state=EmailEvent.State.NEEDS_REVIEW,
             review_reason=EmailEvent.ReviewReason.PARTICIPANT_IDENTITY_UNCLEAR,
         )
+
+        detail = self.client.get(reverse("mail_receipt", args=[receipt.pk]), secure=True)
+        self.assertContains(detail, "Zu dieser Buchung ist ein Klärungsfall offen.")
+        self.assertNotContains(detail, "Adressvorschlag bei der Buchung prüfen")
 
         for parameters in ({}, {"mail": receipt.pk}):
             with self.subTest(parameters=parameters):

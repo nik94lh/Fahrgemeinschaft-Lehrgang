@@ -1,34 +1,37 @@
 {% extends "workspace/base.html" %}
 {% block title %}Personen{% endblock %}
-{% block page_styles %}{% include "workspace/people.css" %}{% endblock %}
+{% block page_styles %}{% include "workspace/listing.css" %}{% include "workspace/people.css" %}{% endblock %}
 {% block content %}
     <div class="page-heading"><h1>Personen</h1></div>
-    <form class="panel filters people-search" method="get">
+    <form class="panel filters listing-filters people-search" method="get" role="search" aria-label="Personen suchen">
         <label>Name oder E-Mail-Adresse<input name="q" type="search" maxlength="100" value="{{ query }}"></label>
-        <button type="submit">Suchen</button>
+        <div class="list-actions">
+            <button type="submit">Suchen</button>
+            {% if query %}<a class="button-link list-clear" href="{% url 'people' %}">Suche zurücksetzen</a>{% endif %}
+        </div>
     </form>
     <section class="panel">
         {% if page_obj %}
             <div class="table-scroll" tabindex="0" role="region" aria-label="Personenliste">
-                <table class="mobile-table">
+                <table class="mobile-table listing-table people-directory" role="table">
                     <thead>
                         <tr>
                             <th scope="col">Name</th><th scope="col">E-Mail-Adresse</th>
                             {% if show_bookings %}<th scope="col">Buchungen</th><th scope="col">Lehrgang</th>{% endif %}
                         </tr>
                     </thead>
-                    <tbody>
+                    <tbody role="rowgroup">
                         {% for person in page_obj %}
-                            <tr>
-                                <td data-label="Name"><strong>{{ person.name }}</strong></td>
-                                <td data-label="E-Mail-Adresse">{{ person.email|default:"Noch nicht hinterlegt" }}</td>
+                            <tr role="row">
+                                <td role="cell" class="person-name" data-label="Name"><strong>{{ person.name }}</strong></td>
+                                <td role="cell" class="person-email" data-label="E-Mail-Adresse">{{ person.email|default:"Noch nicht hinterlegt" }}</td>
                                 {% if show_bookings %}
-                                    <td data-label="Buchungen">{{ person.booking_count }}</td>
-                                    <td data-label="Lehrgang">
+                                    <td role="cell" data-label="Buchungen">{{ person.booking_count }}</td>
+                                    <td role="cell" class="person-course" data-label="Lehrgang">
                                         {% with booking=person.featured_bookings.0 %}
                                             {% if booking %}
                                                 <div class="people-booking">
-                                                    <a href="{% url 'booking_participant' booking.pk %}">{{ booking.session.course.name }}</a>
+                                                    <a class="listing-profile-link" href="{% url 'booking_participant' booking.pk %}">{{ booking.session.course.name }} <span aria-hidden="true">›</span></a>
                                                     <small>{{ booking.session.get_venue_display }} · {% include "workspace/session_period.html" with session=booking.session only %}</small>
                                                     <span class="status-label status-{{ booking.status }}">{{ booking.get_status_display }}</span>
                                                 </div>

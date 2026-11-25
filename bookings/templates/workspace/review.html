@@ -1,9 +1,56 @@
 {% extends "workspace/base.html" %}
 {% block title %}Klärungsfälle{% endblock %}
+{% block page_styles %}
+    .review-filters { grid-template-columns: minmax(0, 1fr) auto; max-width: 42rem; }
+    .review-queue-count { margin-block-end: .65rem; }
+    .review-queue { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 26rem), 1fr)); gap: .9rem; margin: 0; padding: 0; list-style: none; }
+    .review-case { display: flex; flex-direction: column; gap: .65rem; height: 100%; padding: 1.1rem; border-inline-start: .25rem solid #bb852e; }
+    .review-case-meta { font-size: .83rem; color: var(--muted); }
+    .review-case h2 { margin: 0; font-size: 1.15rem; line-height: 1.35; overflow-wrap: anywhere; }
+    .review-case-facts { display: grid; gap: .45rem .8rem; grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); margin: 0; }
+    .review-case-facts dt { font-size: .8rem; color: var(--muted); }
+    .review-case-footer { display: flex; justify-content: space-between; align-items: center; gap: .75rem; margin-block-start: auto; padding-block-start: .4rem; }
+    @media (max-width: 560px) {
+        .review-filters { grid-template-columns: 1fr; }
+        .review-filters button { justify-self: start; width: auto; }
+    }
+{% endblock %}
 {% block content %}
     <div class="page-heading"><h1>Klärungsfälle</h1></div>
-    <section class="panel">
-        {% include "workspace/events.html" with events=page_obj can_review=True show_bookings=workspace_view.bookings only %}
+    <form class="panel filters review-filters" method="get">
+        <label>Grund
+            <select name="grund">
+                <option value="">Alle Gründe</option>
+                {% for key, label in reason_choices %}<option value="{{ key }}"{% if key == reason %} selected{% endif %}>{{ label }}</option>{% endfor %}
+            </select>
+        </label>
+        <button type="submit">Filtern</button>
+    </form>
+    {% if cases %}
+        <p class="quiet review-queue-count">{{ page_obj.paginator.count }} offen</p>
+        <ul class="review-queue" role="list">
+            {% for case in cases %}
+                <li>
+                    <article class="panel review-case" aria-labelledby="review-case-{{ case.event.pk }}">
+                        <p class="review-case-meta">{{ case.event.get_kind_display }} · <time datetime="{{ case.event.imported_at|date:'c' }}">{{ case.event.imported_at|date:"d.m.Y, H:i" }}</time></p>
+                        <h2 id="review-case-{{ case.event.pk }}">{{ case.event.get_review_reason_display }}</h2>
+                        {% if case.participant or case.course or case.school %}
+                            <dl class="review-case-facts">
+                                {% if case.participant %}<div><dt>Teilnehmer laut Mail</dt><dd>{{ case.participant }}</dd></div>{% endif %}
+                                {% if case.course %}<div><dt>Lehrgang</dt><dd>{{ case.course }}</dd></div>{% endif %}
+                                {% if case.school %}<div><dt>Schulungsort</dt><dd>{{ case.school }}</dd></div>{% endif %}
+                            </dl>
+                        {% endif %}
+                        <div class="review-case-footer">
+                            <span class="quiet">Fall {{ case.event.pk }}{% if case.event.seat_id and workspace_view.bookings %} · Buchung {{ case.event.seat_id }}{% endif %}</span>
+                            <a class="button-link" href="{% url 'review_detail' case.event.pk %}{% if detail_querystring %}?{{ detail_querystring }}{% endif %}" aria-label="Fall prüfen, Nummer {{ case.event.pk }}">Fall prüfen</a>
+                        </div>
+                    </article>
+                </li>
+            {% endfor %}
+        </ul>
         {% include "workspace/pagination.html" %}
-    </section>
+    {% else %}
+        <p class="panel quiet">{% if reason %}Keine offenen Fälle mit diesem Grund.{% else %}Keine offenen Klärungsfälle.{% endif %}</p>
+    {% endif %}
 {% endblock %}

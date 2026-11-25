@@ -37,6 +37,6 @@
                 <dd><span class="status-label status-{{ item.status }}">{{ item.get_status_display }}</span></dd>
             </dl>
         {% endif %}
-        <a class="button-link" href="{% url 'ride_detail' item.pk %}" aria-label="Details zum Vorschlag für {{ item.get_school_display }} vom {{ item.travel_date|date:'d.m.Y' }} bis {{ item.return_date|date:'d.m.Y' }}">Details</a>
+        <a class="button-link" href="{% url 'ride_detail' item.pk %}{% if detail_query %}?{{ detail_query }}{% endif %}" aria-label="Details zum Vorschlag für {{ item.get_school_display }} vom {{ item.travel_date|date:'d.m.Y' }} bis {{ item.return_date|date:'d.m.Y' }}">Details</a>
     </footer>
 </article>

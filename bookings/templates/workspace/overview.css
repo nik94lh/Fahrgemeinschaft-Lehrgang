@@ -1,0 +1,44 @@
+.dashboard-stats { gap: .75rem; }
+.dashboard-metric { position: relative; min-width: 0; }
+.dashboard-metric dt { color: var(--ink); font-weight: 650; overflow-wrap: normal; }
+.dashboard-metric dd { color: var(--navy); font-size: clamp(1.95rem, 3.5vw, 2.65rem); line-height: 1.18; font-variant-numeric: tabular-nums; }
+.dashboard-metric-link { color: inherit; text-decoration: none; }
+.dashboard-metric-link::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
+.dashboard-metric-link::before { content: ""; position: absolute; inset: auto 1.05rem 1.05rem auto; width: .45rem; height: .45rem; border-block-start: 2px solid currentColor; border-inline-end: 2px solid currentColor; transform: rotate(45deg); color: var(--muted); }
+.dashboard-metric:has(.dashboard-metric-link:hover) { border-color: #789ac9; }
+.dashboard-metric-link:hover { color: var(--accent); }
+.dashboard-metric:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.dashboard-rides-panel { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); grid-template-areas: "title statuses" "link statuses"; align-items: center; gap: .65rem 1.35rem; }
+.dashboard-rides-panel h2 { grid-area: title; margin: 0; overflow-wrap: anywhere; }
+.dashboard-ride-stats { grid-area: statuses; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .65rem; margin: 0; }
+.dashboard-ride-stats .dashboard-metric { box-shadow: none; }
+.dashboard-ride-stats .dashboard-ready { background: #e0f3e9; border-color: #bfded0; }
+.dashboard-ride-stats .dashboard-standby { background: #e7f0fb; border-color: #c8daef; }
+.dashboard-ride-action { grid-area: link; justify-self: start; color: white; background: var(--accent); border-color: var(--accent); }
+.dashboard-ride-action:hover { color: white; background: var(--accent-strong); }
+.dashboard-course-table thead { background: #eef3f9; }
+.dashboard-course-table th { padding-inline-start: .65rem; color: var(--ink); }
+.dashboard-course-table th:first-child { border-start-start-radius: .45rem; }
+.dashboard-course-table th:last-child { border-start-end-radius: .45rem; }
+.dashboard-course-table td { padding-inline-start: .65rem; }
+.dashboard-course-table td:first-child { font-weight: 650; }
+
+@media (max-width: 680px) {
+    .stats .dashboard-metric { padding: .75rem; }
+    .dashboard-metric dd { color: var(--accent); }
+    .dashboard-metric-link::before { bottom: .9rem; right: .8rem; }
+    .dashboard-rides-panel { grid-template-columns: 1fr; grid-template-areas: "title" "statuses" "link"; gap: .8rem; }
+    .dashboard-ready-suffix { display: none; }
+    .dashboard-ride-action { min-height: 2.75rem; padding-inline: 0; color: var(--accent); background: transparent; border-color: transparent; }
+    .dashboard-ride-action:hover { color: var(--accent-strong); background: transparent; text-decoration: underline; }
+}
+
+@media (max-width: 560px) {
+    .dashboard-course-table { margin-block-start: -.25rem; }
+    .dashboard-course-table tr { padding: .65rem 0; }
+    .dashboard-course-table td { display: block; padding: 0; }
+    .dashboard-course-table td::before { content: none; }
+    .dashboard-course-table td:not(:first-child) { color: var(--muted); font-size: .86rem; }
+    .dashboard-course-table td:first-child a { display: inline-block; margin: .1rem 0 .25rem; text-decoration: none; }
+    .dashboard-course-table td:first-child a:hover { text-decoration: underline; }
+}

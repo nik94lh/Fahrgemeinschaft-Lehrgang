@@ -3,7 +3,7 @@
 import hashlib
 import re
 from collections.abc import Callable, Iterable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import UTC, date, datetime
 from email import policy
 from email.errors import MessageError
@@ -44,6 +44,11 @@ CONFIRMATION_SUBJECT = (
 )
 BOOKING_SUBJECT = "ihre lehrgangsanmeldung"
 APPROVAL_SUBJECT = r"^lehrgangsgenehmigung\b"
+PERSONAL_APPROVAL_BODY = r"^ihre teilnahme an folgendem lehrgangstermin wurde genehmigt:"
+PERSONAL_CONFIRMATION_BODY = (
+    r"^sie (?:sind für den folgenden lehrgangstermin angemeldet"
+    r"|haben ihre teilnahme an folgendem lehrgangstermin bestätigt):"
+)
 
 SUBJECT_PATTERNS = (
     ("automatic_cancellation", r"^automatische stornierung\b"),
@@ -57,7 +62,7 @@ SUBJECT_PATTERNS = (
     ("invitation", r"^einladung\b"),
 )
 BODY_PATTERNS = (
-    ("approval", r"^ihre teilnahme an folgendem lehrgangstermin wurde genehmigt:"),
+    ("approval", PERSONAL_APPROVAL_BODY),
     ("confirmation", r"^die lehrgangsanmeldung (?:des teilnehmers|der teilnehmerin)"
                      r" .+? wurde bestätigt:"),
 )
@@ -222,6 +227,7 @@ class _OriginalMail:
     recipients: tuple[Address, ...] = ()
     source: str = "Ursprüngliches An-Feld"
     conflict: bool = False
+    alternate_text: str | None = None
 
 
 def _has_booking_content(text: str) -> bool:
@@ -317,10 +323,10 @@ def _is_online_course(course_name: str | None, venues: Iterable[str], text: str)
     )
 
 
-def _body_identity(mail: _InlineMail) -> tuple | None:
-    text = _clean_text(mail.text)
-    event_type = _classify(mail.subject, text)
-    participant = _participant_name(text, event_type, mail.subject)
+def _body_identity(subject: str, text: str) -> tuple | None:
+    text = _clean_text(text)
+    event_type = _classify(subject, text)
+    participant = _participant_name(text, event_type, subject)
     course = _unique(_values(text, "Lehrgangsart|Lehrgang"), _course_name)
     starts_at, ends_at = _period(text)
     venues = tuple(_values(text, LOCATION_LABELS))
@@ -370,6 +376,8 @@ def _forward_original(
     html = _sibling_html(message, body)
     if html is None:
         return selected
+    # An unverified alternative may not strengthen the weaker, salutation-based evidence.
+    selected = replace(selected, alternate_text="")
     try:
         alternate = _inline_forward(_body_text(html), remaining_layers)
     except _AmbiguousForward:
@@ -385,7 +393,8 @@ def _forward_original(
         return selected
     same_envelope = primary.sender == alternate.sender and primary.subject.casefold() == alternate.subject.casefold()
     if plain_addresses:
-        plain_identity, html_identity = _body_identity(primary), _body_identity(alternate)
+        plain_identity = _body_identity(primary.subject, primary.text)
+        html_identity = _body_identity(alternate.subject, alternate.text)
         if (
             not same_envelope or plain_addresses != html_addresses
             or (plain_identity and html_identity and plain_identity != html_identity)
@@ -397,6 +406,9 @@ def _forward_original(
         if any(plain_names[email] != html_names[email] for email in plain_names.keys() & html_names.keys()):
             return _OriginalMail(primary.subject, selected.text, conflict=True)
 
+        if len(alternate.recipients) == 1 and plain_identity and plain_identity == html_identity:
+            selected = replace(selected, alternate_text=_clean_text(alternate.text))
+
         names_only_in_html = html_names.keys() - plain_names.keys()
         if names_only_in_html and plain_identity and plain_identity == html_identity:
             # Complete the evidence for the same recipients without discarding any plaintext names.
@@ -407,13 +419,16 @@ def _forward_original(
                 recipient for recipient in alternate.recipients
                 if normalize_contact_email(recipient.addr_spec) in names_only_in_html
             )
-            return _OriginalMail(primary.subject, selected.text, recipients, f"{source} (Klartext und HTML)")
+            return replace(selected, recipients=recipients, source=f"{source} (Klartext und HTML)")
         return selected
 
     if same_envelope and primary.name_only_recipient and len(alternate.recipients) == 1:
         recipient = alternate.recipients[0]
         same_name = _normalized(recipient.display_name).casefold() == primary.name_only_recipient.casefold()
-        if same_name and (identity := _body_identity(primary)) and identity == _body_identity(alternate):
+        if (
+            same_name and (identity := _body_identity(primary.subject, primary.text))
+            and identity == _body_identity(alternate.subject, alternate.text)
+        ):
             return _OriginalMail(primary.subject, selected.text, alternate.recipients, "An-Feld der HTML-Fassung der Originalmail")
     return selected
 
@@ -430,6 +445,7 @@ def _original_text(message: EmailMessage, remaining_layers: int = MAX_FORWARD_LA
     body = message.get_body(preferencelist=("plain", "html"))
     attached = _attached_messages(message)
     cleaned = ""
+    alternate_text = None
     if body is not None:
         text = _body_text(body)
         if original := _inline_forward(text, remaining_layers):
@@ -438,17 +454,23 @@ def _original_text(message: EmailMessage, remaining_layers: int = MAX_FORWARD_LA
             return _forward_original(message, body, original, remaining_layers)
         cleaned = _clean_text(text)
         if (html := _sibling_html(message, body)) is not None:
-            alternate = _inline_forward(_body_text(html), remaining_layers)
+            html_text = _body_text(html)
+            alternate = _inline_forward(html_text, remaining_layers)
             if alternate:
                 if attached:
                     raise _AmbiguousForward("Die Weiterleitung enthält mehrere E-Mails.")
-                plain_booking = _InlineMail(FORWARD_PREFIX.sub("", subject, count=1), cleaned, (), None, None)
-                if _has_booking_content(cleaned) and (
-                    not alternate.sender or not (identity := _body_identity(plain_booking))
-                    or identity != _body_identity(alternate)
+                plain_subject = FORWARD_PREFIX.sub("", subject, count=1)
+                plain_has_booking = _has_booking_content(cleaned)
+                if plain_has_booking and (
+                    not alternate.sender or not (identity := _body_identity(plain_subject, cleaned))
+                    or identity != _body_identity(alternate.subject, alternate.text)
                 ):
                     raise _AmbiguousForward("Die Weiterleitung enthält mehrere zitierte Nachrichten.")
-                return _forward_original(message, html, alternate, remaining_layers)
+                selected = _forward_original(message, html, alternate, remaining_layers)
+                return replace(selected, alternate_text=cleaned) if plain_has_booking else selected
+            alternate_text = ""
+            if (identity := _body_identity(subject, cleaned)) and identity == _body_identity(subject, html_text):
+                alternate_text = _clean_text(html_text)
 
     if attached and (body is None or forwarded or _classify(subject, cleaned) == "unknown"):
         if len(attached) > 1 or _has_booking_content(cleaned):
@@ -466,7 +488,7 @@ def _original_text(message: EmailMessage, remaining_layers: int = MAX_FORWARD_LA
     subject = FORWARD_PREFIX.sub("", subject, count=1)
     if not cleaned.strip():
         raise MailParseError("Die E-Mail enthält keinen lesbaren Inhalt.")
-    return _OriginalMail(subject, cleaned, recipients)
+    return _OriginalMail(subject, cleaned, recipients, alternate_text=alternate_text)
 
 
 def _classify(subject: str, text: str) -> str:
@@ -553,6 +575,25 @@ def _participant_name(text: str, event_type: str, subject: str) -> str | None:
     return _unique(names, _name)
 
 
+def _personal_addressee_matches(subject: str, text: str, event_type: str, participant_name: str) -> bool:
+    if event_type == "approval" and subject.casefold() == BOOKING_SUBJECT:
+        statement = PERSONAL_APPROVAL_BODY
+    elif event_type == "confirmation" and re.match(PERSONAL_CONFIRMATION_SUBJECT, subject, re.IGNORECASE):
+        statement = PERSONAL_CONFIRMATION_BODY
+    else:
+        return False
+    flags = re.IGNORECASE | re.MULTILINE
+    if not re.search(statement + "$", text, flags):
+        return False
+    greeting = _unique(re.findall(GREETING, text, flags), _name)
+    named_participant = _participant_name(text, event_type, subject)
+    return (
+        greeting is not None and all(len(part.strip(".")) > 1 for part in greeting.split())
+        and greeting.casefold() == participant_name.casefold()
+        and named_participant is not None and named_participant.casefold() == participant_name.casefold()
+    )
+
+
 def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> ParsedMail:
     """Parse bounded bytes locally. The result contains structured fields only."""
     if not raw:
@@ -593,9 +634,16 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
                     event_type == "confirmation" and bool(re.match(PERSONAL_CONFIRMATION_SUBJECT, subject, re.IGNORECASE))
                 ),
                 allow_approval_fallback=event_type == "approval" and subject.casefold() == BOOKING_SUBJECT,
+                personally_addressed=_personal_addressee_matches(subject, text, event_type, participant_name) and (
+                    original.alternate_text is None
+                    or _personal_addressee_matches(subject, original.alternate_text, event_type, participant_name)
+                ),
             )
             if selection.email:
-                selection = AddressSelection(email=selection.email, note=f"Quelle: {original.source}.")
+                note = f"Quelle: {original.source}."
+                if selection.note:
+                    note += f" {selection.note}"
+                selection = replace(selection, note=note)
     participant_email = selection.email
     participant_email_ambiguous = selection.ambiguous
     address_note = selection.note

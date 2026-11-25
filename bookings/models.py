@@ -199,6 +199,7 @@ class EmailEvent(models.Model):
 
     class ReviewResolution(models.TextChoices):
         LINKED = "linked", "Einem Lehrgangsplatz zugeordnet"
+        ADDRESS_KEPT = "address_kept", "Gespeicherte Adresse beibehalten"
         REASSIGNED = "reassigned", "Ummeldung in BMS übernommen"
         DUPLICATE = "duplicate", "Doppelter Vorgang"
         INCOMPLETE = "incomplete", "Angaben reichen für die Zuordnung nicht aus"

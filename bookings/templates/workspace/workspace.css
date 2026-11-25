@@ -1,14 +1,9 @@
-.workspace-nav { background: #fff; border-block-end: 1px solid var(--line); box-shadow: 0 2px 8px #162b480d; }
-.workspace-nav div { max-width: 74rem; margin: auto; padding: 0 clamp(1rem, 4vw, 2.25rem); display: flex; flex-wrap: wrap; gap: 0 .3rem; }
-.workspace-nav a { display: block; padding: .76rem .7rem; color: var(--ink); text-decoration: none; border-block-end: 3px solid transparent; font-size: .92rem; font-weight: 560; }
-.workspace-nav a:hover, .workspace-nav a[aria-current] { color: var(--accent); background: #eff5fe; }
-.workspace-nav a[aria-current] { border-color: var(--accent); font-weight: 700; }
-.skip-link { position: absolute; inset: .65rem auto auto 1rem; z-index: 1; transform: translateY(-180%); padding: .45rem .75rem; color: var(--navy); background: white; border-radius: .35rem; }
+.skip-link { position: absolute; inset: .65rem auto auto 1rem; z-index: 30; transform: translateY(-180%); padding: .45rem .75rem; color: var(--navy); background: white; border-radius: .35rem; }
 .skip-link:focus { transform: none; }
 a { color: var(--accent); text-underline-offset: .16em; }
 .page-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-block-end: 1.3rem; }
 .page-heading .intro { margin-block-end: 0; max-width: 52rem; }
-.button-link { display: inline-flex; align-items: center; min-height: 2.6rem; padding: .4rem .85rem; border: 1px solid #8497b0; border-radius: .45rem; background: var(--surface); color: var(--navy); font-weight: 650; text-decoration: none; }
+.button-link { display: inline-flex; align-items: center; min-height: 2.75rem; padding: .4rem .85rem; border: 1px solid #8497b0; border-radius: .45rem; background: var(--surface); color: var(--navy); font-weight: 650; text-decoration: none; }
 .button-link:hover { background: #eaf2ff; }
 .status-strip { display: flex; gap: .2rem 1rem; flex-wrap: wrap; align-items: baseline; padding: .65rem 1rem; margin-block-end: 1.45rem; border: 1px solid #b6d1f2; border-radius: .55rem; background: #dfeeff; }
 .status-strip-warning { border-color: #e0b36a; background: #fff4dd; }
@@ -72,13 +67,11 @@ td { vertical-align: top; }
 @media (max-width: 680px) {
     .stats, .filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .filters button { grid-column: 1 / -1; }
-    .workspace-nav a { padding: .55rem .45rem; font-size: .85rem; }
     .receipt-detail-layout { grid-template-columns: 1fr; }
 }
 
 .secondary-button { margin-block-start: -.45rem; background: white; color: var(--accent); border-color: var(--line); }
 .secondary-button:hover { background: #edf2ff; }
-.workspace-logout button { width: auto; margin: 0; padding: .35rem .65rem; }
 .notice { margin-block-end: 1rem; padding: .75rem 1rem; background: #e8f4ee; border: 1px solid #a7cbb6; border-radius: .5rem; }
 .notice a { color: var(--accent); }
 

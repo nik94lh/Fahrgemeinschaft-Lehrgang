@@ -1,0 +1,10 @@
+<div class="dashboard-metric">
+    <dt>
+        {% if metric.url %}
+            <a class="dashboard-metric-link" href="{{ metric.url }}">{{ metric.label }}</a>
+        {% else %}
+            {{ metric.label }}
+        {% endif %}
+    </dt>
+    <dd>{{ metric.value }}</dd>
+</div>
