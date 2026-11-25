@@ -8,6 +8,8 @@ from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
 
 from bookings.contact_replay import ContactReplayResult, check_contact_replay
+from bookings.models import EmailEvent
+from bookings.services import ACTIVATION_EVENTS, ACTIVE_STATUSES
 
 from .imap_sync import (
     MAX_UID,
@@ -35,10 +37,7 @@ def _active_jobs():
     return ContactReplayJob.objects.filter(status__in=ACTIVE_STATES).order_by("pk")
 
 
-def queue_contact_replay() -> ContactReplayJob:
-    """Pin the current source and the already imported UID range."""
-    if active := _active_jobs().first():
-        return active
+def _replay_cursor() -> MailboxCursor:
     try:
         config = load_configuration()
     except ImapSyncError:
@@ -48,19 +47,54 @@ def queue_contact_replay() -> ContactReplayJob:
     cursor = MailboxCursor.objects.filter(source_id=config.source_id).first()
     if cursor is None or not (1 <= cursor.uid_validity <= MAX_UID and 1 <= cursor.last_uid <= MAX_UID):
         raise ContactReplayError("Warte zuerst auf einen erfolgreichen Import aus diesem Postfach.")
+    return cursor
 
+
+def _create_replay_job(cursor: MailboxCursor, *, last_uid: int, upper_uid: int) -> ContactReplayJob:
     try:
         with transaction.atomic():
             return ContactReplayJob.objects.create(
-                source_id=config.source_id,
+                source_id=cursor.source_id,
                 uid_validity=cursor.uid_validity,
-                upper_uid=cursor.last_uid,
+                last_uid=last_uid,
+                upper_uid=upper_uid,
             )
     except IntegrityError:
         # A concurrent request may have created the single active job first.
         if active := _active_jobs().first():
             return active
         raise ContactReplayError("Der Kontaktabgleich konnte gerade nicht vorgemerkt werden.") from None
+
+
+def queue_contact_replay() -> ContactReplayJob:
+    """Pin the current source and the already imported UID range."""
+    if active := _active_jobs().first():
+        return active
+    cursor = _replay_cursor()
+    return _create_replay_job(cursor, last_uid=0, upper_uid=cursor.last_uid)
+
+
+def queue_receipt_contact_replay(receipt: MailReceipt) -> ContactReplayJob:
+    """Queue the exact UID of a recorded mail in the active import folder."""
+    event = receipt.event
+    if not event or event.state != EmailEvent.State.APPLIED or event.kind not in ACTIVATION_EVENTS:
+        raise ContactReplayError("Für diesen Eingang fehlt eine angewendete Buchungszuordnung.")
+    seat = event.seat
+    if not seat or seat.status not in ACTIVE_STATUSES or not seat.participant_id or seat.participant.email:
+        raise ContactReplayError("Zu diesem Eingang gibt es keine aktive Buchung mit fehlender Adresse.")
+    cursor = _replay_cursor()
+    if (
+        receipt.source_id != cursor.source_id or receipt.uid_validity != cursor.uid_validity
+        or not 1 <= receipt.uid <= cursor.last_uid
+    ):
+        raise ContactReplayError("Dieser Eingang gehört nicht zum aktuellen Importordner oder zur aktuellen Ordnergeneration.")
+    job = _active_jobs().first() or _create_replay_job(cursor, last_uid=receipt.uid - 1, upper_uid=receipt.uid)
+    if (
+        job.source_id == receipt.source_id and job.uid_validity == receipt.uid_validity
+        and job.last_uid < receipt.uid <= job.upper_uid
+    ):
+        return job
+    raise ContactReplayError("Ein anderer Adressabgleich läuft. Versuche es nach dessen Abschluss erneut.")
 
 
 @sensitive_variables()
@@ -108,13 +142,12 @@ def _scan_step(job: ContactReplayJob) -> tuple[int, Counter[str]]:
         if raw is None:
             outcome = ContactReplayResult.UNREADABLE
         else:
-            outcome, candidate = check_contact_replay(raw, imported_event_id=receipt.event_id if receipt else None)
+            outcome, candidate, detail = check_contact_replay(raw, imported_event_id=receipt.event_id if receipt else None)
             if receipt:
                 if candidate:
                     receipt.fields["participant_email_candidate"] = candidate
                 else:
                     receipt.fields.pop("participant_email_candidate", None)
-            detail = outcome.value
         outcomes[outcome.name] += 1
         if receipt:
             receipt.address_checked_at = checked_at

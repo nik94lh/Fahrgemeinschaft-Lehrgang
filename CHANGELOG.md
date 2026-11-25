@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.10.2
+
+- Im Mail-Eingang lässt sich die Originalnachricht zu einer Buchung mit fehlender Adresse einzeln erneut prüfen. BMS zeigt den aktuellen Adressvorschlag oder den Grund für die fehlende Zuordnung.
+- Geschützte Leerzeichen in verschachtelten HTML-Weiterleitungen werden als Teil der Kopfzeilenformatierung erkannt.
+
 ## 0.10.1
 
 - BMS zeigt eine einzelne Originaladresse ohne Namensbezug im Mail-Eingang zur Bestätigung. Bei einer passenden Buchung lässt sich die Adresse im Teilnehmerprofil speichern.

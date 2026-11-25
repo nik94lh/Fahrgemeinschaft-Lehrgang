@@ -4,13 +4,14 @@ from email.parser import BytesParser
 from dataclasses import replace
 from unittest.mock import patch
 
-from django.test import TestCase, override_settings
+from django.test import Client, TestCase, override_settings
 from django.urls import reverse
+from django.utils import timezone
 
 from bookings.models import BookingStatus, CourseSeat, EmailEvent
 from bookings.services import _reconcile, ingest, set_participant_email
 from mailimport.imap_sync import ImapConfig, sync_mailbox
-from mailimport.models import MailReceipt, MailboxCursor
+from mailimport.models import ContactReplayJob, MailReceipt, MailboxCursor
 from mailimport.parser import MAX_EML_BYTES, parse_eml
 from tests.test_imap_sync import body_result, mock_mailbox
 from tests.test_participant_email_parser import booking_message, nested_booking_forward
@@ -166,6 +167,91 @@ class MailReceiptTests(TestCase):
         self.assertContains(response, "Erkannte Angaben beim Abruf")
         self.assertContains(response, "Nicht erkannt")
         self.assertContains(response, "Adresse an der Buchung aktuell</strong> · Hinterlegt")
+
+    @override_settings(HTTPS=True)
+    def test_contact_recheck_post_returns_to_receipt_and_shows_active_check_only(self):
+        self.sync({1: booking_mail(), 2: booking_mail(name="Pat Musterfall")})
+        receipt = MailReceipt.objects.get(uid=2)
+        detail = reverse("mail_receipt", args=[receipt.pk])
+        action = f"{detail}adresse-pruefen/"
+        client = Client(enforce_csrf_checks=True)
+
+        with (
+            patch("mailimport.receipt_views.load_configuration", return_value=self.config),
+            patch("mailimport.contact_replay.load_configuration", return_value=self.config),
+        ):
+            original = client.get(detail, secure=True)
+            self.assertContains(original, f'action="{action}"')
+            self.assertContains(original, "Adresse erneut prüfen")
+            self.assertContains(original, receipt.fields["address_note"])
+            self.assertEqual(client.get(action, secure=True).status_code, 405)
+            self.assertEqual(client.post(action, secure=True).status_code, 403)
+            response = client.post(
+                action, {"csrfmiddlewaretoken": client.cookies["csrftoken"].value},
+                secure=True, HTTP_REFERER=f"https://testserver{detail}",
+            )
+            self.assertRedirects(response, detail, fetch_redirect_response=False)
+
+            job = ContactReplayJob.objects.get()
+            self.assertEqual((job.last_uid, job.upper_uid), (receipt.uid - 1, receipt.uid))
+            self.assertContains(client.get(detail, secure=True), "Adressprüfung vorgemerkt")
+            job.status = ContactReplayJob.Status.COMPLETED
+            job.save(update_fields=["status"])
+            receipt.address_checked_at = timezone.now()
+            receipt.address_check_detail = "Ergebnis der synthetischen Adressprüfung"
+            receipt.save(update_fields=["address_checked_at", "address_check_detail"])
+            refreshed = client.get(detail, secure=True, HTTP_X_BMS_LIVE="1")
+            self.assertContains(refreshed, receipt.address_check_detail)
+            self.assertNotContains(refreshed, "Adressprüfung vorgemerkt")
+            self.assertNotContains(refreshed, receipt.fields["address_note"])
+
+    @override_settings(HTTPS=True)
+    def test_contact_recheck_rejects_receipt_from_another_mailbox(self):
+        self.sync({1: booking_mail()})
+        receipt = MailReceipt.objects.get()
+        detail = reverse("mail_receipt", args=[receipt.pk])
+        action = reverse("mail_receipt_recheck", args=[receipt.pk])
+        other_mailbox = replace(self.config, mailbox="Old")
+        MailboxCursor.objects.create(source_id=other_mailbox.source_id, uid_validity=11, last_uid=1)
+        with (
+            patch("mailimport.receipt_views.load_configuration", return_value=other_mailbox),
+            patch("mailimport.contact_replay.load_configuration", return_value=other_mailbox),
+        ):
+            self.assertNotContains(self.client.get(detail, secure=True), "Adresse erneut prüfen")
+            response = self.client.post(action, secure=True)
+            self.assertRedirects(response, detail, fetch_redirect_response=False)
+            self.assertContains(self.client.get(detail, secure=True), "aktuellen Importordner")
+            self.assertNotContains(self.client.get(detail, secure=True), "aktuellen Importordner")
+        self.assertFalse(ContactReplayJob.objects.exists())
+
+    @override_settings(HTTPS=True)
+    def test_receipt_reports_targeted_failure_until_a_new_result_exists(self):
+        self.sync({1: booking_mail(), 2: booking_mail(name="Pat Musterfall")})
+        receipt = MailReceipt.objects.get(uid=2)
+        detail = reverse("mail_receipt", args=[receipt.pk])
+        failure = ContactReplayJob.objects.create(
+            source_id=receipt.source_id, uid_validity=receipt.uid_validity,
+            last_uid=1, upper_uid=2, status=ContactReplayJob.Status.FAILED,
+            error_message="Der synthetische Abruf wurde unterbrochen.",
+        )
+        with patch("mailimport.receipt_views.load_configuration", return_value=self.config):
+            failed = self.client.get(detail, secure=True, HTTP_X_BMS_LIVE="1")
+            self.assertContains(failed, failure.error_message)
+            self.assertContains(failed, "Adresse erneut prüfen")
+
+            receipt.address_checked_at = timezone.now()
+            receipt.address_check_detail = "Ein neuer Adresscheck liegt vor."
+            receipt.save(update_fields=["address_checked_at", "address_check_detail"])
+            refreshed = self.client.get(detail, secure=True, HTTP_X_BMS_LIVE="1")
+            self.assertContains(refreshed, receipt.address_check_detail)
+            self.assertNotContains(refreshed, failure.error_message)
+
+    @override_settings(HTTPS=False)
+    def test_contact_recheck_requires_https_configuration(self):
+        self.sync({1: booking_mail()})
+        action = reverse("mail_receipt_recheck", args=[MailReceipt.objects.get().pk])
+        self.assertEqual(self.client.post(action, secure=True).status_code, 404)
+        self.assertFalse(ContactReplayJob.objects.exists())
 
     @override_settings(HTTPS=True)
     def test_receipt_links_review_to_detected_fields_and_specific_disagreement(self):

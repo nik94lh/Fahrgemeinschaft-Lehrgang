@@ -53,14 +53,20 @@ def contact_replay_outcome(raw: bytes, *, imported_event_id: int | None = None) 
 
 
 @sensitive_variables()
-def check_contact_replay(raw: bytes, *, imported_event_id: int | None = None) -> tuple[ContactReplayResult, str | None]:
+def check_contact_replay(
+    raw: bytes, *, imported_event_id: int | None = None,
+) -> tuple[ContactReplayResult, str | None, str]:
     """Read the EML in memory and return the reason for the update or skip."""
     try:
         mail = parse_eml(raw, functional_addresses=get_functional_addresses())
-    except MailParseError:
-        return ContactReplayResult.UNREADABLE, None
+    except MailParseError as error:
+        return ContactReplayResult.UNREADABLE, None, str(error)
     outcome = fill_existing_contact(mail, imported_event_id=imported_event_id)
-    return outcome, mail.participant_email_candidate if outcome == ContactReplayResult.ADDRESS_REVIEW else None
+    candidate = mail.participant_email_candidate if outcome == ContactReplayResult.ADDRESS_REVIEW else None
+    detail = outcome.value
+    if mail.address_note and outcome in (ContactReplayResult.NO_ADDRESS, ContactReplayResult.AMBIGUOUS_ADDRESS):
+        detail = mail.address_note
+    return outcome, candidate, detail
 
 
 def _history_matches(event, seat) -> bool:

@@ -77,6 +77,7 @@ FORWARD_HEADER = re.compile(
 )
 FORWARD_DATE_LINE = r"[ \t]*(?:gesendet|sent|datum|date) *: *[^\n]+\n"
 FORWARD_TO_LINE = r"[ \t]*(?:an|to) *: *[^\n]*\n"
+NONBREAKING_SPACES = str.maketrans("\u00a0\u202f", "  ")
 INLINE_FORWARD_START = re.compile(
     r"^[ \t]*-{2,}[ \t]*(?:weitergeleitete nachricht|ursprüngliche nachricht|forwarded message|original message)"
     r"[ \t]*-{2,}[ \t]*$"
@@ -216,7 +217,9 @@ class _OriginalMail:
 
 
 def _inline_forward(text: str) -> _InlineMail | None:
-    unfolded = "\n".join(re.sub(r"^\s*(?:>\s*)+", "", line) for line in text.splitlines())
+    unfolded = "\n".join(re.sub(r"^\s*(?:>\s*)+", "", line) for line in text.splitlines()).translate(
+        NONBREAKING_SPACES,
+    )
     start = INLINE_FORWARD_START.search(unfolded)
     if start is None:
         return None

@@ -18,6 +18,17 @@
             <h3>Letzter Adressabgleich</h3>
             <p>{{ receipt.address_checked_at|date:"d.m.Y, H:i" }} Uhr · {{ receipt.address_check_detail }}</p>
         {% endif %}
+        {% if recheck_error %}<p class="errorlist detail-note" role="alert">{{ recheck_error }}</p>{% endif %}
+        {% if recheck_job and recheck_job.status != 'failed' %}
+            <p class="detail-note" role="status">{% if recheck_job.status == 'queued' %}Adressprüfung vorgemerkt.{% else %}Adressprüfung läuft.{% endif %}</p>
+            {% if recheck_job.error_message %}<p class="note">{{ recheck_job.error_message }}</p>{% endif %}
+        {% elif can_recheck %}
+            {% if recheck_job.error_message %}<p class="errorlist detail-note" role="alert">{{ recheck_job.error_message }}</p>{% endif %}
+            <form class="detail-note" method="post" action="{% url 'mail_receipt_recheck' receipt.pk %}">
+                {% csrf_token %}
+                <button type="submit">Adresse erneut prüfen</button>
+            </form>
+        {% endif %}
     </section>
 
     <div class="receipt-detail-layout">
@@ -44,7 +55,7 @@
                     {% if fields.confirmation_deadline %}<div><dt>Bestätigungsfrist</dt><dd>{{ fields.confirmation_deadline|date:"d.m.Y" }}</dd></div>{% endif %}
                     {% if fields.cancellation_date %}<div><dt>Stornierungsdatum</dt><dd>{{ fields.cancellation_date|date:"d.m.Y" }}</dd></div>{% endif %}
                 </dl>
-                {% if fields.address_note %}<p class="note detail-note">{{ fields.address_note }}</p>{% endif %}
+                {% if fields.address_note and not receipt.address_checked_at %}<p class="note detail-note">{{ fields.address_note }}</p>{% endif %}
                 {% if fields.participant_email_candidate and not fields.participant_email and receipt.event.state == 'applied' and receipt.event.seat.participant_id and not has_current_address %}
                     <p class="detail-note"><a href="{% url 'booking_participant' receipt.event.seat_id %}?mail={{ receipt.pk }}">Adressvorschlag bei der Buchung prüfen</a></p>
                 {% endif %}

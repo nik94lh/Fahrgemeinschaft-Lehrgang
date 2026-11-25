@@ -188,6 +188,28 @@ class ParticipantEmailParserTests(TestCase):
             ).participant_email
         )
 
+    def test_html_nested_forward_keeps_original_recipient_with_nonbreaking_header_spaces(self):
+        address = "lernplatz97@example.invalid"
+        original = booking_message(f'"{address}" <{address}>')
+        for space in ("\u00a0", "\u202f"):
+            with self.subTest(space=space):
+                mail = nested_booking_forward(original)
+                marker = f"Von: {original['From']}\n"
+                wrapper, _, body = mail.get_content().partition(marker)
+                inner_lines = [
+                    space + line.replace(": ", space + ": ", 1)
+                    if line.startswith(("Von:", "Datum:", "An:", "Cc:", "Betreff:")) else line
+                    for line in (marker + body).splitlines()
+                ]
+                html = "<div>" + escape(wrapper + "\n".join(inner_lines)).replace("\n", "<br>") + "</div>"
+                mail.set_content(html, subtype="html")
+
+                parsed = parse_eml(mail.as_bytes())
+
+                self.assertEqual(parsed.event_type, "approval")
+                self.assertEqual(parsed.participant_email_candidate, address)
+                self.assertIsNone(parsed.participant_email)
+
     def test_additional_given_name_preserves_name_particles_and_transliterated_umlaut(self):
         address = "alex.marie.van.der.moeller@example.invalid"
         original = booking_message(address, body=APPROVAL.replace("Alex Beispiel", "Alex van der Möller"))

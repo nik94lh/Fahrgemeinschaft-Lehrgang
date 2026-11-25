@@ -40,7 +40,7 @@ class RequestedContactReplayTests(TestCase):
         cls.source_id = mailbox_source_id(cls.mailbox.host, cls.mailbox.port, cls.mailbox.username, cls.mailbox.mailbox)
         cls.cursor = MailboxCursor.objects.create(source_id=cls.source_id, uid_validity=42, last_uid=90)
 
-    def replay_from_mailbox(self, raw):
+    def replay_from_mailbox(self, raw, *, receipt_id=None):
         config = ImapConfig(self.mailbox.host, self.mailbox.port, self.mailbox.username, "synthetisch")
         client = mock_mailbox(uid_validity=42, uid_next=91)
         if raw is None:
@@ -53,11 +53,20 @@ class RequestedContactReplayTests(TestCase):
             ]
         with (
             patch("mailimport.contact_replay.load_configuration", return_value=config),
+            patch("mailimport.receipt_views.load_configuration", return_value=config),
             patch("mailimport.imap_sync._open_mailbox", return_value=nullcontext(client)),
         ):
-            response = self.client.post(reverse("mailbox"), {"action": "start-contact-replay"}, secure=True)
-            self.assertRedirects(response, reverse("mailbox"), fetch_redirect_response=False)
-            return process_contact_replay()
+            if receipt_id is None:
+                response = self.client.post(reverse("mailbox"), {"action": "start-contact-replay"}, secure=True)
+                self.assertRedirects(response, reverse("mailbox"), fetch_redirect_response=False)
+            else:
+                response = self.client.post(reverse("mail_receipt_recheck", args=[receipt_id]), secure=True)
+                self.assertRedirects(response, reverse("mail_receipt", args=[receipt_id]), fetch_redirect_response=False)
+            job = process_contact_replay()
+            if receipt_id is not None:
+                client.uid.assert_any_call("SEARCH", None, "UID", "43:43")
+                self.assertEqual((job.upper_uid, job.last_uid), (43, 43))
+            return job
 
     @override_settings(HTTPS=True, ALLOWED_HOSTS=["bms.planspielplatte.de"])
     def test_existing_enabled_ffp_instance_enqueues_one_bounded_job(self):
@@ -139,7 +148,7 @@ class RequestedContactReplayTests(TestCase):
         receipt = MailReceipt(source_id=self.source_id, uid_validity=42, uid=43)
         event = _reconcile(replace(parse_eml(raw), participant_email_candidate=None), occurred_at=None, receipt=receipt)
 
-        job = self.replay_from_mailbox(raw)
+        job = self.replay_from_mailbox(raw, receipt_id=receipt.pk)
 
         self.assertEqual(job.outcome_counts, {"ADDRESS_REVIEW": 1})
         receipt.refresh_from_db()

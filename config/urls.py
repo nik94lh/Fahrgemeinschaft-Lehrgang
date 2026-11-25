@@ -12,7 +12,7 @@ from bookings.participant_views import booking_participant
 from bookings.review_actions import review_detail
 from bookings.rides import ride_detail, rides, rides_sync
 from mailimport.mailbox_views import mailbox_view
-from mailimport.receipt_views import mail_receipt, mail_receipts
+from mailimport.receipt_views import mail_receipt, mail_receipt_recheck, mail_receipts
 from mailimport.views import manual_import, preview, sample_eml
 
 
@@ -47,5 +47,6 @@ urlpatterns = [
     path("postfach/", mailbox_view, name="mailbox"),
     path("mail-eingang/", mail_receipts, name="mail_receipts"),
     path("mail-eingang/<int:receipt_id>/", mail_receipt, name="mail_receipt"),
+    path("mail-eingang/<int:receipt_id>/adresse-pruefen/", mail_receipt_recheck, name="mail_receipt_recheck"),
     path("health/", health, name="health"),
 ]

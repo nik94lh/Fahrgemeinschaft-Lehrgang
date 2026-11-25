@@ -42,7 +42,7 @@ Stimmen eine nicht leere normalisierte E-Mail-Adresse und der Name überein, kan
 
 ## Fehlende Teilnehmeradressen nachtragen
 
-Eine einzelne Originaladresse ohne Namensbezug erscheint im **Mail-Eingang** zur Prüfung. Über die verknüpfte Buchung lässt sie sich nach Prüfung speichern. Bei einer weiteren Mail kann BMS dieselbe Originaladresse zusammen mit demselben Teilnehmernamen einem bestehenden Profil zuordnen. Der Adressabgleich kann auch aus früher importierten Mails solche Vorschläge ermitteln.
+Eine einzelne Originaladresse ohne Namensbezug erscheint im **Mail-Eingang** zur Prüfung. Über die verknüpfte Buchung lässt sie sich nach Prüfung speichern. Bei einer weiteren Mail kann BMS dieselbe Originaladresse zusammen mit demselben Teilnehmernamen einem bestehenden Profil zuordnen. Über **Adresse erneut prüfen** liest BMS gezielt die Originalnachricht des geöffneten Eingangs. Das Ergebnis erscheint unter **Letzter Adressabgleich**.
 
 Unter **Postfach → Einmaliger Adressabgleich** kannst du mit **Adressabgleich starten** einen Auftrag vormerken. Auf bms.planspielplatte.de merkt das Update 0.7.1 den angeforderten Auftrag einmalig vor, wenn das Importpostfach aktiv ist und bereits ein regulärer Importfortschritt vorliegt. Der Auftrag liest die dort noch verfügbaren Nachrichten per IMAP bis zum gespeicherten Stand des regulären Abrufs. Der reguläre Import verarbeitet neuere Nachrichten wie gewohnt. Der Nachtrag läuft nur auf ausdrücklichen Auftrag und liest die Historie nicht bei jedem Abruf erneut.
 
