@@ -1,0 +1,20 @@
+{% extends "workspace/base.html" %}
+{% block title %}Testfragebogen öffnen{% endblock %}
+{% block live_region %}{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'ride_simulation' %}">‹ Zur Simulation</a></p>
+    <div class="page-heading"><h1>Testfragebogen öffnen</h1></div>
+    {% if unavailable %}
+        <p class="panel">Dieser Testlink ist ungültig, abgelaufen oder wurde bereits beantwortet.</p>
+    {% else %}
+        <section class="panel" aria-label="Simulation">
+            <form id="simulation-open-form" method="post" action="{% url 'ride_simulation_open' %}">
+                {% csrf_token %}
+                <p><label for="simulation-token">Testcode</label><input id="simulation-token" name="token" type="password" maxlength="43" autocomplete="off" required aria-describedby="simulation-token-help"></p>
+                <p id="simulation-token-help" class="quiet">Öffne den Link aus der Einladungsvorschau oder gib dessen Code nach dem # ein.</p>
+                <button type="submit">Fragebogen öffnen</button>
+            </form>
+        </section>
+        <script src="{% url 'ride_simulation_script' %}?v={{ bms_version }}" defer></script>
+    {% endif %}
+{% endblock %}

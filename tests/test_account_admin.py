@@ -19,7 +19,8 @@ class AccountAdministrationTests(TestCase):
         rights = {
             f"access_{section}": "none"
             for section in (
-                "overview", "bookings", "calendar", "rides", "brigades", "review", "preview", "mailbox", "mail_receipts",
+                "overview", "bookings", "people", "calendar", "rides", "brigades", "review", "preview", "mailbox",
+                "mail_receipts",
             )
         }
         return rights | {f"access_{section}": value for section, value in overrides.items()}
@@ -87,7 +88,7 @@ class AccountAdministrationTests(TestCase):
     def test_admin_creates_account_with_only_selected_workspace_rights(self):
         self.client.force_login(self.admin)
 
-        response = self.client.post("/benutzer/neu/", self.rights(bookings="edit", calendar="view") | {
+        response = self.client.post("/benutzer/neu/", self.rights(bookings="edit", people="view", calendar="view") | {
             "username": "test-new-user", "password1": self.new_password, "password2": self.new_password,
             "is_superuser": "on", "is_staff": "on",
         })
@@ -100,7 +101,7 @@ class AccountAdministrationTests(TestCase):
         self.assertNotEqual(created.password, self.new_password)
         self.assertTrue(created.check_password(self.new_password))
         self.assertSetEqual(set(created.user_permissions.values_list("codename", flat=True)), {
-            "view_bookings", "edit_bookings", "view_calendar",
+            "view_bookings", "edit_bookings", "view_people", "view_calendar",
         })
 
     def test_creation_form_renders_linked_username_help_and_labels_each_tab(self):
@@ -120,6 +121,20 @@ class AccountAdministrationTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.member.refresh_from_db()
         self.assertTrue(self.member.is_active)
+        self.assertFalse(self.member.user_permissions.exists())
+
+    def test_people_right_only_offers_viewing_and_rejects_edit_grants(self):
+        self.client.force_login(self.admin)
+        edit_url = f"/benutzer/{self.member.pk}/"
+
+        form = self.client.get(edit_url).context["form"]
+        self.assertEqual(list(form.fields["access_people"].choices), [("none", "Kein Zugriff"), ("view", "Ansehen")])
+        self.assertFalse(Permission.objects.filter(content_type__app_label="accounts", codename="edit_people").exists())
+
+        response = self.client.post(edit_url, self.rights(people="edit") | {"is_active": "on"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("access_people", response.context["form"].errors)
         self.assertFalse(self.member.user_permissions.exists())
 
     def test_edit_form_displays_and_replaces_direct_workspace_rights(self):

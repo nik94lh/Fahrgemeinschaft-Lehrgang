@@ -61,7 +61,21 @@ class CalendarTests(WorkspaceTestCase):
         self.assertContains(invalid_response, "Lehrgangskalender")
         self.assertEqual(invalid_response.context["month_id"], default_response.context["month_id"])
 
-    def test_month_rows_use_local_day_columns_and_clip_overlapping_courses(self):
+    def test_school_filter_without_courses_still_renders_every_day_in_month_grid(self):
+        response = self.client.get("/kalender/", {"month": "2031-05", "school": School.GERETSRIED})
+
+        self.assertContains(response, "Keine Lehrgänge in diesem Zeitraum gefunden.")
+        self.assertNotContains(response, "Musterlehrgang Regensburg")
+        self.assertNotContains(response, "Übergreifender Musterlehrgang")
+        for day in range(1, 32):
+            self.assertContains(response, f'<time datetime="2031-05-{day:02d}"', count=1)
+        weeks = response.context["month_weeks"]
+        self.assertEqual([len(week) for week in weeks], [7] * 5)
+        self.assertEqual(weeks[0][0]["date"], date(2031, 4, 28))
+        self.assertEqual(weeks[-1][-1]["date"], date(2031, 6, 1))
+        self.assertContains(response, '?month=2031-06&amp;school=geretsried')
+
+    def test_month_grid_uses_berlin_days_and_clips_overlapping_courses(self):
         self.add_session(
             "Abschluss um Mitternacht", School.WUERZBURG,
             datetime(2031, 5, 13, 18, tzinfo=UTC), datetime(2031, 5, 13, 22, tzinfo=UTC),
@@ -74,25 +88,20 @@ class CalendarTests(WorkspaceTestCase):
         response = self.client.get("/kalender/", {"month": "2031-05"})
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["day_count"], 31)
-        self.assertEqual(response.context["ticks"][0]["date"], date(2031, 5, 1))
-        self.assertEqual(response.context["ticks"][-1]["date"], date(2031, 5, 31))
-
-        groups = response.context["school_groups"]
-        self.assertEqual([group["school"] for group in groups], [School.WUERZBURG, School.REGENSBURG])
-        rows = {row["session"].course.name: row for row in groups[0]["rows"]}
-
-        overlapping = rows["Übergreifender Musterlehrgang"]
-        self.assertEqual((overlapping["start_column"], overlapping["end_column"]), (1, 3))
-        self.assertTrue(overlapping["starts_before"])
-        self.assertFalse(overlapping["ends_after"])
-
-        midnight = rows["Abschluss um Mitternacht"]
-        self.assertEqual((midnight["start_column"], midnight["end_column"]), (13, 14))
-
-        month_end = rows["Monatswechsel am Ende"]
-        self.assertEqual((month_end["start_column"], month_end["end_column"]), (30, 32))
-        self.assertTrue(month_end["ends_after"])
+        days_by_course = {}
+        for week in response.context["month_weeks"]:
+            for day in week:
+                for session in day["sessions"]:
+                    days_by_course.setdefault(session.course.name, []).append(day["date"])
+        self.assertEqual(days_by_course, {
+            "Übergreifender Musterlehrgang": [date(2031, 5, 1), date(2031, 5, 2)],
+            "Musterlehrgang Regensburg": [date(2031, 5, 12)],
+            "Abschluss um Mitternacht": [date(2031, 5, 13)],
+            "Monatswechsel am Ende": [date(2031, 5, 30), date(2031, 5, 31)],
+        })
+        self.assertContains(response, "Terminliste mit Uhrzeiten")
+        session = CourseSession.objects.get(course__name="Musterlehrgang Regensburg")
+        self.assertContains(response, f'href="/kalender/{session.pk}/?month=2031-05"', count=2)
 
     def test_week_shows_an_iso_week_and_retains_school_in_zoom_links(self):
         response = self.client.get("/kalender/", {
@@ -212,7 +221,7 @@ class CalendarTests(WorkspaceTestCase):
         self.assertContains(response, 'inputmode="numeric"')
         self.assertNotContains(response, 'type="month"')
         weekday = format_date(date(2031, 5, 1), "D")
-        self.assertContains(response, f'<span class="calendar-weekday">{weekday}</span>')
+        self.assertContains(response, f'<abbr title="Donnerstag">{weekday}</abbr>')
         self.assertContains(response, "Musterlehrgang Regensburg")
         self.assertNotContains(response, "Übergreifender Musterlehrgang")
         self.assertEqual(response.context["current_query"], "month=2031-05&school=regensburg")

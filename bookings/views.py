@@ -1,4 +1,6 @@
 """Server-rendered views for the BMS operations workspace."""
+from datetime import timedelta
+
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.shortcuts import render
@@ -6,11 +8,14 @@ from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_safe
 
+from accounts.access import can_view
 from mailimport.participant_settings import get_functional_addresses
 
 from .booking_state import booking_missing_fields
 from .booking_status import booking_status_cards, booking_status_prefetches
-from .models import BookingStatus, CourseSeat, CourseSession, EmailEvent, School
+from .models import BookingStatus, CourseSeat, CourseSession, EmailEvent, RideCase, School
+from .ride_settings import get_ride_lead_days
+from .rides_matching import BERLIN
 
 
 def _seats():
@@ -22,6 +27,7 @@ def _seats():
 @never_cache
 @require_safe
 def overview(request):
+    now = timezone.now()
     seats = CourseSeat.objects.aggregate(
         total=Count("pk"),
         confirmed=Count("pk", filter=Q(status=BookingStatus.CONFIRMED)),
@@ -29,13 +35,25 @@ def overview(request):
             BookingStatus.APPROVED, BookingStatus.AWAITING_CONFIRMATION,
         ])),
     )
-    upcoming_sessions = CourseSession.objects.filter(starts_at__gte=timezone.now()).select_related(
+    upcoming_sessions = CourseSession.objects.filter(starts_at__gte=now).select_related(
         "course",
     ).order_by("starts_at", "pk")[:6]
+    ride_overview = None
+    if can_view(request.user, "rides"):
+        window_end = timezone.localdate(now, timezone=BERLIN) + timedelta(days=get_ride_lead_days())
+        ride_overview = RideCase.objects.filter(
+            direction=RideCase.ROUND_TRIP,
+            currently_matches=True,
+            earliest__gt=now,
+        ).exclude(status=RideCase.Status.CLOSED).aggregate(
+            ready=Count("pk", filter=Q(travel_date__lte=window_end)),
+            standby=Count("pk", filter=Q(travel_date__gt=window_end)),
+        )
     return render(request, "workspace/overview.html", {
         "section": "overview",
         "seats": seats,
         "review_count": EmailEvent.objects.filter(state=EmailEvent.State.NEEDS_REVIEW).count(),
+        "ride_overview": ride_overview,
         "upcoming_sessions": upcoming_sessions,
         "recent_events": EmailEvent.objects.select_related("seat__session__course", "seat__participant").order_by("-imported_at", "-pk")[:8],
     })

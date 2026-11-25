@@ -5,6 +5,7 @@ from django.urls import reverse
 SECTIONS = {
     "overview": "Übersicht",
     "bookings": "Buchungen",
+    "people": "Personen",
     "calendar": "Kalender",
     "rides": "Fahrgemeinschaften",
     "brigades": "Feuerwehren",
@@ -14,10 +15,15 @@ SECTIONS = {
     "mail_receipts": "Mail-Eingang",
 }
 HTTPS_SECTIONS = frozenset({"mailbox", "mail_receipts"})
+READ_ONLY_SECTIONS = frozenset({"people"})
+
+
+def section_actions(section):
+    return ("view",) if section in READ_ONLY_SECTIONS else ("view", "edit")
 
 
 def section_permission(section, action):
-    if section not in SECTIONS or action not in {"view", "edit"}:
+    if section not in SECTIONS or action not in section_actions(section):
         raise ValueError(f"Unbekanntes BMS-Recht: {action} {section}")
     return f"accounts.{action}_{section}"
 
@@ -38,7 +44,7 @@ def _has_section_permission(user, section, action):
 
 
 def can_edit(user, section):
-    return _has_section_permission(user, section, "edit")
+    return "edit" in section_actions(section) and _has_section_permission(user, section, "edit")
 
 
 def can_view(user, section):

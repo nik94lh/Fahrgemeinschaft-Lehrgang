@@ -6,13 +6,14 @@ from django.utils.cache import add_never_cache_headers, patch_vary_headers
 from .access import can_edit, can_view, is_active_user, is_workspace_admin
 
 
-PUBLIC_ROUTES = frozenset({"health", "live_script", "login"})
+PUBLIC_ROUTES = frozenset({"health", "live_script", "favicon", "login"})
 ACCOUNT_ROUTES = frozenset({"account", "account_password_change", "logout"})
 ADMIN_ROUTES = frozenset({"account_list", "account_create", "account_edit", "account_password_reset"})
 VIEW_ROUTES = {
     "overview": "overview",
     "bookings": "bookings",
     "booking_participant": "bookings",
+    "people": "people",
     "calendar": "calendar",
     "calendar_detail": "calendar",
     "rides": "rides",
@@ -29,6 +30,10 @@ VIEW_ROUTES = {
 EDIT_ROUTES = {
     "rides_sync": "rides",
     "rides_settings": "rides",
+    "ride_simulation": "rides",
+    "ride_simulation_open": "rides",
+    "ride_simulation_response": "rides",
+    "ride_simulation_script": "rides",
     "brigade_create": "brigades",
     "brigade_edit": "brigades",
     "manual_import": "preview",

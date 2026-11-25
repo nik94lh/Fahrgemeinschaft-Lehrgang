@@ -53,29 +53,31 @@
                 {% endif %}
             </h2>
             <nav class="calendar-modes" aria-label="Kalenderansicht">
-                <a href="?{{ week_query }}"{% if view == 'week' %} aria-current="true"{% endif %}>Woche</a>
-                <a href="?{{ month_query }}"{% if view == 'month' %} aria-current="true"{% endif %}>Monat</a>
-                <a href="?{{ year_query }}"{% if view == 'year' %} aria-current="true"{% endif %}>Jahr</a>
+                <a class="button-link" href="?{{ week_query }}"{% if view == 'week' %} aria-current="true"{% endif %}>Woche</a>
+                <a class="button-link" href="?{{ month_query }}"{% if view == 'month' %} aria-current="true"{% endif %}>Monat</a>
+                <a class="button-link" href="?{{ year_query }}"{% if view == 'year' %} aria-current="true"{% endif %}>Jahr</a>
             </nav>
         </div>
         <nav class="calendar-dates" aria-label="Zeitraum wechseln">
             {% if view == 'week' %}
-                <a href="?{{ previous_query }}">‹ Vorherige Woche</a>
-                <a href="?{{ today_query }}">Diese Woche</a>
-                <a href="?{{ next_query }}">Nächste Woche ›</a>
+                <a class="button-link" href="?{{ previous_query }}">‹ Vorherige Woche</a>
+                <a class="button-link" href="?{{ today_query }}">Diese Woche</a>
+                <a class="button-link" href="?{{ next_query }}">Nächste Woche ›</a>
             {% elif view == 'year' %}
-                <a href="?{{ previous_query }}">‹ Vorheriges Jahr</a>
-                <a href="?{{ today_query }}">Dieses Jahr</a>
-                <a href="?{{ next_query }}">Nächstes Jahr ›</a>
+                <a class="button-link" href="?{{ previous_query }}">‹ Vorheriges Jahr</a>
+                <a class="button-link" href="?{{ today_query }}">Dieses Jahr</a>
+                <a class="button-link" href="?{{ next_query }}">Nächstes Jahr ›</a>
             {% else %}
-                <a href="?{{ previous_query }}">‹ Vorheriger Monat</a>
-                <a href="?{{ today_query }}">Dieser Monat</a>
-                <a href="?{{ next_query }}">Nächster Monat ›</a>
+                <a class="button-link" href="?{{ previous_query }}">‹ Vorheriger Monat</a>
+                <a class="button-link" href="?{{ today_query }}">Dieser Monat</a>
+                <a class="button-link" href="?{{ next_query }}">Nächster Monat ›</a>
             {% endif %}
         </nav>
 
         {% if view == 'year' %}
             {% include "workspace/calendar_year.html" %}
+        {% elif view == 'month' %}
+            {% include "workspace/calendar_month.html" %}
         {% elif school_groups %}
             <p class="calendar-hint quiet" id="calendar-hint">Öffne einen Balken für Uhrzeiten und Buchungen. Der Plan ist seitlich scrollbar.</p>
             <div id="calendar-timeline" data-live-preserve class="calendar-scroll" tabindex="0" role="region" aria-labelledby="calendar-period" aria-describedby="calendar-hint">
@@ -121,7 +123,9 @@
                     {% endfor %}
                 </div>
             </div>
+        {% endif %}
 
+        {% if sessions %}
             <details id="calendar-course-list" data-live-preserve class="calendar-list">
                 <summary>Terminliste mit Uhrzeiten</summary>
                 <div id="calendar-course-list-scroll" data-live-preserve class="table-scroll" tabindex="0" role="region" aria-label="Lehrgänge mit Uhrzeiten">
@@ -141,8 +145,8 @@
                     </table>
                 </div>
             </details>
-        {% else %}
-            <p class="quiet">Keine Lehrgänge in diesem Zeitraum gefunden.</p>
+        {% elif view != 'year' %}
+            <p class="calendar-empty quiet">Keine Lehrgänge in diesem Zeitraum gefunden.</p>
         {% endif %}
     </section>
 {% endblock %}

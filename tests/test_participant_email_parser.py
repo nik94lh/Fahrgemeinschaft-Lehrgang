@@ -485,6 +485,33 @@ class ParticipantEmailParserTests(TestCase):
 
                 self.assertEqual(parse_eml(mail.as_bytes()).participant_email, address)
 
+    def test_surname_first_hyphen_matches_the_two_full_name_components(self):
+        address = "moeller-alex@example.invalid"
+        approval = APPROVAL.replace("Alex Beispiel", "Alex Möller")
+        confirmation = approval.replace(
+            "Ihre Teilnahme an folgendem Lehrgangstermin wurde genehmigt:",
+            "Sie sind für den folgenden Lehrgangstermin angemeldet:",
+        )
+        for subject, body in ((BOOKING_SUBJECT, approval), ("Ihr Lehrgangstermin wurde bestätigt", confirmation)):
+            with self.subTest(subject=subject):
+                original = booking_message(address, subject=subject, body=body)
+                forwarded = nested_booking_forward(original)
+                self.assertEqual(parse_eml(forwarded.as_bytes()).participant_email, address)
+
+    def test_surname_first_hyphen_does_not_expand_address_evidence(self):
+        address = "beispiel-alex@example.invalid"
+        for original in (
+            booking_message("beispiel-a@example.invalid"),
+            booking_message("beispiel-a@example.invalid", body=APPROVAL.replace("Alex Beispiel", "A Beispiel")),
+            booking_message("beispiel-alex97@example.invalid"),
+            booking_message("beispiel-alex-marie@example.invalid", body=APPROVAL.replace("Alex", "Alex Marie")),
+            booking_message(f"{address}, andere@example.invalid"),
+            booking_message(address, subject="Teilnahmebestätigung", body=CONFIRMATION),
+        ):
+            with self.subTest(recipient=original["To"]):
+                self.assertIsNone(parse_eml(original.as_bytes()).participant_email)
+        self.assertIsNone(parse_eml(booking_message(address).as_bytes(), functional_addresses=(address,)).participant_email)
+
     def test_personal_confirmation_explains_why_surname_alias_cannot_be_assigned(self):
         mail = booking_message(
             '"beispiel97@example.invalid" <beispiel97@example.invalid>',

@@ -1,0 +1,32 @@
+<div class="calendar-month-frame">
+    <table class="calendar-month-grid" aria-labelledby="calendar-period">
+        <thead>
+            <tr>
+                {% for day in month_weeks.0 %}
+                    <th scope="col"><abbr title="{{ day.date|date:'l' }}">{{ day.date|date:"D" }}</abbr></th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for week in month_weeks %}
+                <tr>
+                    {% for day in week %}
+                        <td class="calendar-month-day{% if day.is_weekend %} is-weekend{% endif %}{% if day.is_outside %} is-outside{% endif %}{% if day.is_today %} is-today{% endif %}">
+                            <time datetime="{{ day.date|date:'Y-m-d' }}" class="calendar-month-date" title="{{ day.date|date:'l, d.m.Y' }}"{% if day.is_today %} aria-current="date"{% endif %}>{{ day.date|date:"j" }}</time>
+                            {% if day.sessions %}
+                                <ul class="calendar-month-courses" role="list">
+                                    {% for session in day.sessions %}
+                                        <li><a class="calendar-month-course school-{{ session.school }}"
+                                               href="{% url 'calendar_detail' session.pk %}?{{ current_query }}"
+                                               title="{{ session.course.name }} · {{ session.get_venue_display }}"
+                                               aria-label="{{ session.course.name }}, {{ session.get_venue_display }}, {{ session.starts_at|date:'d.m.Y, H:i' }} bis {{ session.ends_at|date:'d.m.Y, H:i' }}">{{ session.course.name }}</a></li>
+                                    {% endfor %}
+                                </ul>
+                            {% endif %}
+                        </td>
+                    {% endfor %}
+                </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>

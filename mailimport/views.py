@@ -21,7 +21,7 @@ from .participant_settings import get_functional_addresses
 
 
 CSP = (
-    "default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; "
+    "default-src 'none'; img-src 'self'; style-src 'unsafe-inline'; form-action 'self'; "
     "base-uri 'none'; frame-ancestors 'none'"
 )
 

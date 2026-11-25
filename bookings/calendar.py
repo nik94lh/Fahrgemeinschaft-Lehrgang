@@ -154,6 +154,27 @@ def _month_overview(sessions, period, today, school):
     return months
 
 
+def _month_weeks(sessions, period, today):
+    by_day = defaultdict(list)
+    for session in sessions:
+        day, last_day = _occupied_dates(session, period)
+        while day <= last_day:
+            by_day[day].append(session)
+            day += DAY
+
+    calendar = Calendar()
+    return [
+        [{
+            "date": day,
+            "is_outside": day.month != period.start.month,
+            "is_weekend": day.weekday() >= 5,
+            "is_today": day == today,
+            "sessions": by_day[day],
+        } for day in week]
+        for week in calendar.monthdatescalendar(period.start.year, period.start.month)
+    ]
+
+
 def _timeline_rows(sessions, period, starts, ends):
     by_school = defaultdict(list)
     for session in sessions:
@@ -232,6 +253,9 @@ def calendar(request):
     if period.view == "year":
         context["months"] = _month_overview(sessions, period, today, school)
         context["occupancy_legend"] = tuple(enumerate(label for _, label in MONTH_OCCUPANCY_RANGES))
+    elif period.view == "month":
+        context["month_weeks"] = _month_weeks(sessions, period, today)
+        context["sessions"] = sessions
     else:
         ticks = _ticks(period, today)
         context.update({

@@ -1,6 +1,9 @@
 from django.db import models
 
-from .access import SECTIONS
+from .access import SECTIONS, section_actions
+
+
+PERMISSION_LABELS = {"view": "ansehen", "edit": "bearbeiten"}
 
 
 class WorkspaceAccess(models.Model):
@@ -10,9 +13,9 @@ class WorkspaceAccess(models.Model):
         managed = False
         default_permissions = ()
         permissions = tuple(
-            (f"{action}_{section}", f"{name} {label}")
+            (f"{action}_{section}", f"{name} {PERMISSION_LABELS[action]}")
             for section, name in SECTIONS.items()
-            for action, label in (("view", "ansehen"), ("edit", "bearbeiten"))
+            for action in section_actions(section)
         )
 
 

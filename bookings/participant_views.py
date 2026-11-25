@@ -58,16 +58,8 @@ class ParticipantEmailForm(forms.Form):
     )
 
 
-def _receipt_address(seat, value):
-    if seat.status not in ACTIVE_STATUSES or not (len(value) <= 19 and value.isascii() and value.isdecimal()):
-        return None
-    receipt_id = int(value)
-    if not 0 < receipt_id <= (1 << 63) - 1:
-        return None
-    receipt = MailReceipt.objects.select_related("event").filter(
-        pk=receipt_id, event__seat=seat, event__state=EmailEvent.State.APPLIED, event__kind__in=ACTIVATION_EVENTS,
-    ).first()
-    if receipt is None or not isinstance(receipt.fields, dict):
+def _eligible_receipt_address(seat, receipt, functional_addresses, checked):
+    if not isinstance(receipt.fields, dict) or receipt.fields.get("participant_email"):
         return None
 
     candidate = receipt.fields.get("participant_email_candidate")
@@ -75,18 +67,59 @@ def _receipt_address(seat, value):
     if not isinstance(candidate, str) or not isinstance(name, str):
         return None
     email = normalize_contact_email(candidate)
-    if not email or email in get_functional_addresses():
+    if not email or email in functional_addresses:
         return None
-    if _normalized_name(name) != _normalized_name(seat.participant.name) or not _history_matches(receipt.event, seat):
+    if _normalized_name(name) != _normalized_name(seat.participant.name):
         return None
 
+    key = receipt.event_id, email
+    if key not in checked:
+        checked[key] = _receipt_address_matches(seat, receipt.event, email)
+    return email if checked[key] else None
+
+
+def _receipt_address_matches(seat, event, email):
+    if not _history_matches(event, seat):
+        return False
     try:
-        owner = _participant_with_email(name, email)
+        owner = _participant_with_email(seat.participant.name, email)
     except _IdentityConflict:
-        return None
-    if owner is not None and owner.pk != seat.participant_id:
-        return None
-    return email, receipt.pk
+        return False
+    return owner is None or owner.pk == seat.participant_id
+
+
+def _receipt_address(seat, value):
+    if seat.status not in ACTIVE_STATUSES:
+        return None, ""
+    receipt_id = None
+    if value is not None:
+        if not (len(value) <= 19 and value.isascii() and value.isdecimal()):
+            return None, ""
+        receipt_id = int(value)
+        if not 0 < receipt_id <= (1 << 63) - 1:
+            return None, ""
+
+    receipts = MailReceipt.objects.select_related("event").filter(
+        event__seat=seat, event__state=EmailEvent.State.APPLIED, event__kind__in=ACTIVATION_EVENTS,
+        fields__has_key="participant_email_candidate",
+    ).order_by("-observed_at", "-pk")
+    functional_addresses = set(get_functional_addresses())
+    checked = {}
+    suggestion = None
+    selected = None
+    for receipt in receipts:
+        email = _eligible_receipt_address(seat, receipt, functional_addresses, checked)
+        if email is None:
+            continue
+        if suggestion is None:
+            if seat.email_events.filter(state=EmailEvent.State.NEEDS_REVIEW).exists():
+                return None, "open_review"
+            suggestion = email, receipt.pk
+        elif suggestion[0] != email:
+            return None, "conflict"
+        if receipt.pk == receipt_id:
+            selected = email, receipt.pk
+    return (selected if receipt_id is not None else suggestion), ""
 
 
 @never_cache
@@ -101,6 +134,7 @@ def booking_participant(request, seat_id):
     status = 200
     form = None
     address_receipt_id = None
+    address_suggestion_issue = ""
     if request.method == "POST":
         form = ParticipantEmailForm(request.POST)
         status = 400
@@ -118,7 +152,7 @@ def booking_participant(request, seat_id):
     elif not seat.participant.email and can_edit(request.user, "bookings"):
         initial = {"participant_id": seat.participant_id}
         if settings.HTTPS and request.is_secure() and can_view(request.user, "mail_receipts"):
-            suggestion = _receipt_address(seat, request.GET.get("mail", ""))
+            suggestion, address_suggestion_issue = _receipt_address(seat, request.GET.get("mail"))
             if suggestion:
                 initial["email"], address_receipt_id = suggestion
         form = ParticipantEmailForm(initial=initial)
@@ -131,4 +165,5 @@ def booking_participant(request, seat_id):
         "profile_bookings": page,
         "form": form,
         "address_receipt_id": address_receipt_id,
+        "address_suggestion_issue": address_suggestion_issue,
     }, status=status)

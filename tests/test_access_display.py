@@ -63,14 +63,26 @@ class AccessDisplayTests(TestCase):
         self.assertNotContains(response, "Letzte E-Mail-Ereignisse")
 
     @override_settings(HTTPS=True)
-    def test_booking_right_alone_does_not_expose_receipt_candidate_via_query_parameter(self):
+    def test_booking_right_alone_does_not_expose_receipt_candidates(self):
         self.login_with("edit_bookings")
         path = reverse("booking_participant", args=[self.seat.pk])
 
-        response = self.client.get(path, {"mail": self.receipt.pk}, secure=True)
+        for parameters in ({}, {"mail": self.receipt.pk}):
+            with self.subTest(parameters=parameters):
+                response = self.client.get(path, parameters, secure=True)
+                self.assertContains(response, "Adresse speichern")
+                self.assertNotContains(response, "vorschlag@example.invalid")
 
-        self.assertContains(response, "Adresse speichern")
-        self.assertNotContains(response, "vorschlag@example.invalid")
+    @override_settings(HTTPS=True)
+    def test_receipt_under_review_keeps_candidate_as_an_original_mail_detail(self):
+        self.event.state = EmailEvent.State.NEEDS_REVIEW
+        self.event.save(update_fields=["state"])
+        self.login_with("view_bookings", "view_mail_receipts")
+
+        response = self.client.get(reverse("mail_receipt", args=[self.receipt.pk]), secure=True)
+
+        self.assertContains(response, "Adressvorschlag aus dem ursprünglichen An-Feld")
+        self.assertNotContains(response, "Diese Mail enthält einen Adressvorschlag für die Buchung.")
 
     def test_preview_stays_usable_for_readers_and_hides_the_import_action(self):
         self.login_with("view_preview")

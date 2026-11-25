@@ -1,4 +1,10 @@
 {% extends "workspace/base.html" %}
+{% block page_styles %}
+    .dashboard-rides { grid-template-columns: repeat(2, minmax(0, 1fr)); margin: 0; }
+    .dashboard-subhead { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: .75rem; margin-block-end: .75rem; }
+    .dashboard-subhead h2 { margin: 0; }
+    .dashboard-rides div { background: #eef3fa; box-shadow: none; }
+{% endblock %}
 {% block content %}
     <div class="page-heading">
         <div>
@@ -12,6 +18,18 @@
         <div><dt>Bestätigung offen</dt><dd>{{ seats.pending }}</dd></div>
         <div><dt>Klärungsbedarf</dt><dd>{{ review_count }}</dd></div>
     </dl>
+    {% if ride_overview %}
+        <section class="panel overview-courses" aria-labelledby="dashboard-rides-title">
+            <div class="dashboard-subhead">
+                <h2 id="dashboard-rides-title">Fahrgemeinschaftsvorschläge</h2>
+                <a class="button-link" href="{% url 'rides' %}">Vorschläge ansehen</a>
+            </div>
+            <dl class="stats dashboard-rides">
+                <div><dt>Bereit zur Vermittlung</dt><dd>{{ ride_overview.ready }}</dd></div>
+                <div><dt>Standby</dt><dd>{{ ride_overview.standby }}</dd></div>
+            </dl>
+        </section>
+    {% endif %}
     <section class="panel overview-courses" aria-labelledby="upcoming-title">
         <h2 id="upcoming-title">Anstehende Lehrgänge</h2>
         {% if upcoming_sessions %}

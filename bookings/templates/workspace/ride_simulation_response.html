@@ -1,0 +1,26 @@
+{% extends "workspace/base.html" %}
+{% block title %}Rückmeldung testen{% endblock %}
+{% block live_region %}{% endblock %}
+{% block page_styles %}
+    .simulation-answer { max-width: 35rem; }
+    .simulation-answer form { margin-block-start: 1rem; }
+    .simulation-answer form p { margin-block-end: .75rem; }
+    .simulation-answer .helptext { display: block; color: var(--muted); }
+    .simulation-answer select { display: block; max-width: 100%; width: 100%; margin-block-start: .25rem; padding: .55rem; border: 1px solid var(--line); border-radius: .45rem; color: var(--ink); background: white; font: inherit; }
+    .simulation-answer button { width: auto; margin-block-end: 0; }
+{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'ride_simulation' %}">‹ Zur Simulation</a></p>
+    <div class="page-heading"><h1 id="simulation-answer">Rückmeldung testen</h1></div>
+    <section class="panel simulation-answer" aria-labelledby="simulation-answer">
+        <dl class="details">
+            <div><dt>Fiktiver Name</dt><dd>{{ name }}</dd></div>
+            <div><dt>Testadresse</dt><dd>{{ email }}</dd></div>
+        </dl>
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Testantwort speichern</button>
+        </form>
+    </section>
+{% endblock %}

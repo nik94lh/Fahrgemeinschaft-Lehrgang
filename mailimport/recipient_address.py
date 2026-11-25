@@ -70,6 +70,8 @@ def _address_matches_name(email: str, name: str) -> bool:
     local, domain = email.rsplit("@", 1)
     if local == ".".join(parts):
         return True
+    if len(parts) == 2 and all(len(part) > 1 and part.isalpha() for part in parts) and local == "-".join(reversed(parts)):
+        return True
     local_parts = local.split(".")
     if len(local_parts) == len(parts) + 1 and local_parts[0] == parts[0] and local_parts[2:] == parts[1:]:
         middle_name = local_parts[1]
