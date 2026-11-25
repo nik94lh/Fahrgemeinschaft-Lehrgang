@@ -1,0 +1,4 @@
+<span class="ride-mediation">
+    <span class="status-label ride-phase-{{ mediation.state }}">{{ mediation.label }}</span>
+    {% if mediation.starts_on %}<span class="ride-window">Vermittlung ab <time datetime="{{ mediation.starts_on|date:'Y-m-d' }}">{{ mediation.starts_on|date:"d.m.Y" }}</time></span>{% endif %}
+</span>

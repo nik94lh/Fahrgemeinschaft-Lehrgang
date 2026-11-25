@@ -24,6 +24,7 @@
                 <div><dt>Hinfahrt</dt><dd>{{ case.travel_date|date:"d.m.Y" }} · {{ case.earliest|date:"H:i" }}{% if case.latest != case.earliest %}–{{ case.latest|date:"H:i" }}{% endif %} Uhr</dd></div>
                 <div><dt>Rückfahrt</dt><dd>{{ case.return_date|date:"d.m.Y" }} · {{ case.return_earliest|date:"H:i" }}{% if case.return_latest != case.return_earliest %}–{{ case.return_latest|date:"H:i" }}{% endif %} Uhr</dd></div>
                 <div><dt>Letzter Abgleich</dt><dd>{% if case.currently_matches %}Buchungen passen zusammen{% else %}Kein Treffer beim letzten Abgleich{% endif %}</dd></div>
+                <div><dt>Vermittlung</dt><dd>{% include "workspace/ride_mediation.html" %}</dd></div>
             {% else %}
                 <div><dt>{{ case.get_direction_display }}</dt><dd>{{ case.travel_date|date:"d.m.Y" }} · {{ case.earliest|date:"H:i" }}{% if case.latest != case.earliest %}–{{ case.latest|date:"H:i" }}{% endif %} Uhr</dd></div>
             {% endif %}

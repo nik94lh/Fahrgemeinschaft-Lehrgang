@@ -79,6 +79,8 @@ Ein **Fahrgemeinschaftsvorschlag** verbindet Hin- und Rückfahrt. BMS sucht unte
 
 Der Hintergrunddienst gleicht die Buchungen standardmäßig alle zwei Minuten ab. Mit **Abgleich starten** kannst du die Prüfung manuell auslösen. Unter **Fahrgemeinschaften** kannst du einen Vorschlag öffnen und seinen Bearbeitungsstand ändern. Wenn die Buchungen nicht mehr zusammenpassen, kennzeichnet BMS den Vorschlag und erhält seinen Bearbeitungsstand. Frühere Fälle für einzelne Hin- oder Rückfahrten bleiben im Archiv. Die kombinierten Vorschläge beginnen mit einem eigenen Bearbeitungsstand. BMS verschickt dabei keine Einladungen und gibt keine Kontaktdaten frei.
 
+Jeder Vorschlag erscheint als Kachel mit Schule, Anzahl der Personen und den Daten für Hin- und Rückfahrt. **Standby** zeigt das Datum, ab dem der Vorschlag **Bereit zur Vermittlung** ist. Wer Fahrgemeinschaften bearbeiten darf, kann den Vorlauf unter **Fahrgemeinschaften → Einstellungen** festlegen. BMS zählt standardmäßig 14 Kalendertage ab dem Tag der Hinfahrt zurück. Der manuell gepflegte Bearbeitungsstand ist separat verfügbar.
+
 ## Dokumentation
 
 - Fachliche Anforderungen und offene Fragen [Pflichtenheft](docs/PFLICHTENHEFT.md)

@@ -1,4 +1,4 @@
-from django.core.validators import RegexValidator
+from django.core.validators import MaxValueValidator, RegexValidator
 from django.db import models
 from django.db.models import F, Q
 from django.db.models.functions import Lower, Trim
@@ -15,6 +15,8 @@ class School(models.TextChoices):
 
 
 IN_PERSON_SCHOOL_CHOICES = [choice for choice in School.choices if choice[0] != School.ONLINE]
+DEFAULT_RIDE_LEAD_DAYS = 14
+MAX_RIDE_LEAD_DAYS = 365
 
 
 class BookingStatus(models.TextChoices):
@@ -270,6 +272,21 @@ class Carpool(models.Model):
     school = models.CharField(max_length=16, choices=IN_PERSON_SCHOOL_CHOICES)
     direction = models.CharField(max_length=8, choices=Direction.choices)
     travel_at = models.DateTimeField(null=True, blank=True)
+
+
+class RideConfiguration(models.Model):
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    lead_days = models.PositiveSmallIntegerField(
+        default=DEFAULT_RIDE_LEAD_DAYS, validators=[MaxValueValidator(MAX_RIDE_LEAD_DAYS)],
+    )
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(condition=Q(id=1), name="bookings_single_ride_configuration"),
+            models.CheckConstraint(
+                condition=Q(lead_days__lte=MAX_RIDE_LEAD_DAYS), name="bookings_ride_lead_days_within_limit",
+            ),
+        ]
 
 
 class RideCase(models.Model):
