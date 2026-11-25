@@ -1,4 +1,6 @@
 """Operator views for persisted ride matches."""
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
 from urllib.parse import urlencode
 
 from django import forms
@@ -6,12 +8,14 @@ from django.core.paginator import Paginator
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
 from .models import RideCase
-from .rides_matching import set_ride_case_status, sync_ride_cases
+from .ride_settings import get_ride_lead_days
+from .rides_matching import BERLIN, set_ride_case_status, sync_ride_cases
 
 
 class RideCaseStatusForm(forms.Form):
@@ -22,6 +26,26 @@ class RideCaseStatusForm(forms.Form):
 def _selected_status(params):
     value = params.get("status", "")
     return value if value in RideCase.Status.values else ""
+
+
+@dataclass(frozen=True)
+class _Mediation:
+    state: str
+    label: str
+    starts_on: date | None = None
+
+
+def _mediation(case: RideCase, *, now: datetime, lead_days: int) -> _Mediation:
+    if not case.currently_matches:
+        return _Mediation("inactive", "Kein aktueller Treffer")
+    if case.status == RideCase.Status.CLOSED:
+        return _Mediation("closed", case.get_status_display())
+    if now >= case.earliest:
+        return _Mediation("started", "Lehrgang begonnen")
+    starts_on = case.travel_date - timedelta(days=lead_days)
+    if timezone.localdate(now, timezone=BERLIN) < starts_on:
+        return _Mediation("standby", "Standby", starts_on)
+    return _Mediation("ready", "Bereit zur Vermittlung")
 
 
 @never_cache
@@ -43,9 +67,19 @@ def rides(request):
     cases = cases.annotate(participant_count=Count("seats__participant_id", distinct=True)).order_by(
         "-currently_matches", "travel_date", "earliest", "pk",
     )
+    page_obj = Paginator(cases, 25).get_page(request.GET.get("page"))
+    ride_cards = []
+    if not archived and page_obj:
+        now = timezone.now()
+        lead_days = get_ride_lead_days()
+        ride_cards = [
+            {"case": case, "mediation": _mediation(case, now=now, lead_days=lead_days)}
+            for case in page_obj
+        ]
     return render(request, "workspace/rides.html", {
         "section": "rides",
-        "page_obj": Paginator(cases, 25).get_page(request.GET.get("page")),
+        "page_obj": page_obj,
+        "ride_cards": ride_cards,
         "active_count": counts["active"],
         "pending_count": counts["pending"],
         "status_choices": RideCase.Status.choices,
@@ -99,10 +133,12 @@ def ride_detail(request, case_id):
         form = _status_form(case)
 
     seats = case.seats.select_related("participant", "session__course").order_by("participant__name", "pk")
+    round_trip = case.direction == RideCase.ROUND_TRIP
     return render(request, "workspace/ride_detail.html", {
         "section": "rides",
         "case": case,
-        "round_trip": case.direction == RideCase.ROUND_TRIP,
+        "round_trip": round_trip,
+        "mediation": _mediation(case, now=timezone.now(), lead_days=get_ride_lead_days()) if round_trip else None,
         "seats": seats,
         "form": form,
         "conflict": conflict,

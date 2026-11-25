@@ -1,0 +1,42 @@
+<article class="ride-card" aria-labelledby="ride-card-{{ item.pk }}">
+    <header>
+        <h2 class="ride-card-title" id="ride-card-{{ item.pk }}">{{ item.get_school_display }}</h2>
+        {% include "workspace/ride_mediation.html" %}
+    </header>
+    <p class="ride-party">
+        <span class="ride-party-icon" aria-hidden="true">👥</span>
+        {% if not item.currently_matches %}Zuletzt{% endif %}
+        <strong class="ride-party-count">{{ item.participant_count }}</strong>
+        {{ item.participant_count|pluralize:"Person,Personen" }}
+    </p>
+    <dl class="ride-trips">
+        <div>
+            <dt>Hinfahrt</dt>
+            <dd>
+                <time datetime="{{ item.travel_date|date:'Y-m-d' }}">{{ item.travel_date|date:"d.m.Y" }}</time>
+                <span class="ride-time">Beginn {{ item.earliest|date:"H:i" }}{% if item.latest != item.earliest %}–{{ item.latest|date:"H:i" }}{% endif %}</span>
+            </dd>
+        </div>
+        <div>
+            <dt>Rückfahrt</dt>
+            <dd>
+                <time datetime="{{ item.return_date|date:'Y-m-d' }}">{{ item.return_date|date:"d.m.Y" }}</time>
+                <span class="ride-time">Ende {{ item.return_earliest|date:"H:i" }}{% if item.return_latest != item.return_earliest %}–{{ item.return_latest|date:"H:i" }}{% endif %}</span>
+            </dd>
+        </div>
+    </dl>
+    <footer class="ride-card-footer">
+        {% if mediation.state == "closed" %}
+            <dl class="ride-card-workflow">
+                <dt>Letzter Abgleich</dt>
+                <dd><span class="status-label">Passend</span></dd>
+            </dl>
+        {% else %}
+            <dl class="ride-card-workflow">
+                <dt>Bearbeitungsstand</dt>
+                <dd><span class="status-label status-{{ item.status }}">{{ item.get_status_display }}</span></dd>
+            </dl>
+        {% endif %}
+        <a class="button-link" href="{% url 'ride_detail' item.pk %}" aria-label="Details zum Vorschlag für {{ item.get_school_display }} vom {{ item.travel_date|date:'d.m.Y' }} bis {{ item.return_date|date:'d.m.Y' }}">Details</a>
+    </footer>
+</article>

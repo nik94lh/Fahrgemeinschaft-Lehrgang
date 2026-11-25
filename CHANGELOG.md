@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.13.0
+
+- Fahrgemeinschaftsvorschläge erscheinen als Kacheln mit Schulungsort, Personenzahl, Hin- und Rückfahrt, Vermittlungsstatus und Detailansicht.
+- Vorschläge zeigen bis zum eingestellten Vorlauf **Standby** mit Datum und danach **Bereit zur Vermittlung**. Unter **Fahrgemeinschaften → Einstellungen** lässt sich der Vorlauf ändern. Voreingestellt sind 14 Kalendertage.
+
 ## 0.12.0
 
 - Der Import kann gleichnamige Buchungen im selben eindeutigen Lehrgangstermin anhand einer eindeutig erkannten und bereits hinterlegten Teilnehmeradresse unterscheiden.

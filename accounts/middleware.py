@@ -28,6 +28,7 @@ VIEW_ROUTES = {
 }
 EDIT_ROUTES = {
     "rides_sync": "rides",
+    "rides_settings": "rides",
     "brigade_create": "brigades",
     "brigade_edit": "brigades",
     "manual_import": "preview",

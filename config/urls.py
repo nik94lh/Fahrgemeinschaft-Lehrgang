@@ -12,6 +12,7 @@ from bookings.brigades import brigade_edit, brigades
 from bookings.calendar import calendar, calendar_detail
 from bookings.participant_views import booking_participant
 from bookings.review_actions import review_detail
+from bookings.ride_settings import rides_settings
 from bookings.rides import ride_detail, rides, rides_sync
 from mailimport.mailbox_views import mailbox_view
 from mailimport.receipt_views import mail_receipt, mail_receipt_recheck, mail_receipts
@@ -46,6 +47,7 @@ urlpatterns = [
     path("kalender/<int:session_id>/", calendar_detail, name="calendar_detail"),
     path("fahrgemeinschaften/", rides, name="rides"),
     path("fahrgemeinschaften/abgleichen/", rides_sync, name="rides_sync"),
+    path("fahrgemeinschaften/einstellungen/", rides_settings, name="rides_settings"),
     path("fahrgemeinschaften/<int:case_id>/", ride_detail, name="ride_detail"),
     path("feuerwehren/", brigades, name="brigades"),
     path("feuerwehren/neu/", brigade_edit, name="brigade_create"),
