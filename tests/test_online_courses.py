@@ -8,7 +8,8 @@ from django.utils import timezone
 
 from bookings.models import BookingStatus, Course, CourseSeat, CourseSession, EmailEvent, Participant, RideCase, School
 from bookings.rides_matching import sync_ride_cases
-from bookings.services import ingest
+from bookings.services import ingest, set_participant_email
+from tests.test_participant_identity import booking_mail
 from tests.test_reconciliation import eml
 from tests.test_ride_cases import NOW
 from tests.workspace_client import WorkspaceTestCase
@@ -65,6 +66,8 @@ class OnlineCourseTests(WorkspaceTestCase):
             )
         ]
         self.assertEqual([event.state for event in online], [EmailEvent.State.APPLIED] * 2)
+        for number, seat in enumerate([*onsite, *(event.seat for event in online)]):
+            set_participant_email(seat.pk, f"ort-{number}@example.invalid", expected_participant_id=seat.participant_id)
         online[0].seat.session.is_online = False
         online[0].seat.session.save(update_fields=["is_online"])
         online_at_school = CourseSession.objects.create(
@@ -79,8 +82,8 @@ class OnlineCourseTests(WorkspaceTestCase):
         self.assertCountEqual(RideCase.objects.get().seats.all(), onsite)
 
     def test_next_ride_sync_retires_a_case_after_an_online_session_is_recognized(self):
-        first = ingest(eml("Teilnahmebestätigung", reference="ONLINE-OLD"))
-        ingest(eml("Teilnahmebestätigung", participant="Sam Beispiel"))
+        first = ingest(booking_mail(kind="confirmation", reference="ONLINE-OLD", address="alex.beispiel@example.invalid"))
+        ingest(booking_mail(kind="confirmation", name="Sam Beispiel", address="sam.beispiel@example.invalid"))
         self.assertEqual(sync_ride_cases(now=NOW), 1)
 
         session = first.seat.session

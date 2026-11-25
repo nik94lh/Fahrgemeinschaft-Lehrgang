@@ -9,6 +9,8 @@ from django.utils import timezone
 
 from bookings.models import BookingStatus, Carpool, Course, CourseSeat, CourseSession, EmailEvent, Participant, RideCase, School
 from bookings.rides_matching import set_ride_case_status, sync_ride_cases
+from bookings.services import set_participant_email
+from mailimport.models import ParticipantRecognitionConfiguration
 
 
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -17,18 +19,19 @@ END = START + timedelta(days=1, hours=8)
 NOW = START - timedelta(days=1)
 
 
-def make_seat(course, participant, *, start=START, end=END, school=School.WUERZBURG, status=BookingStatus.CONFIRMED):
+def make_seat(course, participant, *, start=START, end=END, school=School.WUERZBURG, status=BookingStatus.CONFIRMED,
+              reference=""):
     session = CourseSession.objects.create(course=course, school=school, starts_at=start, ends_at=end)
-    return CourseSeat.objects.create(session=session, participant=participant, status=status)
+    return CourseSeat.objects.create(session=session, participant=participant, status=status, external_reference=reference)
 
 
 class RideCaseTests(TestCase):
     @classmethod
     def setUpTestData(cls):
         cls.course = Course.objects.create(name="Synthetischer Lehrgang")
-        cls.alex = Participant.objects.create(name="Alex Beispiel")
-        cls.sam = Participant.objects.create(name="Sam Testperson")
-        cls.toni = Participant.objects.create(name="Toni Musterfall")
+        cls.alex = Participant.objects.create(name="Alex Beispiel", email="alex.beispiel@example.invalid")
+        cls.sam = Participant.objects.create(name="Sam Testperson", email="sam.testperson@example.invalid")
+        cls.toni = Participant.objects.create(name="Toni Musterfall", email="toni.musterfall@example.invalid")
 
     def test_single_suggestion_combines_both_days_and_contains_matching_bookings(self):
         first = make_seat(self.course, self.alex)
@@ -98,6 +101,120 @@ class RideCaseTests(TestCase):
 
         self.assertEqual(sync_ride_cases(now=NOW), 0)
         self.assertFalse(RideCase.objects.exists())
+
+    def test_requires_personal_address_and_picks_up_verified_address_on_next_sync(self):
+        first = make_seat(self.course, self.alex)
+        second = make_seat(self.course, self.sam)
+        make_seat(self.course, self.toni)
+        Participant.objects.filter(pk=self.sam.pk).update(email="")
+        ParticipantRecognitionConfiguration.objects.create(pk=1, functional_addresses=["TONI.MUSTERFALL@example.invalid"])
+        malformed = Participant.objects.create(name="Falscher Adresseintrag")
+        Participant.objects.filter(pk=malformed.pk).update(email="unbrauchbare-adresse")
+        make_seat(self.course, malformed)
+
+        self.assertEqual(sync_ride_cases(now=NOW), 0)
+        set_participant_email(second.pk, "sam.testperson@example.invalid", expected_participant_id=self.sam.pk)
+
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        self.assertCountEqual(RideCase.objects.get().seats.all(), [first, second])
+
+    def test_excludes_exact_duplicate_bookings_but_keeps_distinct_courses_for_same_person(self):
+        make_seat(self.course, self.alex, reference="DOPPELT-1")
+        make_seat(self.course, self.alex, reference="DOPPELT-2")
+        third = make_seat(self.course, self.sam)
+
+        self.assertEqual(sync_ride_cases(now=NOW), 0)
+
+        distinct = Course.objects.create(name="Anderer synthetischer Lehrgang")
+        first = make_seat(distinct, self.alex)
+        second = make_seat(distinct, self.sam)
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        self.assertCountEqual(RideCase.objects.get().seats.all(), [first, second, third])
+
+    def test_active_unconfirmed_duplicate_blocks_confirmed_booking_until_cancelled(self):
+        first = make_seat(self.course, self.alex)
+        second = make_seat(self.course, self.sam)
+        duplicate = make_seat(self.course, self.sam, status=BookingStatus.APPROVED)
+
+        self.assertEqual(sync_ride_cases(now=NOW), 0)
+
+        duplicate.status = BookingStatus.AWAITING_CONFIRMATION
+        duplicate.save(update_fields=["status"])
+        self.assertEqual(sync_ride_cases(now=NOW), 0)
+
+        duplicate.status = BookingStatus.CANCELLED
+        duplicate.save(update_fields=["status"])
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        self.assertCountEqual(RideCase.objects.get().seats.all(), [first, second])
+
+    def test_open_review_excludes_linked_candidate_or_exact_reference_only_until_resolved(self):
+        first = make_seat(self.course, self.alex, reference="BUCHUNG-16")
+        second = make_seat(self.course, self.sam, reference="BUCHUNG-17")
+        third = make_seat(self.course, self.toni, reference="BUCHUNG-170")
+
+        for index, pointer in enumerate((
+            {"seat": second},
+            {"review_context": {"candidate_seat_id": second.pk}},
+            {"review_context": {"booking_reference": "BUCHUNG-17"}},
+        ), start=1):
+            with self.subTest(pointer=pointer):
+                event = EmailEvent.objects.create(sha256=f"{index:064x}", state=EmailEvent.State.NEEDS_REVIEW, **pointer)
+                self.assertEqual(sync_ride_cases(now=NOW), 1)
+                self.assertCountEqual(RideCase.objects.get().seats.all(), [first, third])
+
+                event.state = EmailEvent.State.REVIEWED
+                event.save(update_fields=["state"])
+                self.assertEqual(sync_ride_cases(now=NOW), 1)
+                self.assertCountEqual(RideCase.objects.get().seats.all(), [first, second, third])
+
+    def test_unlinked_reassignment_only_blocks_exact_booking_for_previous_participant(self):
+        make_seat(self.course, self.alex)
+        later = make_seat(self.course, self.alex, start=START + timedelta(minutes=30))
+        other = make_seat(self.course, self.sam)
+        incoming = make_seat(self.course, self.toni)
+        EmailEvent.objects.create(
+            sha256="b" * 64,
+            kind=EmailEvent.Kind.REASSIGNMENT,
+            state=EmailEvent.State.NEEDS_REVIEW,
+            review_context={
+                "course_name": self.course.name,
+                "school": School.WUERZBURG,
+                "starts_at": START.isoformat(),
+                "ends_at": END.isoformat(),
+                "participant_name": self.toni.name,
+                "previous_participant_name": "ALEX   BEISPIEL",
+            },
+        )
+
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        self.assertCountEqual(RideCase.objects.get().seats.all(), [later, other, incoming])
+
+    def test_exact_review_details_are_used_when_reference_is_unknown(self):
+        first = make_seat(self.course, self.alex)
+        second = make_seat(self.course, self.sam, reference="BESTEHENDER-PLATZ")
+        third = make_seat(self.course, self.toni)
+        review = EmailEvent.objects.create(
+            sha256="e" * 64,
+            kind=EmailEvent.Kind.CONFIRMATION,
+            state=EmailEvent.State.NEEDS_REVIEW,
+            review_reason=EmailEvent.ReviewReason.MULTIPLE_SEATS,
+            review_context={
+                "course_name": self.course.name,
+                "school": School.WUERZBURG,
+                "starts_at": START.isoformat(),
+                "ends_at": END.isoformat(),
+                "participant_name": self.alex.name,
+                "booking_reference": "NEUE-REFERENZ",
+            },
+        )
+
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        self.assertCountEqual(RideCase.objects.get().seats.all(), [second, third])
+
+        review.review_context["booking_reference"] = second.external_reference
+        review.save(update_fields=["review_context"])
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        self.assertCountEqual(RideCase.objects.get().seats.all(), [first, third])
 
     def test_closed_suggestion_retains_state_across_loss_and_return_of_matches(self):
         first = make_seat(self.course, self.alex)
@@ -179,8 +296,8 @@ class ConcurrentRideCaseTests(TransactionTestCase):
     @skipUnlessDBFeature("has_select_for_update")
     def test_concurrent_sync_creates_each_suggestion_once(self):
         course = Course.objects.create(name="Synthetischer Übungslehrgang")
-        make_seat(course, Participant.objects.create(name="Alex Beispiel"))
-        make_seat(course, Participant.objects.create(name="Sam Testperson"))
+        make_seat(course, Participant.objects.create(name="Alex Beispiel", email="alex.beispiel@example.invalid"))
+        make_seat(course, Participant.objects.create(name="Sam Testperson", email="sam.testperson@example.invalid"))
         ready = Barrier(2)
 
         def reconcile():

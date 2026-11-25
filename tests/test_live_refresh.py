@@ -26,6 +26,10 @@ class LiveRefreshTests(WorkspaceTestCase):
 
         self.assertContains(fragment, 'data-live-region="main"')
         self.assertContains(fragment, "Live-Test-Lehrgang")
+        self.assertContains(fragment, "<dt>Angemeldet</dt><dd>Ja</dd>", html=True)
+        self.assertContains(fragment, "<dt>Genehmigt</dt><dd>Ja</dd>", html=True)
+        self.assertContains(fragment, "<dt>Storniert</dt><dd>Nein</dd>", html=True)
+        self.assertContains(fragment, "Fehlt: persönliche E-Mail-Adresse")
         self.assertNotContains(fragment, "Anderer Lehrgang")
         self.assertNotContains(fragment, "Hauptnavigation")
         self.assertNotContains(fragment, "<script")

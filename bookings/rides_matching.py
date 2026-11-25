@@ -1,15 +1,19 @@
 """Keep round-trip suggestions in sync with the confirmed bookings."""
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime
 from zoneinfo import ZoneInfo
 
 from django.db import transaction
 from django.utils import timezone
+from django.utils.dateparse import parse_datetime
 
+from mailimport.participant_settings import get_functional_addresses
+
+from .booking_state import booking_missing_fields
 from .models import IN_PERSON_SCHOOL_CHOICES, BookingStatus, CourseSeat, EmailEvent, RideCase
-from .services import _lock_import
+from .services import _lock_import, _normalized_name
 
 
 BERLIN = ZoneInfo("Europe/Berlin")
@@ -31,18 +35,91 @@ class _Match:
         return f"{self.school}:{RideCase.ROUND_TRIP}:{self.travel_date}:{self.return_date}"
 
 
+def _review_booking(kind, context):
+    name_field = "previous_participant_name" if kind == EmailEvent.Kind.REASSIGNMENT else "participant_name"
+    course, school, start, end, name = (
+        context.get(field) for field in ("course_name", "school", "starts_at", "ends_at", name_field)
+    )
+    if context.get("is_online") is True or not all(isinstance(value, str) and value for value in (
+        course, school, start, end, name,
+    )):
+        return None
+    try:
+        starts_at, ends_at = parse_datetime(start), parse_datetime(end)
+    except ValueError:
+        return None
+    if not starts_at or not ends_at or timezone.is_naive(starts_at) or timezone.is_naive(ends_at):
+        return None
+    return (course.casefold(), school, starts_at, ends_at), _normalized_name(name)
+
+
+def _open_review_exclusions():
+    seat_ids, references, bookings = set(), set(), set()
+    referenced_bookings = defaultdict(set)
+    events = EmailEvent.objects.filter(state=EmailEvent.State.NEEDS_REVIEW).values_list(
+        "seat_id", "kind", "review_context",
+    )
+    for seat_id, kind, context in events.iterator():
+        if seat_id is not None:
+            seat_ids.add(seat_id)
+            continue
+        if not isinstance(context, dict):
+            continue
+        candidate_id = context.get("candidate_seat_id")
+        reference = context.get("booking_reference")
+        has_candidate = type(candidate_id) is int and candidate_id > 0
+        has_reference = isinstance(reference, str) and bool(reference.strip())
+        if has_candidate:
+            seat_ids.add(candidate_id)
+        if has_reference:
+            references.add(reference)
+        if not has_candidate and (booking := _review_booking(kind, context)):
+            if has_reference:
+                referenced_bookings[reference].add(booking)
+            else:
+                bookings.add(booking)
+
+    if referenced_bookings:
+        known_references = set(CourseSeat.objects.filter(external_reference__in=referenced_bookings).values_list(
+            "external_reference", flat=True,
+        ))
+        # An exact booking reference takes precedence over the recognized details.
+        for reference in referenced_bookings.keys() - known_references:
+            bookings.update(referenced_bookings[reference])
+    return seat_ids, references, bookings
+
+
 def _round_trip_matches(now: datetime):
     seats = CourseSeat.objects.filter(
         session__starts_at__gte=now,
-        status=BookingStatus.CONFIRMED,
         participant__isnull=False,
         session__school__in=[code for code, _ in IN_PERSON_SCHOOL_CHOICES],
         session__is_online=False,
-    ).exclude(email_events__state=EmailEvent.State.NEEDS_REVIEW).values_list(
-        "session__school", "session__starts_at", "session__ends_at", "participant_id", "id",
-    )
+    ).exclude(status=BookingStatus.CANCELLED).select_related("participant", "session__course")
+    excluded_seats, excluded_references, excluded_bookings = _open_review_exclusions()
+    functional_addresses = set(get_functional_addresses())
+    booking_counts = Counter()
+    eligible_bookings = {}
+    for seat in seats.iterator():
+        session = seat.session
+        term = (session.course.name.casefold(), session.school, session.starts_at, session.ends_at)
+        identity = (term, seat.participant_id)
+        booking_counts[identity] += 1
+        if (
+            seat.status != BookingStatus.CONFIRMED
+            or seat.pk in excluded_seats
+            or seat.external_reference in excluded_references
+            or (term, _normalized_name(seat.participant.name)) in excluded_bookings
+            or booking_missing_fields(seat, functional_addresses=functional_addresses)
+        ):
+            continue
+        eligible_bookings[identity] = seat.pk
+
     groups = defaultdict(list)
-    for school, start, end, participant, seat_id in seats.iterator():
+    for identity, seat_id in eligible_bookings.items():
+        if booking_counts[identity] != 1:
+            continue
+        (_, school, start, end), participant = identity
         key = (school, start.astimezone(BERLIN).date(), end.astimezone(BERLIN).date())
         groups[key].append((start, end, participant, seat_id))
 
