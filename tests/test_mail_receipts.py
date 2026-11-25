@@ -66,7 +66,7 @@ class MailReceiptTests(TestCase):
         self.assertEqual(first.seat.status, BookingStatus.CONFIRMED)
 
     def test_replays_previously_addressless_forward_and_keeps_the_confirmed_booking(self):
-        raw = forwarded_approval_with_repeated_mailto().as_bytes()
+        raw = forwarded_approval_with_repeated_mailto(subject="Mitteilung zur Lehrgangsbuchung").as_bytes()
         original = _reconcile(replace(parse_eml(raw), participant_email=None), occurred_at=None)
         confirmation = ingest(booking_mail(kind="confirmation"))
         self.assertEqual(confirmation.seat_id, original.seat_id)

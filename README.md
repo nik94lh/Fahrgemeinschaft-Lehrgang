@@ -53,7 +53,7 @@ Unter **Mail-Eingang** findest du den letzten Abruf und jede ab diesem Stand erf
 
 ## Teilnehmerprofile und E-Mail-Adressen
 
-Bei unterstützten Lehrgangsmails übernimmt BMS die Teilnehmeradresse nur bei eindeutiger Zuordnung aus dem ursprünglichen An-Feld. Bei Bestätigungsmails braucht BMS eine Adresse mit passendem Anzeigenamen. Hinterlege die auszuschließenden Adressen unter **Postfach → Funktionsadressen**. Wiederkehrende Teilnehmer mit derselben normalisierten Adresse und übereinstimmendem Namen verwenden dasselbe Profil.
+Bei erkannten Genehmigungen und Teilnahmebestätigungen prüft BMS das ursprüngliche An-Feld. Eine Adresse mit passendem Anzeigenamen oder eindeutigem Bezug zum vollständigen Namen kann der Buchung hinzugefügt werden. Hinterlege die auszuschließenden Adressen unter **Postfach → Funktionsadressen**. Wiederkehrende Teilnehmer mit derselben normalisierten Adresse und übereinstimmendem Namen verwenden dasselbe Profil. [Regeln für die Adresszuordnung](docs/MAILIMPORT.md#teilnehmeradresse-aus-dem-ursprünglichen-an-feld)
 
 Unter **Postfach → Einmaliger Adressabgleich** kannst du den Fortschritt sehen oder unter **Adressabgleich starten** einen Auftrag auslösen. Für das bestehende aktive FFP-Importpostfach wird mit 0.7.1 einmalig der angeforderte Auftrag vorgemerkt. BMS prüft bereits importierte Nachrichten bis zum aktuellen Stand des regulären Abrufs. Fehlende Adressen werden nur bei eindeutiger Zuordnung ergänzt. Bestehende Adressen und Buchungen bleiben erhalten.
 

@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.9.3
+
+- Bei erkannten Genehmigungen und Teilnahmebestätigungen prüft BMS das ursprüngliche An-Feld auch bei abweichendem Betreff.
+- BMS gleicht bei Genehmigungen und persönlichen Teilnahmebestätigungen den vollständigen Namen mit einer einzelnen Adresse in Punktschreibweise ab. Umlaute dürfen im Adressteil als `ae`, `oe` oder `ue` geschrieben sein.
+
 ## 0.9.2
 
 - Der Import erkennt „Ihr Lehrgangstermin wurde bestätigt“ und „Bestätigung Ihrer Lehrgangsanmeldung“ als Teilnahmebestätigungen und kann den Teilnehmer aus der Anrede ermitteln.

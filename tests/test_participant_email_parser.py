@@ -42,17 +42,17 @@ def html_forward(original_headers):
     return message.as_bytes()
 
 
-def forwarded_approval_with_repeated_mailto():
+def forwarded_approval_with_repeated_mailto(*, subject=BOOKING_SUBJECT):
     mail = booking_message(
         "Alex Beispiel <import@example.invalid>",
-        subject="Fwd: Ihre Lehrgangsanmeldung",
+        subject=f"Fwd: {subject}",
         body=(
             "Hier die Nachricht\n\n"
             'Von: "schule@example.invalid" <schule@example.invalid<mailto:schule@example.invalid>>\n'
             "Datum: Montag, 10. Mai 2027 um 09:00\n"
             'An: "alex.beispiel@example.invalid" <alex.beispiel@example.invalid<mailto:alex.beispiel@example.invalid>>\n'
             "Cc: Alex Beispiel <cc@example.invalid>\n"
-            "Betreff: Ihre Lehrgangsanmeldung\n\n"
+            f"Betreff: {subject}\n\n"
             + APPROVAL
         ),
     )
@@ -101,6 +101,62 @@ class ParticipantEmailParserTests(TestCase):
     def test_named_recipient_can_be_used_for_explicit_approval_subject(self):
         mail = booking_message("Alex Beispiel <alex@example.invalid>", subject="Lehrgangsgenehmigung")
         self.assertEqual(parse_eml(mail.as_bytes()).participant_email, "alex@example.invalid")
+
+    def test_approval_recognized_from_body_uses_original_to_with_different_subject(self):
+        subject = "Mitteilung zur Lehrgangsbuchung"
+        direct = booking_message("Alex Beispiel <alex.beispiel@example.invalid>", subject=subject)
+        forwarded = forwarded_approval_with_repeated_mailto(subject=subject)
+        for mail in (direct, forwarded):
+            with self.subTest(subject=mail["Subject"]):
+                parsed = parse_eml(mail.as_bytes())
+
+                self.assertEqual(parsed.event_type, "approval")
+                self.assertEqual(parsed.participant_email, "alex.beispiel@example.invalid")
+
+    def test_renamed_outlook_forward_uses_the_original_recipient(self):
+        mail = forwarded_approval_with_repeated_mailto()
+        mail.replace_header("Subject", "Zum Lehrgang weitergegeben")
+
+        parsed = parse_eml(mail.as_bytes())
+
+        self.assertEqual(parsed.participant_email, "alex.beispiel@example.invalid")
+
+    def test_quoted_forward_header_is_not_an_original_recipient(self):
+        mail = forwarded_approval_with_repeated_mailto(subject="WG: Ihre Lehrgangsanmeldung")
+
+        parsed = parse_eml(mail.as_bytes())
+
+        self.assertEqual(parsed.event_type, "approval")
+        self.assertIsNone(parsed.participant_email)
+
+    def test_full_name_with_transliterated_umlaut_matches_a_single_original_address(self):
+        address = "alex.moeller@example.invalid"
+        approval = APPROVAL.replace("Alex Beispiel", "Alex Möller")
+        personal_confirmation = approval.replace(
+            "Ihre Teilnahme an folgendem Lehrgangstermin wurde genehmigt:",
+            "Sie sind für den folgenden Lehrgangstermin angemeldet:",
+        )
+        for subject, body in ((BOOKING_SUBJECT, approval), ("Ihr Lehrgangstermin wurde bestätigt", personal_confirmation)):
+            with self.subTest(subject=subject):
+                mail = booking_message(f'"{address}" <{address}>', subject=subject, body=body)
+                mail["Resent-To"] = "Alex Möller <import@example.invalid>"
+
+                self.assertEqual(parse_eml(mail.as_bytes()).participant_email, address)
+
+    def test_personal_confirmation_explains_why_surname_alias_cannot_be_assigned(self):
+        mail = booking_message(
+            '"beispiel97@example.invalid" <beispiel97@example.invalid>',
+            subject="Bestätigung Ihrer Lehrgangsanmeldung",
+            body=APPROVAL.replace(
+                "Ihre Teilnahme an folgendem Lehrgangstermin wurde genehmigt:",
+                "Sie haben Ihre Teilnahme an folgendem Lehrgangstermin bestätigt:",
+            ),
+        )
+        parsed = parse_eml(mail.as_bytes())
+
+        self.assertEqual(parsed.event_type, "confirmation")
+        self.assertIsNone(parsed.participant_email)
+        self.assertIn("vollständigen Teilnehmernamen", parsed.address_note)
 
     @staticmethod
     def multipart_forward(plain_to, html_to, *, html_body=APPROVAL):

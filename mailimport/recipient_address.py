@@ -11,6 +11,7 @@ from .email_address import normalize_contact_email
 
 
 REPEATED_MAILTO = re.compile(r"<([^<>\s]+)<mailto:([^<>\s]+)>>", re.IGNORECASE)
+GERMAN_UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue"})
 
 
 def header_addresses(values: list[str]) -> tuple[Address, ...]:
@@ -57,7 +58,7 @@ class AddressSelection:
 
 def select_participant_address(
     recipients: tuple[Address, ...], participant_name: str, functional_addresses: Iterable[str],
-    *, allow_approval_fallback: bool,
+    *, allow_local_part_match: bool, allow_approval_fallback: bool,
 ) -> AddressSelection:
     excluded = {value for entry in functional_addresses if (value := normalize_contact_email(entry))}
     remaining = []
@@ -84,14 +85,15 @@ def select_participant_address(
     if named_matches or (allow_approval_fallback and len({email for _, email in remaining}) > 1):
         return AddressSelection(ambiguous=True, note="Im ursprünglichen An-Feld kommen mehrere Zuordnungen in Frage.")
 
-    if allow_approval_fallback and len(remaining) == 1:
+    if len(remaining) == 1:
         display, email = remaining[0]
-        name_parts = target.split()
-        if len(name_parts) >= 2 and display in ("", email) and email.rsplit("@", 1)[0] == ".".join(name_parts):
-            return AddressSelection(email=email)
-        if not display:
-            if excluded_from_original:
+        if display in ("", email):
+            name_parts = target.translate(GERMAN_UMLAUTS).split()
+            full_name_matches = len(name_parts) >= 2 and email.rsplit("@", 1)[0] == ".".join(name_parts)
+            if (allow_local_part_match and full_name_matches) or (
+                allow_approval_fallback and not display and excluded_from_original
+            ):
                 return AddressSelection(email=email)
-            return AddressSelection(note="Das Original nennt nur eine Adresse ohne eindeutigen Bezug zum Teilnehmernamen.")
+            return AddressSelection(note="Das Original nennt eine Adresse ohne eindeutigen Bezug zum vollständigen Teilnehmernamen.")
 
     return AddressSelection(note="Der Empfängername im ursprünglichen An-Feld passt nicht eindeutig zum Teilnehmer.")

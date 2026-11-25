@@ -214,11 +214,11 @@ class _OriginalMail:
     conflict: bool = False
 
 
-def _inline_forward(text: str, *, forwarded: bool) -> _InlineMail | None:
+def _inline_forward(text: str) -> _InlineMail | None:
     lines = [re.sub(r"^\s*(?:>\s*)+", "", line) for line in text.splitlines()]
     unfolded = "\n".join(lines)
     separators = list(FORWARD_SEPARATOR.finditer(unfolded))
-    if not separators and forwarded:
+    if not separators:
         separators = list(OUTLOOK_FORWARD_HEADERS.finditer(unfolded))
     if not separators:
         return None
@@ -247,7 +247,12 @@ def _quoted_mail(subject: str, body: str, original_headers: list[str]) -> _Inlin
     headers = "\n".join(original_headers)
     senders = inline_addresses(headers, "Von|From")
     sender = normalize_contact_email(senders[0].addr_spec) if len(senders) == 1 else None
-    if _values(headers, "Betreff|Subject") != [subject] or not sender or not _contact_subject(subject):
+    if (
+        _values(headers, "Betreff|Subject") != [subject]
+        or not sender
+        or FORWARD_PREFIX.match(subject)
+        or REPLY_PREFIX.match(subject)
+    ):
         return _InlineMail(subject, body, (), None, None)
     recipients = inline_addresses(headers, "An|To", outlook_recipients=True)
     displayed_names = _values(headers, "An|To")
@@ -285,7 +290,7 @@ def _forward_original(message: EmailMessage, body: EmailMessage, primary: _Inlin
     ):
         return selected
     try:
-        alternate = _inline_forward(_body_text(html), forwarded=True)
+        alternate = _inline_forward(_body_text(html))
     except MailParseError:
         return selected
     if not alternate or not alternate.recipients or not alternate.sender:
@@ -334,14 +339,12 @@ def _original_text(message: EmailMessage) -> _OriginalMail:
         raise MailParseError("Die E-Mail enthält keinen lesbaren Klartext- oder HTML-Teil.")
 
     text = _body_text(body)
-    original = _inline_forward(text, forwarded=forwarded)
-    if original and forwarded:
-        return _forward_original(message, body, original)
+    original = _inline_forward(text)
     if original:
-        subject, text = original.subject, original.text
+        return _forward_original(message, body, original)
 
     recipients = ()
-    if not original and _contact_subject(subject) and len(message.get_all("Subject")) == 1:
+    if not forwarded and len(message.get_all("Subject", ())) == 1:
         recipients = header_addresses([value for name, value in message.raw_items() if name.casefold() == "to"])
     subject = FORWARD_PREFIX.sub("", subject, count=1)
     cleaned = _clean_text(text)
@@ -458,18 +461,21 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
     selection = AddressSelection()
     if is_reply:
         selection = AddressSelection(note="Die Mail ist als Antwort gekennzeichnet. Leite die Original-Buchungsmail als EML oder mit ihren ursprünglichen Kopfzeilen weiter.")
-    elif event_type in ("approval", "confirmation") or (event_type != "unknown" and original.recipients):
+    elif event_type in ("approval", "confirmation") or (
+        event_type != "unknown" and original.recipients and _contact_subject(subject)
+    ):
         if original.conflict:
             selection = AddressSelection(ambiguous=True, note="Klartext- und HTML-Fassung der Weiterleitung widersprechen sich bei Originalkopf oder Buchungsdaten.")
         elif not participant_name:
             selection = AddressSelection(note="Die Adresse konnte ohne eindeutig erkannten Teilnehmernamen nicht geprüft werden.")
-        elif not _contact_subject(subject):
-            selection = AddressSelection(note="Für diesen Betreff ist keine automatische Adressübernahme eingerichtet.")
         elif not original.recipients:
             selection = AddressSelection(note="Das ursprüngliche An-Feld fehlt oder konnte nicht eindeutig gelesen werden.")
         else:
             selection = select_participant_address(
                 original.recipients, participant_name, functional_addresses,
+                allow_local_part_match=event_type == "approval" or (
+                    event_type == "confirmation" and bool(re.match(PERSONAL_CONFIRMATION_SUBJECT, subject, re.IGNORECASE))
+                ),
                 allow_approval_fallback=event_type == "approval" and subject.casefold() == BOOKING_SUBJECT,
             )
             if selection.email:
