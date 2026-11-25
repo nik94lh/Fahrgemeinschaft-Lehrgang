@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.9.4
+
+- Bei mehrfach weitergeleiteten Lehrgangsmails verwendet BMS den Betreff, die Buchungsdaten und das An-Feld der ursprünglichen Nachricht. Das gilt für eingebetteten Klartext, HTML und Weiterleitungen als EML-Anhang.
+- Bei einer einzelnen Adresse der Form `mail@…` kann BMS den vollständigen Teilnehmernamen in der Domain als Nachweis für die Zuordnung verwenden.
+
 ## 0.9.3
 
 - Bei erkannten Genehmigungen und Teilnahmebestätigungen prüft BMS das ursprüngliche An-Feld auch bei abweichendem Betreff.

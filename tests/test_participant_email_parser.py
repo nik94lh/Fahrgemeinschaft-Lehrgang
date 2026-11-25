@@ -1,10 +1,11 @@
+from dataclasses import replace
 from email import policy
 from email.message import EmailMessage
 from html import escape
 from unittest import TestCase
 
 from mailimport.email_address import normalize_contact_email
-from mailimport.parser import parse_eml
+from mailimport.parser import MailParseError, parse_eml
 
 
 APPROVAL = (
@@ -57,6 +58,28 @@ def forwarded_approval_with_repeated_mailto(*, subject=BOOKING_SUBJECT):
         ),
     )
     return mail
+
+
+def nested_booking_forward(original, *, inner_separator=""):
+    return booking_message(
+        "Alex Beispiel <import@example.invalid>",
+        subject="WG: Fwd: Lehrgang",
+        body=(
+            "----- Ursprüngliche Nachricht -----\n"
+            "Von: Ausbildungsbüro <verwaltung@example.invalid>\n"
+            "An: Alex Beispiel <weiterleitung@example.invalid>\n"
+            "Datum: 12.04.2027 12:30\n"
+            f"Betreff: Fwd: {original['Subject']}\n\n"
+            "Viele Grüße vom Ausbildungsbüro\n"
+            f"{inner_separator}"
+            f"Von: {original['From']}\n"
+            "Datum: Montag, 12. April 2027 um 09:00\n"
+            f"An: {original['To']}\n"
+            "Cc: Alex Beispiel <kopie@example.invalid>\n"
+            f"Betreff: {original['Subject']}\n"
+            f"{original.get_content()}"
+        ),
+    )
 
 
 class ParticipantEmailParserTests(TestCase):
@@ -128,6 +151,56 @@ class ParticipantEmailParserTests(TestCase):
 
         self.assertEqual(parsed.event_type, "approval")
         self.assertIsNone(parsed.participant_email)
+
+    def test_nested_forwards_extract_the_same_booking_as_direct_delivery(self):
+        body = APPROVAL.replace("Schulungsort: SFS Würzburg", "Schulungsort: Online")
+        original = booking_message("Alex Beispiel <alex@example.invalid>", body=body)
+        expected = parse_eml(original.as_bytes())
+        self.assertTrue(expected.is_online)
+        self.assertEqual(expected.participant_email, "alex@example.invalid")
+
+        plain = nested_booking_forward(original)
+        with_inner_separator = nested_booking_forward(original, inner_separator="----- Forwarded message -----\n")
+        html = nested_booking_forward(original)
+        html.set_content(
+            "<div>" + escape(html.get_content()).replace("\n", "<br>") + "</div>", subtype="html",
+        )
+        attached = booking_message(subject="Unterlagen im Anhang", body="Hier die Nachricht im Anhang.")
+        attached.add_attachment(plain)
+        for form, mail in (("plain", plain), ("two separators", with_inner_separator), ("html", html), ("EML", attached)):
+            with self.subTest(form=form):
+                result = parse_eml(mail.as_bytes())
+
+                self.assertEqual(replace(result, fingerprint=expected.fingerprint, address_note=expected.address_note), expected)
+
+    def test_separate_quoted_messages_are_ambiguous(self):
+        mail = forwarded_approval_with_repeated_mailto()
+        other = forwarded_approval_with_repeated_mailto()
+        mail.set_content(
+            mail.get_content() + "\n----- Weitergeleitete Nachricht -----\n"
+            + other.get_content().removeprefix("Hier die Nachricht\n\n")
+        )
+
+        with self.assertRaisesRegex(MailParseError, "mehrere zitierte Nachrichten"):
+            parse_eml(mail.as_bytes())
+
+    def test_single_original_address_can_contain_the_full_name_in_its_domain(self):
+        address = "mail@alexbeispiel.example"
+        mail = booking_message(f'"{address}" <{address}>')
+
+        self.assertEqual(parse_eml(mail.as_bytes()).participant_email, address)
+        self.assertIsNone(parse_eml(mail.as_bytes(), functional_addresses=(address,)).participant_email)
+
+    def test_personal_domain_matching_rejects_partial_names_and_other_mailboxes(self):
+        addresses = (
+            "mail@beispiel.example",
+            "mail@alexbeispiel.verein.example",
+            "stelle@alexbeispiel.example",
+            "mail@alexbeispiel.example, weitere-person@example.invalid",
+        )
+        for address in addresses:
+            with self.subTest(address=address):
+                self.assertIsNone(parse_eml(booking_message(address).as_bytes()).participant_email)
 
     def test_full_name_with_transliterated_umlaut_matches_a_single_original_address(self):
         address = "alex.moeller@example.invalid"

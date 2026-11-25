@@ -20,6 +20,7 @@ from .recipient_address import AddressSelection, header_addresses, inline_addres
 
 
 MAX_EML_BYTES = 1024 * 1024
+MAX_INLINE_FORWARD_LAYERS = 12
 BERLIN = ZoneInfo("Europe/Berlin")
 
 SCHOOLS = {
@@ -71,20 +72,19 @@ CANCELLATION_NEGATION = re.compile(r"\b(?:nicht|nie|niemals|keineswegs|weder)\b"
 FORWARD_PREFIX = re.compile(r"^\s*(?:WG|FW|FWD):\s*", re.IGNORECASE)
 REPLY_PREFIX = re.compile(r"^\s*(?:AW|RE):\s*", re.IGNORECASE)
 FORWARD_HEADER = re.compile(
-    r"^(?:von|from|an|to|cc|datum|date|gesendet|sent|betreff|subject) *:",
+    r"^(von|from|an|to|cc|datum|date|gesendet|sent|betreff|subject) *:",
     re.IGNORECASE,
 )
-FORWARD_SEPARATOR = re.compile(
-    r"^\s*-{2,}\s*(?:weitergeleitete nachricht|ursprüngliche nachricht|forwarded message|original message)"
-    r"\s*-{2,}\s*$", re.IGNORECASE | re.MULTILINE,
-)
-OUTLOOK_FORWARD_HEADERS = re.compile(
-    r"(?:\A|\n\n)(?=[ \t]*(?:von|from) *: *[^\n]+\n"
-    r"[ \t]*(?:gesendet|sent|datum|date) *: *[^\n]+\n"
-    r"[ \t]*(?:an|to) *: *[^\n]*\n"
+FORWARD_DATE_LINE = r"[ \t]*(?:gesendet|sent|datum|date) *: *[^\n]+\n"
+FORWARD_TO_LINE = r"[ \t]*(?:an|to) *: *[^\n]*\n"
+INLINE_FORWARD_START = re.compile(
+    r"^[ \t]*-{2,}[ \t]*(?:weitergeleitete nachricht|ursprüngliche nachricht|forwarded message|original message)"
+    r"[ \t]*-{2,}[ \t]*$"
+    r"|(?=^[ \t]*(?:von|from) *: *[^\n]+\n"
+    rf"(?:{FORWARD_DATE_LINE}{FORWARD_TO_LINE}|{FORWARD_TO_LINE}{FORWARD_DATE_LINE})"
     r"(?:[ \t]*cc *: *[^\n]*\n)?"
     r"[ \t]*(?:betreff|subject) *: *[^\n]+\n)",
-    re.IGNORECASE,
+    re.IGNORECASE | re.MULTILINE,
 )
 LOCATION_LABELS = "Schulungsort|Lehrgangsort|Veranstaltungsort|Schule"
 ONLINE_FORMAT = re.compile(
@@ -215,29 +215,40 @@ class _OriginalMail:
 
 
 def _inline_forward(text: str) -> _InlineMail | None:
-    lines = [re.sub(r"^\s*(?:>\s*)+", "", line) for line in text.splitlines()]
-    unfolded = "\n".join(lines)
-    separators = list(FORWARD_SEPARATOR.finditer(unfolded))
-    if not separators:
-        separators = list(OUTLOOK_FORWARD_HEADERS.finditer(unfolded))
-    if not separators:
+    unfolded = "\n".join(re.sub(r"^\s*(?:>\s*)+", "", line) for line in text.splitlines())
+    start = INLINE_FORWARD_START.search(unfolded)
+    if start is None:
         return None
-    if len(separators) > 1:
-        raise MailParseError("Die Weiterleitung enthält mehrere zitierte Nachrichten.")
 
-    lines = unfolded[separators[0].end():].strip().splitlines()
+    for _ in range(MAX_INLINE_FORWARD_LAYERS):
+        quoted = _inline_layer(unfolded[start.end():])
+        if REPLY_PREFIX.match(quoted.subject):
+            return quoted
+        unfolded = quoted.text
+        start = INLINE_FORWARD_START.search(unfolded)
+        if start is None:
+            return quoted
+        if not FORWARD_PREFIX.match(quoted.subject):
+            raise MailParseError("Die Weiterleitung enthält mehrere zitierte Nachrichten.")
+    raise MailParseError("Die Weiterleitung enthält zu viele verschachtelte Nachrichten.")
+
+
+def _inline_layer(text: str) -> _InlineMail:
+    lines = text.strip().splitlines()
     headers = []
     first_gap = None
-    for index, line in enumerate(lines):
-        line = _normalized(line)
-        if line and not FORWARD_HEADER.match(line):
-            envelope = "\n".join(headers)
-            subjects = _values(envelope, "Betreff|Subject")
-            if len(subjects) == 1:
-                return _quoted_mail(subjects[0], "\n".join(lines[index:]), headers[:first_gap])
-            break
-        if line:
+    has_subject = False
+    for index, raw_line in enumerate(lines):
+        line = _normalized(raw_line)
+        if header := FORWARD_HEADER.match(line):
             headers.append(line)
+            has_subject = has_subject or header[1].casefold() in ("betreff", "subject")
+        elif line or has_subject:
+            body = "\n".join(lines[index:]).lstrip()
+            subjects = _values("\n".join(headers), "Betreff|Subject")
+            if len(subjects) == 1 and body:
+                return _quoted_mail(subjects[0], body, headers[:first_gap])
+            break
         elif first_gap is None:
             first_gap = len(headers)
     raise MailParseError("Die zitierte Weiterleitung ist unvollständig.")
@@ -328,26 +339,26 @@ def _original_text(message: EmailMessage) -> _OriginalMail:
         return _OriginalMail(subject, "")
     forwarded = bool(FORWARD_PREFIX.match(subject))
     body = message.get_body(preferencelist=("plain", "html"))
-    if body is None or forwarded:
-        attached = _attached_messages(message)
+    attached = _attached_messages(message)
+    cleaned = ""
+    if body is not None and not (forwarded and attached):
+        text = _body_text(body)
+        if original := _inline_forward(text):
+            return _forward_original(message, body, original)
+        cleaned = _clean_text(text)
+
+    if attached and (body is None or forwarded or _classify(subject, cleaned) == "unknown"):
         if len(attached) > 1:
             raise MailParseError("Die Weiterleitung enthält mehrere E-Mails.")
-        if attached:
-            return _original_text(attached[0])
+        return _original_text(attached[0])
 
     if body is None:
         raise MailParseError("Die E-Mail enthält keinen lesbaren Klartext- oder HTML-Teil.")
-
-    text = _body_text(body)
-    original = _inline_forward(text)
-    if original:
-        return _forward_original(message, body, original)
 
     recipients = ()
     if not forwarded and len(message.get_all("Subject", ())) == 1:
         recipients = header_addresses([value for name, value in message.raw_items() if name.casefold() == "to"])
     subject = FORWARD_PREFIX.sub("", subject, count=1)
-    cleaned = _clean_text(text)
     if not cleaned.strip():
         raise MailParseError("Die E-Mail enthält keinen lesbaren Inhalt.")
     return _OriginalMail(subject, cleaned, recipients)
@@ -473,7 +484,7 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
         else:
             selection = select_participant_address(
                 original.recipients, participant_name, functional_addresses,
-                allow_local_part_match=event_type == "approval" or (
+                allow_name_in_address=event_type == "approval" or (
                     event_type == "confirmation" and bool(re.match(PERSONAL_CONFIRMATION_SUBJECT, subject, re.IGNORECASE))
                 ),
                 allow_approval_fallback=event_type == "approval" and subject.casefold() == BOOKING_SUBJECT,

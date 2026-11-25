@@ -56,9 +56,20 @@ class AddressSelection:
     note: str = ""
 
 
+def _address_matches_name(email: str, name: str) -> bool:
+    parts = name.translate(GERMAN_UMLAUTS).split()
+    if len(parts) < 2:
+        return False
+    local, domain = email.rsplit("@", 1)
+    if local == ".".join(parts):
+        return True
+    domain_name, _, suffix = domain.partition(".")
+    return local == "mail" and "." not in suffix and domain_name in ("".join(parts), "-".join(parts))
+
+
 def select_participant_address(
     recipients: tuple[Address, ...], participant_name: str, functional_addresses: Iterable[str],
-    *, allow_local_part_match: bool, allow_approval_fallback: bool,
+    *, allow_name_in_address: bool, allow_approval_fallback: bool,
 ) -> AddressSelection:
     excluded = {value for entry in functional_addresses if (value := normalize_contact_email(entry))}
     remaining = []
@@ -88,9 +99,7 @@ def select_participant_address(
     if len(remaining) == 1:
         display, email = remaining[0]
         if display in ("", email):
-            name_parts = target.translate(GERMAN_UMLAUTS).split()
-            full_name_matches = len(name_parts) >= 2 and email.rsplit("@", 1)[0] == ".".join(name_parts)
-            if (allow_local_part_match and full_name_matches) or (
+            if (allow_name_in_address and _address_matches_name(email, target)) or (
                 allow_approval_fallback and not display and excluded_from_original
             ):
                 return AddressSelection(email=email)
