@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.10.3
+
+- Bei weitergeleiteten Lehrgangsmails kann BMS einen im Klartext fehlenden Empfängernamen aus der HTML-Fassung ergänzen, wenn beide Fassungen dieselbe Nachricht und Buchung beschreiben. So lassen sich weitere Teilnehmeradressen eindeutig zuordnen.
+- Widersprüchliche Empfängernamen, Adressen oder Buchungsdaten kommen in die Klärung.
+- GitHub-Vorabversionen übernehmen die Release-Notes aus dem Changelog der jeweiligen Version.
+
 ## 0.10.2
 
 - Im Mail-Eingang lässt sich die Originalnachricht zu einer Buchung mit fehlender Adresse einzeln erneut prüfen. BMS zeigt den aktuellen Adressvorschlag oder den Grund für die fehlende Zuordnung.

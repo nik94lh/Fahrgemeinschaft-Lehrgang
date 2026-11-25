@@ -74,7 +74,25 @@ jobs:
             [[ -n "$tag" ]] || continue
             if ! gh release view "$tag" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
               notes="$RUNNER_TEMP/bms-release-notes.md"
-              git for-each-ref --format='%(contents)' "refs/tags/$tag" > "$notes"
+              if ! git show "refs/tags/$tag^{commit}:CHANGELOG.md" 2>/dev/null |
+                awk -v heading="## ${tag#v}" '
+                  match($0, /^ {0,3}(```+|~~~+)/) {
+                    fence = substr($0, 1, RLENGTH)
+                    remainder = substr($0, RLENGTH + 1)
+                    sub(/^ +/, "", fence)
+                    if (open_fence) {
+                      if (index(fence, open_fence) == 1 && remainder ~ /^[[:blank:]]*$/) {
+                        open_fence = ""
+                      }
+                    } else if (fence ~ /^~/ || remainder !~ /`/) {
+                      open_fence = fence
+                    }
+                  }
+                  !open_fence && /^## / { in_version = ($0 == heading); next }
+                  in_version { print }
+                ' > "$notes" || ! grep -q '[^[:space:]]' "$notes"; then
+                git for-each-ref --format='%(contents)' "refs/tags/$tag" > "$notes"
+              fi
               gh release create "$tag" --repo "$RELEASE_REPO" --verify-tag --notes-file "$notes" --prerelease
             fi
           done <<< "$tags"
