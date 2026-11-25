@@ -5,7 +5,7 @@
     <div class="page-heading"><h1>Buchungen</h1></div>
     {% if imported %}<p class="notice" role="status">Die Testmail wurde ausgewertet.{% if workspace_view.review %} Nicht eindeutige Ereignisse findest du unter <a href="{% url 'review' %}">Klärung</a>.{% endif %}</p>{% endif %}
     <form class="panel filters listing-filters booking-filters" method="get" role="search" aria-label="Buchungen filtern">
-        <label class="booking-query">Lehrgang, Person oder Referenz<input name="q" type="search" maxlength="100" value="{{ query }}"></label>
+        <label class="booking-query">Lehrgang, Person, Referenz oder Buchungs-ID<input name="q" type="search" maxlength="100" value="{{ query }}"></label>
         <label>Schulungsort
             <select name="school">
                 <option value="">Alle Schulungsorte</option>
@@ -30,10 +30,13 @@
                     <thead><tr><th scope="col">Lehrgang</th><th scope="col">Schulungsort</th><th scope="col">Zeitraum</th><th scope="col">Teilnehmer/in</th><th scope="col">Status</th></tr></thead>
                     <tbody role="rowgroup">{% for row in booking_rows %}{% with seat=row.seat %}
                         <tr role="row">
-                            <td role="cell" class="booking-course" data-label="Lehrgang"><strong>{{ seat.session.course.name }}</strong></td>
+                            <td role="cell" class="booking-course" data-label="Lehrgang">
+                                <strong>{{ seat.session.course.name }}</strong>
+                                <small class="booking-list-id"><a href="{% url 'booking_detail' seat.pk %}">Buchungs-ID {{ seat.pk|stringformat:"d" }}</a></small>
+                            </td>
                             <td role="cell" class="listing-meta" data-label="Schulungsort">{{ seat.session.get_venue_display }}</td>
                             <td role="cell" class="listing-meta" data-label="Zeitraum">{% include "workspace/session_period.html" with session=seat.session only %}</td>
-                            <td role="cell" class="booking-person" data-label="Teilnehmer/in">{% if seat.participant %}<a class="listing-profile-link" href="{% url 'booking_participant' seat.pk %}">{{ seat.participant.name }} <span aria-hidden="true">›</span></a>{% else %}<span class="quiet">Teilnehmer nicht zugeordnet</span>{% endif %}</td>
+                            <td role="cell" class="booking-person" data-label="Teilnehmer/in">{% if seat.participant %}{{ seat.participant.name }}{% else %}<span class="quiet">Teilnehmer nicht zugeordnet</span>{% endif %}</td>
                             <td role="cell" data-label="Status" class="booking-status-cell">
                                 <div>
                                     <span class="status-label status-{{ seat.status }}">{{ seat.get_status_display }}</span>

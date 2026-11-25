@@ -30,6 +30,8 @@ Die Buchungszuordnung verarbeitet Genehmigungen, Bestätigungen und eindeutige S
 
 Widersprüchliche, mehrdeutige oder nicht unterstützte Ereignisse erscheinen unter **Klärung**. Dazu zählen derzeit Ummeldungen und Terminänderungen. Ordne einen Klärungsfall erst nach Prüfung der Originalnachricht im separaten Postfach zu. Eine manuelle Ummeldung erfordert die Bestätigung von Platz, bisherigem und neuem Teilnehmer. Die Zuordnung ohne Ummeldung ändert den Buchungsstatus nicht. Eine verspätete Genehmigung setzt eine Bestätigung nicht zurück. Die Importfunktionen speichern keine Roh-Nachrichten.
 
+Ein Profil ohne E-Mail-Adresse, das bereits mit mehreren Buchungen verknüpft ist, erhält durch den Import oder Adressabgleich keine neue Adresse. Eine geprüfte und noch keinem anderen Profil zugeordnete Adresse kann einzeln in der Teilnehmeransicht der betreffenden Buchung gespeichert werden. BMS legt dafür ein separates Profil für diese Buchung an.
+
 Die Karten **Angemeldet** und **Genehmigt** zeigen belegte Schritte zur aktuell zugeordneten Person. Eine Teilnahmebestätigung belegt die Anmeldung. Für die Genehmigung braucht BMS einen eigenen Beleg. **Storniert** gibt an, ob die aktuelle Buchung storniert ist. Ist eine Stornierung wirksam, bleiben frühere belegte Schritte für dieselbe Person sichtbar. Wird ein passendes Teilnehmerprofil über eine verifizierte Adresse verknüpft, übernimmt BMS die belegten Schritte dieser Buchung.
 
 BMS erkennt Online-Lehrgänge an einer eindeutigen Angabe in Durchführungsform, Schulungsort oder Lehrgangsbezeichnung. Eine angegebene organisierende Schule bleibt sichtbar. Online-Lehrgänge sind weiterhin Buchungen und erscheinen im Kalender. Für sie werden keine Fahrgemeinschaften vorgeschlagen.

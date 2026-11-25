@@ -44,8 +44,10 @@ class ParticipantContactTests(WorkspaceTestCase):
             fields={"participant_name": self.person.name, "participant_email_candidate": OPAQUE_ADDRESS},
         )
 
-    def test_booking_lists_the_link_and_shows_current_profile(self):
-        self.assertContains(self.client.get(reverse("bookings")), self.url)
+    def test_booking_detail_links_to_the_current_profile(self):
+        booking_url = reverse("booking_detail", args=[self.seat.pk])
+        self.assertContains(self.client.get(reverse("bookings")), booking_url)
+        self.assertContains(self.client.get(booking_url), self.url)
         response = self.client.get(self.url)
 
         self.assertContains(response, "Alex Beispiel")

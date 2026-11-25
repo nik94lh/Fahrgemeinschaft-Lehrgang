@@ -6,8 +6,10 @@ from unittest.mock import patch
 from django.db import IntegrityError, connection, connections, transaction
 from django.test import TestCase, TransactionTestCase, skipUnlessDBFeature
 
-from bookings.models import BookingStatus, CourseSeat, CourseSession, EmailEvent, Participant
+from bookings.contact_replay import ContactReplayResult, contact_replay_outcome
+from bookings.models import BookingStatus, CourseSeat, CourseSession, EmailEvent, FireBrigade, Participant
 from bookings.services import ingest, set_participant_email
+from mailimport.models import MailReceipt
 from tests.test_mail_parser import message
 from tests.test_reconciliation import JUNE, MAY
 
@@ -37,6 +39,15 @@ def booking_mail(*, name="Alex Beispiel", period=MAY, address=None, kind="approv
 
 
 class ParticipantIdentityTests(TestCase):
+    def share_legacy_profile(self, seat):
+        session = CourseSession.objects.create(
+            course=seat.session.course,
+            school=seat.session.school,
+            starts_at=seat.session.starts_at + timedelta(days=9),
+            ends_at=seat.session.ends_at + timedelta(days=9),
+        )
+        return CourseSeat.objects.create(session=session, participant=seat.participant, status=BookingStatus.APPROVED)
+
     def test_matching_email_and_normalized_name_reuse_the_person_across_sessions(self):
         first = ingest(booking_mail(address="Alex.Beispiel@EXAMPLE.INVALID"))
         second = ingest(booking_mail(period=JUNE, address=PERSONAL, name="ALEX   BEISPIEL"))
@@ -81,6 +92,73 @@ class ParticipantIdentityTests(TestCase):
         self.assertEqual(confirmed.seat.participant_id, approval.seat.participant_id)
         self.assertEqual(confirmed.seat.status, BookingStatus.CONFIRMED)
         self.assertEqual(confirmed.seat.participant.email, PERSONAL)
+
+    def test_new_address_on_a_shared_blank_profile_requires_review_even_with_a_known_reference(self):
+        for period, reference in ((MAY, None), (JUNE, "TEST-36")):
+            with self.subTest(reference=reference):
+                seat = ingest(booking_mail(period=period, reference=reference)).seat
+                other = self.share_legacy_profile(seat)
+                address = PERSONAL if reference else OTHER
+
+                event = ingest(booking_mail(period=period, kind="confirmation", address=address, reference=reference))
+
+                self.assertEqual(event.state, EmailEvent.State.NEEDS_REVIEW)
+                self.assertEqual(event.review_reason, EmailEvent.ReviewReason.PARTICIPANT_IDENTITY_UNCLEAR)
+                self.assertEqual(event.seat_id, seat.pk)
+                seat.refresh_from_db()
+                other.refresh_from_db()
+                self.assertEqual((seat.status, other.status), (BookingStatus.APPROVED, BookingStatus.APPROVED))
+                self.assertEqual(seat.participant_id, other.participant_id)
+                self.assertEqual(other.participant.email, "")
+
+                without_address = ingest(booking_mail(period=period, kind="confirmation", reference=reference))
+                self.assertEqual(without_address.state, EmailEvent.State.APPLIED)
+                self.assertEqual(without_address.seat.status, BookingStatus.CONFIRMED)
+                other.refresh_from_db()
+                self.assertEqual(other.status, BookingStatus.APPROVED)
+
+    def test_address_replay_and_redelivery_do_not_enrich_a_shared_blank_profile(self):
+        raw = booking_mail(address=PERSONAL)
+        with patch("bookings.services.get_functional_addresses", return_value=(PERSONAL,)):
+            original = ingest(raw)
+        other = self.share_legacy_profile(original.seat)
+
+        self.assertEqual(contact_replay_outcome(raw), ContactReplayResult.SHARED_PROFILE)
+        receipt = MailReceipt(source_id="a" * 64, uid_validity=1, uid=1)
+        self.assertEqual(ingest(raw, receipt=receipt).pk, original.pk)
+        self.assertEqual(receipt.fields["address_note"], ContactReplayResult.SHARED_PROFILE.value)
+
+        other.refresh_from_db()
+        self.assertEqual(other.participant.email, "")
+        self.assertEqual(other.participant_id, original.seat.participant_id)
+        self.assertEqual(EmailEvent.objects.count(), 1)
+
+    def test_manual_verified_unowned_address_updates_only_the_selected_booking(self):
+        seat = ingest(booking_mail()).seat
+        previous = seat.participant
+        brigade = FireBrigade.objects.create(name="Feuerwehr Testort", municipality="Testort")
+        previous.home_brigade = brigade
+        previous.save(update_fields=["home_brigade"])
+        other = self.share_legacy_profile(seat)
+        owner = Participant.objects.create(name=previous.name, email=OTHER)
+
+        with self.assertRaisesMessage(ValueError, EmailEvent.ReviewReason.PARTICIPANT_IDENTITY_UNCLEAR.label):
+            set_participant_email(seat.pk, owner.email, expected_participant_id=previous.pk)
+
+        verified = set_participant_email(seat.pk, PERSONAL, expected_participant_id=previous.pk)
+
+        seat.refresh_from_db()
+        other.refresh_from_db()
+        self.assertEqual(verified.name, previous.name)
+        self.assertEqual(seat.participant.email, PERSONAL)
+        self.assertEqual(seat.participant_id, verified.pk)
+        self.assertIsNone(verified.home_brigade_id)
+        self.assertEqual(other.participant_id, previous.pk)
+        self.assertEqual(other.participant.email, "")
+        self.assertEqual(other.participant.home_brigade_id, brigade.pk)
+        history = seat.history.get(previous_participant=previous, participant=verified)
+        self.assertTrue(history.profile_linked)
+        self.assertEqual(history.status, history.previous_status)
 
     def test_byte_identical_redelivery_fills_missing_contact_without_reapplying_event(self):
         raw = booking_mail(address=PERSONAL)

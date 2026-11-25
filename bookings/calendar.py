@@ -4,6 +4,7 @@ from collections import Counter, defaultdict
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from urllib.parse import urlencode
+from zoneinfo import ZoneInfo
 
 from django.db.models import Count, Q
 from django.shortcuts import get_object_or_404, render
@@ -17,6 +18,10 @@ from .models import CourseSession, School
 
 DAY = timedelta(days=1)
 WEEK = timedelta(days=7)
+BERLIN = ZoneInfo("Europe/Berlin")
+TIMELINE_SIDE_MONTHS = 2
+FIRST_TIMELINE_DAY = date(2, 1, 1)
+TIMELINE_STOP = date(9999, 1, 1)
 MONTH_CHOICES = tuple(date(2000, month, 1) for month in range(1, 13))
 MONTH_OCCUPANCY_RANGES = (
     (0, "0"), (1, "1"), (5, "2–5"), (10, "6–10"), (20, "11–20"), (31, "21–31"),
@@ -55,6 +60,15 @@ def _next_month(month):
     return (month.replace(day=28) + timedelta(days=4)).replace(day=1)
 
 
+def _shift_month(month, months):
+    year, month_index = divmod(month.year * 12 + month.month - 1 + months, 12)
+    return date(year, month_index + 1, 1)
+
+
+def _selected_month(value, default):
+    return _selected_date(f"{value}-01", default) if len(value) == 7 else default
+
+
 def _selected_period(params, today):
     view = params.get("view")
     if view == "year":
@@ -70,7 +84,7 @@ def _selected_period(params, today):
     month_number = params.get("month_number", "")
     if not value and len(month_number) in (1, 2) and month_number.isascii() and month_number.isdigit():
         value = f"{params.get('year', '')}-{month_number.zfill(2)}"
-    start = _selected_date(f"{value}-01", today.replace(day=1))
+    start = _selected_month(value, today.replace(day=1))
     return _Period("month", start, _next_month(start), (start - DAY).replace(day=1))
 
 
@@ -91,22 +105,23 @@ def _query_string(view, anchor, school):
     return urlencode(parameters)
 
 
-def _ticks(period, today):
+def _ticks(start, stop, today):
     ticks = []
-    for offset in range((period.stop - period.start).days):
-        day = period.start + timedelta(days=offset)
+    for offset in range((stop - start).days):
+        day = start + timedelta(days=offset)
         ticks.append({
             "date": day,
             "number": day.day,
             "is_today": day == today,
             "is_weekend": day.weekday() >= 5,
+            "is_month_start": day.day == 1,
         })
     return ticks
 
 
-def _session_dates(session):
-    starts_on = timezone.localtime(session.starts_at).date()
-    ends_at = timezone.localtime(session.ends_at)
+def _session_dates(session, *, zone=None):
+    starts_on = timezone.localtime(session.starts_at, timezone=zone).date()
+    ends_at = timezone.localtime(session.ends_at, timezone=zone)
     last_day = ends_at.date() - DAY if ends_at.time() == time.min else ends_at.date()
     return starts_on, last_day
 
@@ -159,61 +174,64 @@ def _month_overview(sessions, period, today, school):
     return months
 
 
-def _month_week_bars(session_dates, week_start, first_visible_day, last_visible_day):
-    bars = []
-    lane_ends = []
-    for session, starts_on, last_day in session_dates:
-        start = max(starts_on, first_visible_day)
-        end = min(last_day, last_visible_day)
-        if start > end:
+def _month_groups(sessions, start, stop, selected, school_filter):
+    bars = defaultdict(list)
+    lane_ends = defaultdict(list)
+    for session in sessions:
+        starts_on, last_day = _session_dates(session, zone=BERLIN)
+        visible_start = max(starts_on, start)
+        visible_end = min(last_day, stop - DAY)
+        if visible_start > visible_end:
             continue
 
-        start_column = (start - week_start).days + 1
-        end_column = (end - week_start).days + 2
+        start_column = (visible_start - start).days + 1
+        end_column = (visible_end - start).days + 2
+        school_lanes = lane_ends[session.school]
         lane = next(
-            (index for index, free_at in enumerate(lane_ends) if free_at <= start_column),
-            len(lane_ends),
+            (index for index, free_at in enumerate(school_lanes) if free_at <= start_column),
+            len(school_lanes),
         )
-        if lane == len(lane_ends):
-            lane_ends.append(end_column)
+        if lane == len(school_lanes):
+            school_lanes.append(end_column)
         else:
-            lane_ends[lane] = end_column
-        bars.append({
+            school_lanes[lane] = end_column
+        detail_month = selected.start if starts_on < selected.stop and last_day >= selected.start else visible_start
+        bars[session.school].append({
             "session": session,
             "start_column": start_column,
             "end_column": end_column,
-            "lane": lane + 2,  # The first grid row contains the dates.
-            "starts_before": starts_on < start,
-            "ends_after": last_day > end,
+            "lane": lane + 1,
+            "starts_before": starts_on < visible_start,
+            "ends_after": last_day > visible_end,
+            "detail_query": _query_string("month", detail_month, school_filter),
         })
-    return bars, max(1, len(lane_ends))
+    return [
+        {"school": school, "bars": bars[school], "lane_count": len(lane_ends[school])}
+        for school in School if bars[school]
+    ]
 
 
-def _month_weeks(sessions, period, today):
-    # Clipping preserves the start order. The session query supplies stable tie-breaks.
-    session_dates_by_school = defaultdict(list)
-    for session in sessions:
-        session_dates_by_school[session.school].append((session, *_session_dates(session)))
-
-    weeks = []
-    for week in Calendar().monthdatescalendar(period.start.year, period.start.month):
-        days = [{
-            "date": day,
-            "is_outside": day.month != period.start.month,
-            "is_weekend": day.weekday() >= 5,
-            "is_today": day == today,
-        } for day in week]
-        first_visible_day = max(week[0], period.start)
-        last_visible_day = min(week[-1], period.last_day)
-        groups = []
-        for school in School:
-            bars, lane_count = _month_week_bars(
-                session_dates_by_school.get(school, ()), week[0], first_visible_day, last_visible_day,
-            )
-            if bars:
-                groups.append({"school": school, "bars": bars, "lane_count": lane_count})
-        weeks.append({"days": days, "groups": groups})
-    return weeks
+def _month_timeline(selected, center, today, school):
+    start = max(FIRST_TIMELINE_DAY, _shift_month(center, -TIMELINE_SIDE_MONTHS))
+    stop = min(TIMELINE_STOP, _shift_month(center, TIMELINE_SIDE_MONTHS + 1))
+    sessions = _overlapping_sessions(
+        datetime.combine(start, time.min, tzinfo=BERLIN), datetime.combine(stop, time.min, tzinfo=BERLIN), school,
+    ).select_related("course").order_by("starts_at", "course__name", "pk")
+    days = _ticks(start, stop, today)
+    months = [
+        {"start": day["date"], "start_column": column, "end_column": (_next_month(day["date"]) - start).days + 1}
+        for column, day in enumerate(days, 1) if day["is_month_start"]
+    ]
+    return {
+        "timeline_days": days,
+        "timeline_months": months,
+        "timeline_groups": _month_groups(sessions, start, stop, selected, school),
+        "timeline_anchor": selected.start if start <= selected.start < stop else center,
+        "timeline_can_extend_before": start > FIRST_TIMELINE_DAY,
+        "timeline_can_extend_after": stop < TIMELINE_STOP,
+        "timeline_center": center.isoformat()[:7],
+        "timeline_day_count": len(days),
+    }
 
 
 def _timeline_rows(sessions, period, starts, ends):
@@ -235,21 +253,25 @@ def _timeline_rows(sessions, period, starts, ends):
     ]
 
 
-@never_cache
-@require_safe
-def calendar(request):
-    today = timezone.localdate()
-    period = _selected_period(request.GET, today)
-    school = _selected_school(request.GET)
-    starts = timezone.make_aware(datetime.combine(period.start, time.min))
-    ends = timezone.make_aware(datetime.combine(period.stop, time.min))
+def _overlapping_sessions(starts, ends, school):
     sessions = CourseSession.objects.filter(
         starts_at__lt=ends, ends_at__gt=starts, school__in=School.values,
     )
     if school == School.ONLINE:
-        sessions = sessions.filter(Q(school=School.ONLINE) | Q(is_online=True))
-    elif school:
-        sessions = sessions.filter(school=school)
+        return sessions.filter(Q(school=School.ONLINE) | Q(is_online=True))
+    return sessions.filter(school=school) if school else sessions
+
+
+@never_cache
+@require_safe
+def calendar(request):
+    zone = None if request.GET.get("view") in ("week", "year") else BERLIN
+    today = timezone.localdate(timezone=zone)
+    period = _selected_period(request.GET, today)
+    school = _selected_school(request.GET)
+    starts = timezone.make_aware(datetime.combine(period.start, time.min), timezone=zone)
+    ends = timezone.make_aware(datetime.combine(period.stop, time.min), timezone=zone)
+    sessions = _overlapping_sessions(starts, ends, school)
     if period.view == "year":
         sessions = list(sessions.only("starts_at", "ends_at").order_by("starts_at", "pk"))
     else:
@@ -266,7 +288,7 @@ def calendar(request):
         if period.start <= today < period.stop:
             week_anchor = today
         elif sessions:
-            week_anchor = max(period.start, timezone.localtime(sessions[0].starts_at).date())
+            week_anchor = max(period.start, timezone.localtime(sessions[0].starts_at, timezone=zone).date())
         if period.view == "year":
             month_anchor = week_anchor
     context = {
@@ -295,10 +317,11 @@ def calendar(request):
         context["months"] = _month_overview(sessions, period, today, school)
         context["occupancy_legend"] = tuple(enumerate(label for _, label in MONTH_OCCUPANCY_RANGES))
     elif period.view == "month":
-        context["month_weeks"] = _month_weeks(sessions, period, today)
+        center = _selected_month(request.GET.get("range", ""), period.start)
+        context.update(_month_timeline(period, center, today, school))
         context["sessions"] = sessions
     else:
-        ticks = _ticks(period, today)
+        ticks = _ticks(period.start, period.stop, today)
         context.update({
             "ticks": ticks,
             "day_count": len(ticks),

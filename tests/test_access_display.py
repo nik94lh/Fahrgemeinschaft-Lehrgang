@@ -47,11 +47,13 @@ class AccessDisplayTests(TestCase):
         self.assertContains(response, self.session.course.name)
         self.assertNotContains(response, self.person.name)
         self.assertNotContains(response, self.seat.external_reference)
+        self.assertNotContains(response, f"Buchungs-ID {self.seat.pk}")
         self.assertNotContains(response, f'href="{reverse("bookings")}"')
         self.assertNotContains(response, f'href="{reverse("account_list")}"')
 
         fragment = self.client.get(path, headers={"X-BMS-Live": "1"})
         self.assertNotContains(fragment, self.person.name)
+        self.assertNotContains(fragment, f"Buchungs-ID {self.seat.pk}")
 
     def test_overview_keeps_counts_but_does_not_show_a_mail_event_as_person_data(self):
         self.login_with("view_overview")
@@ -96,6 +98,19 @@ class AccessDisplayTests(TestCase):
         self.assertContains(response, "vorschlag@example.invalid")
         self.assertNotContains(response, current)
         self.assertNotContains(response, "Adresse an der Buchung aktuell")
+        self.assertNotContains(response, f"Buchungs-ID {self.seat.pk}")
+
+    @override_settings(HTTPS=True)
+    def test_receipt_with_booking_right_links_to_unassigned_booking(self):
+        self.seat.participant = None
+        self.seat.save(update_fields=["participant"])
+        self.login_with("view_bookings", "view_mail_receipts")
+
+        response = self.client.get(reverse("mail_receipt", args=[self.receipt.pk]), secure=True)
+
+        booking_url = reverse("booking_detail", args=[self.seat.pk])
+        self.assertContains(response, f'<a href="{booking_url}">Buchungs-ID {self.seat.pk} ansehen</a>', html=True)
+        self.assertNotContains(response, reverse("booking_participant", args=[self.seat.pk]))
 
     def test_preview_stays_usable_for_readers_and_hides_the_import_action(self):
         self.login_with("view_preview")
@@ -116,6 +131,7 @@ class AccessDisplayTests(TestCase):
         self.assertContains(response, "Eingangsname Beispiel")
         self.assertNotContains(response, self.person.name)
         self.assertNotContains(response, self.seat.external_reference)
+        self.assertNotContains(response, f"Buchungs-ID {self.seat.pk}")
 
     @override_settings(HTTPS=True)
     def test_editing_mailbox_without_booking_right_cannot_change_the_import_source(self):

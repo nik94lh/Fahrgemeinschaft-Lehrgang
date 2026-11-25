@@ -1,6 +1,8 @@
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 
-from django.utils.dateformat import format as format_date
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
+from django.utils import timezone
 
 from bookings.models import BookingStatus, Course, CourseSeat, CourseSession, Participant, School
 from tests.workspace_client import WorkspaceTestCase
@@ -35,14 +37,16 @@ class CalendarTests(WorkspaceTestCase):
             course=Course.objects.create(name=name), school=school, starts_at=start, ends_at=end,
         )
 
-    def test_calendar_includes_sessions_overlapping_the_local_month(self):
+    def test_appointment_list_includes_only_sessions_overlapping_the_selected_local_month(self):
         response = self.client.get("/kalender/", {"month": "2031-05"})
 
         self.assertContains(response, "Mai 2031")
         self.assertContains(response, "Übergreifender Musterlehrgang")
         self.assertContains(response, "Musterlehrgang Regensburg")
-        self.assertNotContains(response, "Musterlehrgang April")
-        self.assertNotContains(response, "Musterlehrgang Juni")
+        self.assertEqual([session.course.name for session in response.context["sessions"]], [
+            "Übergreifender Musterlehrgang", "Musterlehrgang Regensburg",
+        ])
+        self.assertContains(response, "Terminliste mit Uhrzeiten")
         self.assertIn("no-store", response.headers["Cache-Control"])
 
     def test_calendar_filter_and_navigation_keep_the_school(self):
@@ -52,11 +56,8 @@ class CalendarTests(WorkspaceTestCase):
         self.assertNotContains(response, "Musterlehrgang Regensburg")
         self.assertContains(response, "?month=2031-04&amp;school=wuerzburg")
         self.assertContains(response, "?month=2031-06&amp;school=wuerzburg")
-        self.assertEqual({
-            group["school"]
-            for week in response.context["month_weeks"]
-            for group in week["groups"]
-        }, {School.WUERZBURG})
+        self.assertIn("timeline_groups", response.context)
+        self.assertEqual({group["school"] for group in response.context["timeline_groups"]}, {School.WUERZBURG})
 
     def test_invalid_month_falls_back_to_the_current_month(self):
         default_response = self.client.get("/kalender/")
@@ -66,22 +67,33 @@ class CalendarTests(WorkspaceTestCase):
         self.assertContains(invalid_response, "Lehrgangskalender")
         self.assertEqual(invalid_response.context["month_id"], default_response.context["month_id"])
 
-    def test_school_filter_without_courses_still_renders_every_day_in_month_grid(self):
+    def test_school_filter_without_courses_keeps_a_single_continuous_axis(self):
         response = self.client.get("/kalender/", {"month": "2031-05", "school": School.GERETSRIED})
 
         self.assertContains(response, "Keine Lehrgänge in diesem Zeitraum gefunden.")
         self.assertNotContains(response, "Musterlehrgang Regensburg")
         self.assertNotContains(response, "Übergreifender Musterlehrgang")
-        for day in range(1, 32):
-            self.assertContains(response, f'<time datetime="2031-05-{day:02d}"', count=1)
-        weeks = response.context["month_weeks"]
-        self.assertEqual([len(week["days"]) for week in weeks], [7] * 5)
-        self.assertEqual(weeks[0]["days"][0]["date"], date(2031, 4, 28))
-        self.assertEqual(weeks[-1]["days"][-1]["date"], date(2031, 6, 1))
-        self.assertTrue(all(week["groups"] == [] for week in weeks))
+        self.assertIn("timeline_days", response.context)
+        days = response.context["timeline_days"]
+        self.assertEqual([item["date"] for item in days], [date(2031, 3, 1) + timedelta(days=n) for n in range(153)])
+        self.assertEqual(response.context["timeline_day_count"], 153)
+        self.assertEqual(response.context["timeline_anchor"], date(2031, 5, 1))
+        self.assertContains(response, 'id="calendar-month-timeline"', count=1)
+        self.assertContains(response, '<time datetime="2031-05-01"', count=1)
+        self.assertEqual(response.context["timeline_groups"], [])
+        self.assertEqual(response.context["timeline_center"], "2031-05")
+        self.assertTrue(response.context["timeline_can_extend_before"])
+        self.assertTrue(response.context["timeline_can_extend_after"])
+        self.assertEqual(response.context["timeline_months"], [
+            {"start": date(2031, 3, 1), "start_column": 1, "end_column": 32},
+            {"start": date(2031, 4, 1), "start_column": 32, "end_column": 62},
+            {"start": date(2031, 5, 1), "start_column": 62, "end_column": 93},
+            {"start": date(2031, 6, 1), "start_column": 93, "end_column": 123},
+            {"start": date(2031, 7, 1), "start_column": 123, "end_column": 154},
+        ])
         self.assertContains(response, '?month=2031-06&amp;school=geretsried')
 
-    def test_month_grid_uses_berlin_days_and_clips_overlapping_courses(self):
+    def test_timeline_uses_berlin_days_and_clips_courses_only_at_loaded_range_limits(self):
         self.add_session(
             "Abschluss um Mitternacht", School.WUERZBURG,
             datetime(2031, 5, 13, 18, tzinfo=UTC), datetime(2031, 5, 13, 22, tzinfo=UTC),
@@ -90,31 +102,42 @@ class CalendarTests(WorkspaceTestCase):
             "Monatswechsel am Ende", School.WUERZBURG,
             datetime(2031, 5, 30, 15, tzinfo=UTC), datetime(2031, 6, 2, 10, tzinfo=UTC),
         )
+        self.add_session(
+            "Beginn vor dem Ladebereich", School.WUERZBURG,
+            datetime(2031, 2, 28, 18, tzinfo=UTC), datetime(2031, 3, 1, 14, tzinfo=UTC),
+        )
+        self.add_session(
+            "Ende nach dem Ladebereich", School.WUERZBURG,
+            datetime(2031, 7, 31, 18, tzinfo=UTC), datetime(2031, 8, 1, 14, tzinfo=UTC),
+        )
 
-        response = self.client.get("/kalender/", {"month": "2031-05"})
+        with timezone.override("UTC"):
+            response = self.client.get("/kalender/", {"month": "2031-05"})
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn("timeline_days", response.context)
+        days = response.context["timeline_days"]
         bars = {
             bar["session"].course.name: (
-                week["days"][bar["start_column"] - 1]["date"],
-                week["days"][bar["end_column"] - 2]["date"],
+                days[bar["start_column"] - 1]["date"],
+                days[bar["end_column"] - 2]["date"],
                 bar["starts_before"], bar["ends_after"],
             )
-            for week in response.context["month_weeks"]
-            for group in week["groups"]
+            for group in response.context["timeline_groups"]
             for bar in group["bars"]
         }
         self.assertEqual(bars, {
-            "Übergreifender Musterlehrgang": (date(2031, 5, 1), date(2031, 5, 2), True, False),
+            "Beginn vor dem Ladebereich": (date(2031, 3, 1), date(2031, 3, 1), True, False),
+            "Übergreifender Musterlehrgang": (date(2031, 4, 30), date(2031, 5, 2), False, False),
+            "Musterlehrgang April": (date(2031, 4, 30), date(2031, 4, 30), False, False),
             "Musterlehrgang Regensburg": (date(2031, 5, 12), date(2031, 5, 12), False, False),
             "Abschluss um Mitternacht": (date(2031, 5, 13), date(2031, 5, 13), False, False),
-            "Monatswechsel am Ende": (date(2031, 5, 30), date(2031, 5, 31), False, True),
+            "Monatswechsel am Ende": (date(2031, 5, 30), date(2031, 6, 2), False, False),
+            "Musterlehrgang Juni": (date(2031, 6, 1), date(2031, 6, 1), False, False),
+            "Ende nach dem Ladebereich": (date(2031, 7, 31), date(2031, 7, 31), False, True),
         })
-        self.assertContains(response, "Terminliste mit Uhrzeiten")
-        session = CourseSession.objects.get(course__name="Musterlehrgang Regensburg")
-        self.assertContains(response, f'href="/kalender/{session.pk}/?month=2031-05"', count=2)
 
-    def test_month_renders_one_bar_link_per_week_and_keeps_school_in_detail_links(self):
+    def test_timeline_bar_detail_links_keep_the_school_and_open_the_relevant_month(self):
         session = self.add_session(
             "Lehrgang über das Wochenende", School.WUERZBURG,
             datetime(2031, 5, 9, 8, tzinfo=UTC), datetime(2031, 5, 14, 14, tzinfo=UTC),
@@ -122,11 +145,20 @@ class CalendarTests(WorkspaceTestCase):
 
         response = self.client.get("/kalender/", {"month": "2031-05", "school": School.WUERZBURG})
 
-        self.assertContains(response, f'href="/kalender/{session.pk}/?month=2031-05&amp;school=wuerzburg"', count=3)
-        self.assertContains(response, 'school-wuerzburg continues-before"', count=2)
-        self.assertContains(response, 'school-wuerzburg continues-after"', count=1)
+        self.assertIn("timeline_groups", response.context)
+        bars = response.context["timeline_groups"][0]["bars"]
+        self.assertEqual([bar["detail_query"] for bar in bars if bar["session"] == session], [
+            "month=2031-05&school=wuerzburg",
+        ])
+        self.assertContains(response, f'href="/kalender/{session.pk}/?month=2031-05&amp;school=wuerzburg"', count=2)
+        self.assertEqual({bar["session"].course.name: bar["detail_query"] for bar in bars}, {
+            "Übergreifender Musterlehrgang": "month=2031-05&school=wuerzburg",
+            "Musterlehrgang April": "month=2031-04&school=wuerzburg",
+            "Lehrgang über das Wochenende": "month=2031-05&school=wuerzburg",
+            "Musterlehrgang Juni": "month=2031-06&school=wuerzburg",
+        })
 
-    def test_month_splits_at_week_boundary_and_reuses_lanes_for_disjoint_bars(self):
+    def test_timeline_does_not_split_at_week_boundaries_and_reuses_lanes_for_disjoint_bars(self):
         over_weekend = self.add_session(
             "Lehrgang über das Wochenende", School.WUERZBURG,
             datetime(2031, 5, 9, 8, tzinfo=UTC), datetime(2031, 5, 14, 14, tzinfo=UTC),
@@ -147,49 +179,91 @@ class CalendarTests(WorkspaceTestCase):
 
         response = self.client.get("/kalender/", {"month": "2031-05"})
 
-        _, first, second, third, fourth = response.context["month_weeks"]
-        self.assertEqual([
-            [(group["school"], group["lane_count"]) for group in week["groups"]]
-            for week in (first, second, third, fourth)
-        ], [
-            [(School.WUERZBURG, 1)],
-            [(School.WUERZBURG, 2), (School.REGENSBURG, 1)],
-            [(School.WUERZBURG, 1)],
-            [],
+        self.assertIn("timeline_groups", response.context)
+        groups = response.context["timeline_groups"]
+        self.assertEqual([(group["school"], group["lane_count"]) for group in groups], [
+            (School.WUERZBURG, 2), (School.REGENSBURG, 1),
         ])
-        fields = ("session", "start_column", "end_column", "lane", "starts_before", "ends_after")
-        self.assertEqual(
-            [tuple(bar[field] for field in fields) for bar in first["groups"][0]["bars"]],
-            [(over_weekend, 5, 8, 2, False, True)],
-        )
-        self.assertEqual(
-            [tuple(bar[field] for field in fields) for bar in second["groups"][0]["bars"]],
-            [(over_weekend, 1, 4, 2, True, False), (monday, 1, 2, 3, False, False),
-             (tuesday, 2, 3, 3, False, False)],
-        )
-        self.assertEqual(
-            [tuple(bar[field] for field in fields) for bar in second["groups"][1]["bars"]],
-            [(regensburg, 1, 2, 2, False, False)],
-        )
-        self.assertEqual(
-            [tuple(bar[field] for field in fields) for bar in third["groups"][0]["bars"]],
-            [(ends_sunday, 6, 8, 2, False, False)],
-        )
+        days = response.context["timeline_days"]
+        bars = {
+            bar["session"].pk: (
+                days[bar["start_column"] - 1]["date"], days[bar["end_column"] - 2]["date"], bar["lane"],
+            )
+            for group in groups for bar in group["bars"]
+        }
+        self.assertEqual(len([bar for group in groups for bar in group["bars"] if bar["session"] == over_weekend]), 1)
+        self.assertEqual(bars[over_weekend.pk], (date(2031, 5, 9), date(2031, 5, 14), 1))
+        self.assertEqual(bars[monday.pk], (date(2031, 5, 12), date(2031, 5, 12), 2))
+        self.assertEqual(bars[tuesday.pk], (date(2031, 5, 13), date(2031, 5, 13), 2))
+        self.assertEqual(bars[ends_sunday.pk], (date(2031, 5, 24), date(2031, 5, 25), 1))
+        self.assertEqual(bars[regensburg.pk], (date(2031, 5, 12), date(2031, 5, 12), 1))
 
-    def test_month_shows_school_headings_in_school_order_inside_each_week(self):
+    def test_range_can_move_without_changing_the_selected_month_or_appointment_list(self):
+        upcoming = self.add_session(
+            "Termin im angeforderten Ladebereich", School.REGENSBURG,
+            datetime(2032, 1, 30, 9, tzinfo=UTC), datetime(2032, 1, 30, 13, tzinfo=UTC),
+        )
         self.add_session(
-            "Späterer Kurs in Würzburg", School.WUERZBURG,
-            datetime(2031, 5, 13, 8, tzinfo=UTC), datetime(2031, 5, 13, 10, tzinfo=UTC),
+            "Termin nach dem angeforderten Ladebereich", School.REGENSBURG,
+            datetime(2032, 1, 31, 23, tzinfo=UTC), datetime(2032, 2, 1, 12, tzinfo=UTC),
         )
+        response = self.client.get("/kalender/", {
+            "month": "2031-05", "range": "2031-11", "school": School.REGENSBURG,
+        }, headers={"X-BMS-Live": "1"})
 
-        response = self.client.get("/kalender/", {"month": "2031-05"})
+        self.assertEqual(response.context["month_id"], "2031-05")
+        self.assertEqual(response.context["week_query"], "view=week&day=2031-05-12&school=regensburg")
+        self.assertEqual([session.course.name for session in response.context["sessions"]], ["Musterlehrgang Regensburg"])
+        self.assertIn("timeline_center", response.context)
+        self.assertEqual(response.context["timeline_center"], "2031-11")
+        self.assertEqual(response.context["timeline_anchor"], date(2031, 11, 1))
+        self.assertEqual(response.context["timeline_days"][0]["date"], date(2031, 9, 1))
+        self.assertEqual(response.context["timeline_days"][-1]["date"], date(2032, 1, 31))
+        bars = [bar for group in response.context["timeline_groups"] for bar in group["bars"]]
+        self.assertEqual([bar["session"] for bar in bars], [upcoming])
+        self.assertEqual(bars[0]["detail_query"], "month=2032-01&school=regensburg")
+        self.assertContains(response, f'href="/kalender/{upcoming.pk}/?month=2032-01&amp;school=regensburg"', count=1)
 
-        school_group_markup = response.content.decode().split('aria-label="Woche vom 12.05. bis 18.05."', 1)[1]
-        school_group_markup = school_group_markup.split('aria-label="Woche vom 19.05. bis 25.05."', 1)[0]
-        self.assertRegex(school_group_markup, (
-            r"(?s)<h[3-6][^>]*>\s*SFS Würzburg\s*</h[3-6]>.*"
-            r"<h[3-6][^>]*>\s*SFS Regensburg\s*</h[3-6]>"
-        ))
+    def test_selected_month_day_one_remains_the_anchor_inside_loaded_range(self):
+        response = self.client.get("/kalender/", {"month": "2031-06", "range": "2031-05"})
+
+        self.assertIn("timeline_anchor", response.context)
+        self.assertEqual(response.context["timeline_anchor"], date(2031, 6, 1))
+        self.assertEqual(response.context["timeline_center"], "2031-05")
+        self.assertEqual([session.course.name for session in response.context["sessions"]], ["Musterlehrgang Juni"])
+
+    def test_invalid_range_falls_back_to_the_selected_month(self):
+        for value in ("2032-2", "2032-W09", "2032-13", "0001-10", "9999-01"):
+            with self.subTest(range=value):
+                response = self.client.get("/kalender/", {"month": "2031-05", "range": value})
+                self.assertIn("timeline_center", response.context)
+                self.assertEqual(response.context["timeline_center"], "2031-05")
+                self.assertEqual(response.context["timeline_anchor"], date(2031, 5, 1))
+
+    def test_loaded_axis_includes_leap_day_and_crosses_year_boundary(self):
+        response = self.client.get("/kalender/", {"month": "2032-02"})
+
+        self.assertIn("timeline_days", response.context)
+        days = {item["date"]: item for item in response.context["timeline_days"]}
+        self.assertEqual(days[date(2032, 2, 29)]["number"], 29)
+        self.assertTrue(days[date(2032, 2, 29)]["is_weekend"])
+        self.assertFalse(days[date(2032, 2, 29)]["is_month_start"])
+        self.assertTrue(days[date(2032, 1, 1)]["is_month_start"])
+        self.assertEqual(list(days)[30:32], [date(2031, 12, 31), date(2032, 1, 1)])
+
+    def test_loaded_axis_is_clipped_to_selectable_years(self):
+        cases = (
+            ("0002-01", date(2, 1, 1), date(2, 3, 31), False, True),
+            ("9998-12", date(9998, 10, 1), date(9998, 12, 31), True, False),
+        )
+        for month, start, end, before, after in cases:
+            with self.subTest(month=month):
+                response = self.client.get("/kalender/", {"month": month})
+                self.assertIn("timeline_days", response.context)
+                self.assertEqual(response.context["timeline_days"][0]["date"], start)
+                self.assertEqual(response.context["timeline_days"][-1]["date"], end)
+                self.assertEqual(response.context["timeline_can_extend_before"], before)
+                self.assertEqual(response.context["timeline_can_extend_after"], after)
 
     def test_week_shows_an_iso_week_and_retains_school_in_zoom_links(self):
         response = self.client.get("/kalender/", {
@@ -207,7 +281,7 @@ class CalendarTests(WorkspaceTestCase):
 
     def test_course_detail_shows_booking_seats_and_preserves_calendar_view(self):
         session = CourseSession.objects.get(course__name="Musterlehrgang Regensburg")
-        CourseSeat.objects.create(
+        seat = CourseSeat.objects.create(
             session=session,
             participant=Participant.objects.create(name="Jana Kalenderbeispiel"),
             status=BookingStatus.CONFIRMED,
@@ -219,6 +293,7 @@ class CalendarTests(WorkspaceTestCase):
 
         self.assertContains(response, "Musterlehrgang Regensburg")
         self.assertContains(response, "Jana Kalenderbeispiel")
+        self.assertContains(response, f"Buchungs-ID {seat.pk}")
         self.assertContains(response, "Bestätigt")
         self.assertIn("no-store", response.headers["Cache-Control"])
         self.assertEqual(
@@ -226,6 +301,12 @@ class CalendarTests(WorkspaceTestCase):
             "/kalender/?view=week&day=2031-05-12&school=regensburg",
         )
         self.assertEqual(self.client.post(f"/kalender/{session.pk}/").status_code, 405)
+
+        viewer = get_user_model().objects.create_user("kalender-ansicht")
+        viewer.user_permissions.add(Permission.objects.get(content_type__app_label="accounts", codename="view_calendar"))
+        self.client.force_login(viewer)
+        calendar_only = self.client.get(f"/kalender/{session.pk}/")
+        self.assertNotContains(calendar_only, f"Buchungs-ID {seat.pk}")
 
     def test_switching_from_another_month_to_week_uses_first_scheduled_week(self):
         self.add_session(
@@ -308,8 +389,10 @@ class CalendarTests(WorkspaceTestCase):
         self.assertContains(response, '<select name="month_number"')
         self.assertContains(response, 'inputmode="numeric"')
         self.assertNotContains(response, 'type="month"')
-        weekday = format_date(date(2031, 5, 1), "D")
-        self.assertContains(response, f'<span title="Donnerstag">{weekday}</span>')
+        self.assertIn("timeline_days", response.context)
+        anchor_day = next(item for item in response.context["timeline_days"] if item["date"] == date(2031, 5, 1))
+        self.assertEqual(anchor_day["number"], 1)
+        self.assertTrue(anchor_day["is_month_start"])
         self.assertContains(response, "Musterlehrgang Regensburg")
         self.assertNotContains(response, "Übergreifender Musterlehrgang")
         self.assertEqual(response.context["current_query"], "month=2031-05&school=regensburg")

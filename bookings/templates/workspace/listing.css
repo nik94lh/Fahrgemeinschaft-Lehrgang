@@ -8,6 +8,7 @@
 .listing-table tbody tr:last-child td { border-block-end: 0; }
 .listing-profile-link { font-weight: 650; }
 .listing-profile-link span { padding-inline-start: .15rem; }
+.booking-list-id { display: block; margin-block-start: .12rem; font-size: .8rem; font-weight: 650; }
 
 @media (max-width: 900px) {
     .booking-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }

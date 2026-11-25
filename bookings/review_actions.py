@@ -19,6 +19,7 @@ from django.views.decorators.http import require_http_methods
 from accounts.access import can_edit, can_view
 from mailimport.email_address import normalize_contact_email
 
+from .booking_search import booking_id_query, positive_integer
 from .models import BookingHistory, BookingStatus, CourseSeat, EmailEvent, ImportLock, Participant, School
 from .services import _normalized_name
 
@@ -73,7 +74,7 @@ class SeatChoiceField(forms.ModelChoiceField):
         name = seat.participant.name if seat.participant else "Ohne Zuordnung"
         starts = date_format(timezone.localtime(seat.session.starts_at), "SHORT_DATETIME_FORMAT")
         return (
-            f"Nr. {seat.pk} · {name} · {seat.session.course.name} · "
+            f"Buchungs-ID {seat.pk} · {name} · {seat.session.course.name} · "
             f"{seat.session.get_school_display()} · {starts} · {seat.get_status_display()}"
         )
 
@@ -153,14 +154,6 @@ def _seats():
     return CourseSeat.objects.select_related("participant", "session__course").order_by("-session__starts_at", "pk")
 
 
-def _positive_integer(value):
-    if value and value.isascii() and value.isdecimal() and len(value) <= 19:
-        number = int(value)
-        if 0 < number <= (1 << 63) - 1:
-            return number
-    return None
-
-
 def _review_time(value):
     if not isinstance(value, str):
         return None
@@ -193,8 +186,11 @@ def _candidate_seats(event, recognized, action, search):
     if action == ReviewForm.REASSIGN and event.seat_id:
         return seats.filter(pk=event.seat_id)
     if search:
-        if pk := _positive_integer(search):
-            return seats.filter(Q(pk=pk) | Q(external_reference__iexact=search))
+        explicit_id, booking_id = booking_id_query(search)
+        if explicit_id:
+            return seats.filter(pk=booking_id)
+        if booking_id is not None:
+            return seats.filter(Q(pk=booking_id) | Q(external_reference__iexact=search))
         if len(search) < 2:
             return seats.filter(external_reference__iexact=search)
         return seats.filter(
@@ -222,7 +218,7 @@ def _candidate_seats(event, recognized, action, search):
 
 def _queue_params(request):
     reason = request.POST.get("grund", request.GET.get("grund", ""))
-    page = _positive_integer(request.POST.get("page", request.GET.get("page")))
+    page = positive_integer(request.POST.get("page", request.GET.get("page")))
     params = {}
     if reason and reason in EmailEvent.ReviewReason.values:
         params["grund"] = reason
@@ -282,7 +278,7 @@ def _context(request, event):
             _candidate_seats(event, recognized, action, search).values_list("pk", flat=True)[:RESULT_LIMIT + 1],
         )
     seat_ids = set(candidate_ids[:RESULT_LIMIT])
-    if data is not None and (submitted := _positive_integer(data.get("seat"))):
+    if data is not None and (submitted := positive_integer(data.get("seat"))):
         # An intentional selection remains valid even when the operator changes the search.
         seat_ids.add(submitted)
 

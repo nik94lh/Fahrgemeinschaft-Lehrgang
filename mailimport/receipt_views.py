@@ -142,10 +142,11 @@ def mail_receipt(request, receipt_id):
         if value := fields.get(field):
             fields[field] = date.fromisoformat(value)
 
-    show_profile = bool(
-        can_view(request.user, "bookings") and seat and seat.participant_id
+    show_booking = bool(
+        can_view(request.user, "bookings") and seat
         and receipt.event.state in (EmailEvent.State.APPLIED, EmailEvent.State.REVIEWED)
     )
+    show_profile = show_booking and bool(seat.participant_id)
     current_profile_address = seat.participant.email if show_profile else ""
     address_handoff = False
     address_handoff_issue = ""
@@ -165,6 +166,7 @@ def mail_receipt(request, receipt_id):
         "fields": fields,
         "school_name": dict(School.choices).get(fields.get("school")),
         "has_review": receipt.event and receipt.event.state in CASE_STATES,
+        "show_booking": show_booking,
         "show_profile": show_profile,
         "current_profile_address": current_profile_address,
         "address_handoff": address_handoff,

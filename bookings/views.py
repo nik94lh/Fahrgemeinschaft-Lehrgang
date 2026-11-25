@@ -12,6 +12,7 @@ from django.views.decorators.http import require_safe
 from accounts.access import can_view
 from mailimport.participant_settings import get_functional_addresses
 
+from .booking_search import booking_id_query
 from .booking_state import booking_missing_fields
 from .booking_status import booking_status_cards, booking_status_prefetches
 from .models import BookingStatus, CourseSeat, CourseSession, EmailEvent, RideCase, School
@@ -90,11 +91,18 @@ def bookings(request):
     elif selected_school in School.values:
         seats = seats.filter(session__school=selected_school)
     if query:
-        seats = seats.filter(
-            Q(session__course__name__icontains=query)
-            | Q(participant__name__icontains=query)
-            | Q(external_reference__icontains=query)
-        )
+        explicit_id, booking_id = booking_id_query(query)
+        if explicit_id:
+            seats = seats.filter(pk=booking_id)
+        else:
+            matches = (
+                Q(session__course__name__icontains=query)
+                | Q(participant__name__icontains=query)
+                | Q(external_reference__icontains=query)
+            )
+            if booking_id is not None:
+                matches |= Q(pk=booking_id)
+            seats = seats.filter(matches)
     params = request.GET.copy()
     params.pop("page", None)
     seats = seats.prefetch_related(*booking_status_prefetches())

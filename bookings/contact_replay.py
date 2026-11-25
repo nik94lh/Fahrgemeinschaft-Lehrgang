@@ -15,6 +15,7 @@ from .services import (
     ACTIVATION_EVENTS,
     ACTIVE_STATUSES,
     _IdentityConflict,
+    _has_other_bookings,
     _lock_import,
     _matches,
     _parsed_review_reason,
@@ -38,6 +39,7 @@ class ContactReplayResult(StrEnum):
     OPEN_REVIEW = "Zu dieser Buchung gibt es einen offenen Klärungsfall."
     PARTICIPANT_CHANGED = "Aus der Buchungshistorie lässt sich die ursprünglich zugeordnete Person nicht mehr eindeutig bestätigen."
     ADDRESS_IN_USE = "Die erkannte Adresse ist bereits in einem anderen Teilnehmerprofil hinterlegt."
+    SHARED_PROFILE = "Das leere Teilnehmerprofil gehört zu mehreren Buchungen. Prüfe die Adresse für diese einzelne Buchung."
     PROFILE_CHANGED = "Das Teilnehmerprofil wurde während des Abgleichs geändert."
 
 
@@ -139,6 +141,8 @@ def fill_existing_contact(mail: ParsedMail, *, imported_event_id: int | None = N
             return ContactReplayResult.ADDRESS_IN_USE
     except _IdentityConflict:
         return ContactReplayResult.ADDRESS_IN_USE
+    if _has_other_bookings(seat):
+        return ContactReplayResult.SHARED_PROFILE
 
     try:
         with transaction.atomic():
