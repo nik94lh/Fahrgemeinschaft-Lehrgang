@@ -275,6 +275,20 @@ def _quoted_mail(subject: str, body: str, original_headers: list[str]) -> _Inlin
     return _InlineMail(subject, body, recipients, sender, name_only)
 
 
+def _booking_references(text: str) -> list[str]:
+    return re.findall(r"^(?:Buchungsreferenz|Buchungsnummer) *: *([^\n]*)$", text, re.IGNORECASE | re.MULTILINE)
+
+
+def _is_online_course(course_name: str | None, venues: Iterable[str], text: str) -> bool:
+    formats = _values(text, "Durchführungsform|Teilnahmeform|Unterrichtsform|Veranstaltungsform|Format")
+    explicit_format = (*venues, *formats)
+    title = course_name or ""
+    return not any(IN_PERSON_FORMAT.search(value) for value in (*explicit_format, title)) and (
+        any(ONLINE_FORMAT.match(value) or ONLINE_SUFFIX.search(value) for value in explicit_format)
+        or bool(ONLINE_COURSE.match(title) or ONLINE_SUFFIX.search(title))
+    )
+
+
 def _body_identity(mail: _InlineMail) -> tuple | None:
     text = _clean_text(mail.text)
     event_type = _classify(mail.subject, text)
@@ -286,8 +300,18 @@ def _body_identity(mail: _InlineMail) -> tuple | None:
         return None
     return (
         event_type, participant.casefold(), course.casefold(), starts_at, ends_at, venues,
-        tuple(_values(text, "Buchungsreferenz|Buchungsnummer")),
+        _is_online_course(course, venues, text), tuple(_booking_references(text)),
     )
+
+
+def _recipient_names(recipients: tuple[Address, ...]) -> dict[str, set[str]]:
+    names = {}
+    for recipient in recipients:
+        email = normalize_contact_email(recipient.addr_spec)
+        display_name = _normalized(recipient.display_name).casefold()
+        if email and display_name and normalize_contact_email(display_name) != email:
+            names.setdefault(email, set()).add(display_name)
+    return names
 
 
 def _forward_original(message: EmailMessage, body: EmailMessage, primary: _InlineMail) -> _OriginalMail:
@@ -323,6 +347,23 @@ def _forward_original(message: EmailMessage, body: EmailMessage, primary: _Inlin
             or (plain_identity and html_identity and plain_identity != html_identity)
         ):
             return _OriginalMail(primary.subject, selected.text, conflict=True)
+
+        plain_names = _recipient_names(primary.recipients)
+        html_names = _recipient_names(alternate.recipients)
+        if any(plain_names[email] != html_names[email] for email in plain_names.keys() & html_names.keys()):
+            return _OriginalMail(primary.subject, selected.text, conflict=True)
+
+        names_only_in_html = html_names.keys() - plain_names.keys()
+        if names_only_in_html and plain_identity and plain_identity == html_identity:
+            # Complete the evidence for the same recipients without discarding any plaintext names.
+            recipients = tuple(
+                recipient for recipient in primary.recipients
+                if normalize_contact_email(recipient.addr_spec) not in names_only_in_html
+            ) + tuple(
+                recipient for recipient in alternate.recipients
+                if normalize_contact_email(recipient.addr_spec) in names_only_in_html
+            )
+            return _OriginalMail(primary.subject, selected.text, recipients, f"{source} (Klartext und HTML)")
         return selected
 
     if same_envelope and primary.name_only_recipient and len(alternate.recipients) == 1:
@@ -500,21 +541,11 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
     address_note = selection.note
     previous_name = _unique(_values(text, "Bisherige[rs]? Teilnehmer(?:in)?"), _name)
     course_name = _unique(_values(text, "Lehrgangsart|Lehrgang"), _course_name)
-    references = re.findall(
-        r"^(?:Buchungsreferenz|Buchungsnummer) *: *([^\n]*)$",
-        text,
-        re.IGNORECASE | re.MULTILINE,
-    )
+    references = _booking_references(text)
     reference = _unique(references, _booking_reference)
     reference_conflict = bool(references) and reference is None
     venues = _values(text, LOCATION_LABELS)
-    formats = _values(text, "Durchführungsform|Teilnahmeform|Unterrichtsform|Veranstaltungsform|Format")
-    explicit_format = (*venues, *formats)
-    title = course_name or ""
-    is_online = not any(IN_PERSON_FORMAT.search(value) for value in (*explicit_format, title)) and (
-        any(ONLINE_FORMAT.match(value) or ONLINE_SUFFIX.search(value) for value in explicit_format)
-        or bool(ONLINE_COURSE.match(title) or ONLINE_SUFFIX.search(title))
-    )
+    is_online = _is_online_course(course_name, venues, text)
     locations = " ".join(venues)
     schools = [code for code, pattern in SCHOOLS.items() if re.search(pattern, locations, re.IGNORECASE)]
     school = schools[0] if len(schools) == 1 else None

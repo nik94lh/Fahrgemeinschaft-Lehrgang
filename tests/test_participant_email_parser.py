@@ -107,6 +107,56 @@ class ParticipantEmailParserTests(TestCase):
         self.assertIsNone(parsed.participant_email_candidate)
         self.assertTrue(parsed.participant_email_ambiguous)
 
+    def test_conflicting_recipient_names_for_the_same_addresses_require_review(self):
+        cases = (
+            ("Alex Beispiel <one@example.invalid>", "Robin Muster <one@example.invalid>"),
+            (
+                "Alex Beispiel <one@example.invalid>, Robin Muster <two@example.invalid>",
+                "Robin Muster <one@example.invalid>, Alex Beispiel <two@example.invalid>",
+            ),
+        )
+        for plain_to, html_to in cases:
+            with self.subTest(plain_to=plain_to, html_to=html_to):
+                parsed = parse_eml(self.multipart_forward(plain_to, html_to))
+
+                self.assertIsNone(parsed.participant_email)
+                self.assertIsNone(parsed.participant_email_candidate)
+                self.assertTrue(parsed.participant_email_ambiguous)
+
+    def test_matching_html_can_supply_the_name_for_an_existing_recipient_address(self):
+        address = "lernplatz97@example.invalid"
+        raw = self.multipart_forward(address, f"Alex Beispiel <{address}>")
+
+        parsed = parse_eml(raw)
+
+        self.assertEqual(parsed.participant_email, address)
+        self.assertIsNone(parsed.participant_email_candidate)
+        self.assertFalse(parsed.participant_email_ambiguous)
+        self.assertIn("HTML", parsed.address_note)
+
+    def test_matching_html_keeps_names_already_present_in_plain_text(self):
+        raw = self.multipart_forward(
+            "Alex Beispiel <one@example.invalid>, two@example.invalid",
+            "one@example.invalid, Robin Muster <two@example.invalid>",
+        )
+
+        parsed = parse_eml(raw)
+
+        self.assertEqual(parsed.participant_email, "one@example.invalid")
+        self.assertFalse(parsed.participant_email_ambiguous)
+
+    def test_matching_addresses_do_not_override_conflicting_booking_details(self):
+        address = "lernplatz97@example.invalid"
+        for field in ("Durchführungsform: Online", "Buchungsreferenz:"):
+            with self.subTest(field=field):
+                raw = self.multipart_forward(address, f"Alex Beispiel <{address}>", html_body=f"{APPROVAL}\n{field}")
+
+                parsed = parse_eml(raw)
+
+                self.assertTrue(parsed.participant_email_ambiguous)
+                self.assertIsNone(parsed.participant_email)
+                self.assertIsNone(parsed.participant_email_candidate)
+
     def test_html_must_describe_same_booked_course_and_person(self):
         raw = self.multipart_forward(
             "Alex Beispiel", "Alex Beispiel <alex@example.invalid>",
