@@ -78,7 +78,7 @@
             {% include "workspace/calendar_year.html" %}
         {% elif school_groups %}
             <p class="calendar-hint quiet" id="calendar-hint">Ein Balken zeigt die belegten Kalendertage. Öffne ihn für Uhrzeiten und Buchungen. Den Plan kannst du seitlich verschieben.</p>
-            <div class="calendar-scroll" tabindex="0" role="region" aria-labelledby="calendar-period" aria-describedby="calendar-hint">
+            <div id="calendar-timeline" data-live-preserve class="calendar-scroll" tabindex="0" role="region" aria-labelledby="calendar-period" aria-describedby="calendar-hint">
                 <div class="calendar-grid calendar-grid--{{ view }}" style="--days: {{ day_count }};">
                     <div class="calendar-line calendar-axis" aria-hidden="true">
                         <div class="calendar-label">Lehrgang</div>
@@ -122,9 +122,9 @@
                 </div>
             </div>
 
-            <details class="calendar-list">
+            <details id="calendar-course-list" data-live-preserve class="calendar-list">
                 <summary>Terminliste mit Uhrzeiten</summary>
-                <div class="table-scroll" tabindex="0" role="region" aria-label="Lehrgänge mit Uhrzeiten">
+                <div id="calendar-course-list-scroll" data-live-preserve class="table-scroll" tabindex="0" role="region" aria-label="Lehrgänge mit Uhrzeiten">
                     <table class="mobile-table">
                         <thead><tr><th scope="col">Lehrgang</th><th scope="col">Schulungsort</th><th scope="col">Beginn</th><th scope="col">Ende</th><th scope="col">Plätze</th></tr></thead>
                         <tbody>

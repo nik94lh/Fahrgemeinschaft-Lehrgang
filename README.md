@@ -37,7 +37,7 @@ In einer Python-Umgebung mit den Projektabhängigkeiten funktioniert auch `pytho
 
 Auf dem zugriffsgeschützten HTTPS-Testhost richtest du unter **Postfach** eine separate IMAP-Adresse ein. Das Passwort wird verschlüsselt gespeichert. Aktiviere den Abruf nur für ein freigegebenes Postfach, das Kopien der Lehrgangskommunikation erhält. **Postfach** zeigt den letzten Abrufstatus. Unter **Übersicht**, **Buchungen** und **Klärung** siehst du die verarbeiteten Ereignisse, Buchungen und offenen Fälle. Bei neuen Klärungsfällen siehst du den Grund und die erkannten Angaben. Ältere Fälle zeigen die zum damaligen Import gespeicherten Daten. SMTP-Versand ist technisch deaktiviert. [Mailimport](docs/MAILIMPORT.md)
 
-Ein aktivierter Postfachdienst verarbeitet standardmäßig bis zu 25 Nachrichten pro Abrufversuch und wartet danach 120 Sekunden bis zum nächsten Versuch. Die Weboberfläche zeigt den aktuellen Datenbankstand beim Öffnen oder Neuladen der Seite.
+Ein aktivierter Postfachdienst verarbeitet standardmäßig bis zu 25 Nachrichten pro Abrufversuch und wartet danach 120 Sekunden bis zum nächsten Versuch. Sichtbare BMS-Ansichten prüfen den Datenbankstand alle 15 Sekunden im Hintergrund. Der Abgleich verwendet die aktuellen Filter und wartet in bearbeiteten Bereichen auf das Ende der Eingabe.
 
 Unter **Mail-Eingang** findest du den letzten Abruf und jede ab diesem Stand erfasste IMAP-Nachricht. Suche nach Teilnehmer, Lehrgang, Referenz oder IMAP-Nummer und öffne **Mail ansehen**. Dort stehen Verarbeitungsergebnis, erkannte Felder, Gründe für eine ausgebliebene Adressübernahme und der Link zur Buchung oder Klärung. Frühere Buchungsereignisse ohne protokollierten Postfachabruf stehen unter **Frühere Importe**.
 

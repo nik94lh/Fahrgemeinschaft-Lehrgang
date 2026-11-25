@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.10.0
+
+- BMS aktualisiert die geöffnete Ansicht im Hintergrund. Filter und Seitennummer gelten auch für den Live-Abgleich. Bereiche mit laufenden Eingaben warten mit der Aktualisierung.
+- Im Postfach aktualisieren sich der Abrufstatus und der Fortschritt des Adressabgleichs separat von den Einstellungen.
+- Bei einer eindeutigen Originaladresse berücksichtigt BMS zusätzliche Vornamen zwischen dem ersten Vornamen und dem Nachnamen im Adressteil vor dem `@`.
+
 ## 0.9.5
 
 - Der Adressabgleich verwendet den protokollierten Maileingang, um eine erneut gelesene Mail ihrer bestehenden Buchung zuzuordnen. BMS prüft die erkannten Buchungsdaten vor dem Nachtrag erneut.

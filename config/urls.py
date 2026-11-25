@@ -1,5 +1,9 @@
-from django.http import JsonResponse
+from pathlib import Path
+
+from django.http import FileResponse, JsonResponse
 from django.urls import path
+from django.views.decorators.cache import cache_control
+from django.views.decorators.http import require_safe
 
 from bookings import views
 from bookings.brigades import brigade_edit, brigades
@@ -16,7 +20,14 @@ def health(request):
     return JsonResponse({"status": "ok"})
 
 
+@require_safe
+@cache_control(public=True, max_age=3600)
+def live_script(request):
+    return FileResponse(Path(__file__).with_name("live.js").open("rb"), content_type="text/javascript; charset=utf-8")
+
+
 urlpatterns = [
+    path("assets/live.js", live_script, name="live_script"),
     path("", views.overview, name="overview"),
     path("buchungen/", views.bookings, name="bookings"),
     path("buchungen/<int:seat_id>/teilnehmer/", booking_participant, name="booking_participant"),

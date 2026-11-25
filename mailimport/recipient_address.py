@@ -12,6 +12,11 @@ from .email_address import normalize_contact_email
 
 REPEATED_MAILTO = re.compile(r"<([^<>\s]+)<mailto:([^<>\s]+)>>", re.IGNORECASE)
 GERMAN_UMLAUTS = str.maketrans({"ä": "ae", "ö": "oe", "ü": "ue"})
+FUNCTIONAL_MAILBOX_PARTS = frozenset({
+    "admin", "anmeldung", "ausbildung", "buchung", "buchungen", "buero",
+    "contact", "info", "kontakt", "mail", "office", "personal", "post",
+    "postfach", "sekretariat", "service", "shared", "support", "team", "verwaltung",
+})
 
 
 def header_addresses(values: list[str]) -> tuple[Address, ...]:
@@ -63,6 +68,16 @@ def _address_matches_name(email: str, name: str) -> bool:
     local, domain = email.rsplit("@", 1)
     if local == ".".join(parts):
         return True
+    local_parts = local.split(".")
+    if len(local_parts) == len(parts) + 1 and local_parts[0] == parts[0] and local_parts[2:] == parts[1:]:
+        middle_name = local_parts[1]
+        if (
+            len(middle_name) > 1
+            and middle_name.isalpha()
+            and middle_name not in parts
+            and middle_name not in FUNCTIONAL_MAILBOX_PARTS
+        ):
+            return True
     domain_name, _, suffix = domain.partition(".")
     return local == "mail" and "." not in suffix and domain_name in ("".join(parts), "-".join(parts))
 

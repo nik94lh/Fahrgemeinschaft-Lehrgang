@@ -173,6 +173,60 @@ class ParticipantEmailParserTests(TestCase):
 
                 self.assertEqual(replace(result, fingerprint=expected.fingerprint, address_note=expected.address_note), expected)
 
+    def test_nested_approval_recognizes_additional_given_name_in_original_address(self):
+        address = "alex.marie.beispiel@example.invalid"
+        original = booking_message(f'"{address}" <{address}>')
+
+        parsed = parse_eml(nested_booking_forward(original).as_bytes())
+
+        self.assertEqual(parsed.participant_name, "Alex Beispiel")
+        self.assertEqual(parsed.participant_email, address)
+        self.assertIsNone(
+            parse_eml(
+                nested_booking_forward(original).as_bytes(), functional_addresses=(address,),
+            ).participant_email
+        )
+
+    def test_additional_given_name_preserves_name_particles_and_transliterated_umlaut(self):
+        address = "alex.marie.van.der.moeller@example.invalid"
+        original = booking_message(address, body=APPROVAL.replace("Alex Beispiel", "Alex van der Möller"))
+
+        self.assertEqual(parse_eml(original.as_bytes()).participant_email, address)
+
+    def test_extra_address_segment_does_not_allow_aliases_or_incomplete_names(self):
+        local_parts = (
+            "alex.info.beispiel",
+            "alex.verwaltung.beispiel",
+            "alex.m.beispiel",
+            "alex.marie2.beispiel",
+            "alex.marie.sophie.beispiel",
+            "alex.beispiel.marie",
+            "alex.marie.anderer",
+            "marie.beispiel",
+        )
+        for local in local_parts:
+            with self.subTest(local=local):
+                address = f"{local}@example.invalid"
+                original = booking_message(f'"{address}" <{address}>')
+
+                self.assertIsNone(parse_eml(nested_booking_forward(original).as_bytes()).participant_email)
+
+    def test_additional_given_name_still_requires_unambiguous_personal_recipient(self):
+        address = "alex.marie.beispiel@example.invalid"
+        for original in (
+            booking_message(f"{address}, alex.sophie.beispiel@example.invalid"),
+            booking_message(f"Robin Muster <{address}>"),
+            booking_message(address, subject="Teilnahmebestätigung", body=CONFIRMATION),
+            booking_message(),
+        ):
+            with self.subTest(subject=original["Subject"], has_recipient=bool(original["To"])):
+                if original["To"]:
+                    mail = nested_booking_forward(original)
+                else:
+                    mail = booking_message(address, subject="WG: Ihre Lehrgangsanmeldung")
+
+                self.assertIsNone(parse_eml(mail.as_bytes()).participant_email)
+
     def test_separate_quoted_messages_are_ambiguous(self):
         mail = forwarded_approval_with_repeated_mailto()
         other = forwarded_approval_with_repeated_mailto()

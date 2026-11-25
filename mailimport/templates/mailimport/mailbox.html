@@ -1,5 +1,6 @@
 {% extends "workspace/base.html" %}
 
+{% block live_region %}{% endblock %}
 {% block title %}Postfach{% endblock %}
 {% block page_styles %}
 #id_functional_addresses {
@@ -26,6 +27,7 @@
   {% if saved %}
     <p role="status">Postfachkonfiguration gespeichert.</p>
   {% endif %}
+  <div data-live-region="mailbox-status">
   {% if configured %}
     <p class="note">Abruf {% if enabled %}aktiviert{% else %}deaktiviert{% endif %}. {% if password_saved %}Ein Passwort ist hinterlegt.{% endif %}</p>
     {% if last_sync_at %}
@@ -37,6 +39,7 @@
       <p class="note">Für dieses Postfach liegt noch kein Abrufstatus vor.</p>
     {% endif %}
   {% endif %}
+  </div>
   <form method="post">
     {% csrf_token %}
     {{ form.as_p }}
@@ -57,7 +60,7 @@
     <button type="submit">Funktionsadressen speichern</button>
   </form>
 </section>
-<section class="panel participant-profile" aria-labelledby="contact-replay-heading" style="max-width: 38rem; margin-block-start: 1rem;">
+<section data-live-region="contact-replay" class="panel participant-profile" aria-labelledby="contact-replay-heading" style="max-width: 38rem; margin-block-start: 1rem;">
   <h2 id="contact-replay-heading">Einmaliger Adressabgleich</h2>
   <p class="note">BMS liest frühere Mails im Importpostfach erneut und ergänzt eindeutig belegte, fehlende Teilnehmeradressen. Das Ergebnis pro Nachricht steht im Mail-Eingang unter „Letzter Adressabgleich“.</p>
   {% if replay_error %}
@@ -83,9 +86,7 @@
     {% endif %}
     {% if replay_job.error_message %}<p class="note" role="status">{{ replay_job.error_message }}</p>{% endif %}
   {% endif %}
-  {% if replay_active %}
-    <p class="note">Lade die Seite neu, um den Stand zu sehen.</p>
-  {% else %}
+  {% if not replay_active %}
     <form method="post">
       {% csrf_token %}
       <input type="hidden" name="action" value="start-contact-replay">
