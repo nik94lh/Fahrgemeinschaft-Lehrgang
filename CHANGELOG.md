@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.9.5
+
+- Der Adressabgleich verwendet den protokollierten Maileingang, um eine erneut gelesene Mail ihrer bestehenden Buchung zuzuordnen. BMS prüft die erkannten Buchungsdaten vor dem Nachtrag erneut.
+- Eine unlesbare oder fehlende Mail erscheint mit ihrem Grund im Mail-Eingang. Der Auftrag setzt den Abgleich mit den übrigen Mails fort.
+
 ## 0.9.4
 
 - Bei mehrfach weitergeleiteten Lehrgangsmails verwendet BMS den Betreff, die Buchungsdaten und das An-Feld der ursprünglichen Nachricht. Das gilt für eingebetteten Klartext, HTML und Weiterleitungen als EML-Anhang.

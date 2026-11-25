@@ -45,6 +45,8 @@ class MailReceipt(models.Model):
     outcome = models.CharField(max_length=16, choices=Outcome.choices)
     detail = models.CharField(max_length=255, blank=True)
     fields = models.JSONField(default=dict, blank=True)
+    address_checked_at = models.DateTimeField(null=True, blank=True)
+    address_check_detail = models.CharField(max_length=255, blank=True, default="", db_default="")
 
     class Meta:
         constraints = [

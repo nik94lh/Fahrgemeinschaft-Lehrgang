@@ -47,13 +47,13 @@ def enrich_contact_from_imported_mail(raw: bytes) -> bool:
 
 
 @sensitive_variables()
-def contact_replay_outcome(raw: bytes) -> ContactReplayResult:
+def contact_replay_outcome(raw: bytes, *, imported_event_id: int | None = None) -> ContactReplayResult:
     """Read the EML in memory and return the reason for the update or skip."""
     try:
         mail = parse_eml(raw, functional_addresses=get_functional_addresses())
     except MailParseError:
         return ContactReplayResult.UNREADABLE
-    return fill_existing_contact(mail)
+    return fill_existing_contact(mail, imported_event_id=imported_event_id)
 
 
 def _history_matches(event, seat) -> bool:
@@ -83,7 +83,7 @@ def _history_matches(event, seat) -> bool:
 
 @sensitive_variables()
 @transaction.atomic
-def fill_existing_contact(mail: ParsedMail) -> ContactReplayResult:
+def fill_existing_contact(mail: ParsedMail, *, imported_event_id: int | None = None) -> ContactReplayResult:
     if mail.event_type not in ACTIVATION_EVENTS:
         return ContactReplayResult.UNSUPPORTED
     if mail.participant_email_ambiguous:
@@ -93,9 +93,10 @@ def fill_existing_contact(mail: ParsedMail) -> ContactReplayResult:
     if _parsed_review_reason(mail, mail.event_type, allow_partial=bool(mail.booking_reference)):
         return ContactReplayResult.INVALID
     _lock_import()
+    # The caller supplies a recorded event only for the same mailbox, UIDVALIDITY and UID.
+    source = {"sha256": mail.fingerprint} if imported_event_id is None else {"pk": imported_event_id}
     event = EmailEvent.objects.select_for_update().filter(
-        sha256=mail.fingerprint, state=EmailEvent.State.APPLIED,
-        kind=mail.event_type, seat__isnull=False,
+        state=EmailEvent.State.APPLIED, kind=mail.event_type, seat__isnull=False, **source,
     ).first()
     if event is None:
         return ContactReplayResult.NO_APPLIED_EVENT

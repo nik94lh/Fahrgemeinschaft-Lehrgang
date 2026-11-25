@@ -5,20 +5,22 @@ from collections import Counter
 
 from django.db import DatabaseError, IntegrityError, transaction
 from django.utils import timezone
+from django.views.decorators.debug import sensitive_variables
 
 from bookings.contact_replay import ContactReplayResult, contact_replay_outcome
 
 from .imap_sync import (
     MAX_UID,
     SEARCH_WINDOW,
+    ImapMessageError,
     ImapSyncError,
     _connect_readonly,
-    _read_uid,
+    _read_message,
     _response_number,
     _search,
     load_configuration,
 )
-from .models import ContactReplayJob, MailboxCursor
+from .models import ContactReplayJob, MailboxCursor, MailReceipt
 
 
 BATCH_SIZE = 25
@@ -61,6 +63,7 @@ def queue_contact_replay() -> ContactReplayJob:
         raise ContactReplayError("Der Kontaktabgleich konnte gerade nicht vorgemerkt werden.") from None
 
 
+@sensitive_variables()
 def _scan_step(job: ContactReplayJob) -> tuple[int, Counter[str]]:
     config = load_configuration()
     if config is None or config.source_id != job.source_id:
@@ -79,14 +82,39 @@ def _scan_step(job: ContactReplayJob) -> tuple[int, Counter[str]]:
         window_end = min(job.upper_uid, job.last_uid + SEARCH_WINDOW)
         uids = _search(client, job.last_uid + 1, window_end)
         batch = uids[:BATCH_SIZE]
-        messages = [_read_uid(client, uid) for uid in batch]
+        messages = {}
+        for uid in batch:
+            try:
+                raw, detail = _read_message(client, uid)
+            except ImapMessageError as error:
+                raw, detail = None, str(error)
+            messages[uid] = (raw, detail)
 
     # The bounded batch is read before taking the booking import lock.
-    outcomes = Counter(
-        (ContactReplayResult.UNREADABLE if raw is None else contact_replay_outcome(raw)).name
-        for raw in messages
-    )
     end_uid = batch[-1] if len(uids) > BATCH_SIZE else window_end
+    receipts = {
+        receipt.uid: receipt
+        for receipt in MailReceipt.objects.filter(
+            source_id=job.source_id, uid_validity=job.uid_validity, uid__gt=job.last_uid, uid__lte=end_uid,
+        )
+    }
+    for uid in receipts.keys() - messages.keys():
+        messages[uid] = (None, "Die Mail ist im Importordner nicht mehr verfügbar.")
+
+    outcomes = Counter()
+    checked_at = timezone.now()
+    for uid, (raw, detail) in messages.items():
+        receipt = receipts.get(uid)
+        if raw is None:
+            outcome = ContactReplayResult.UNREADABLE
+        else:
+            outcome = contact_replay_outcome(raw, imported_event_id=receipt.event_id if receipt else None)
+            detail = outcome.value
+        outcomes[outcome.name] += 1
+        if receipt:
+            receipt.address_checked_at = checked_at
+            receipt.address_check_detail = detail
+    MailReceipt.objects.bulk_update(receipts.values(), ("address_checked_at", "address_check_detail"))
     return end_uid, outcomes
 
 

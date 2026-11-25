@@ -8,14 +8,18 @@ from unittest.mock import patch
 from django.apps import apps
 from django.db import connection
 from django.test import TestCase, override_settings
+from django.urls import reverse
 
+from bookings.contact_replay import ContactReplayResult
 from bookings.models import BookingStatus, EmailEvent
 from bookings.services import _reconcile
 from mailimport.contact_replay import process_contact_replay
 from mailimport.imap_sync import ImapConfig, mailbox_source_id
-from mailimport.models import ContactReplayJob, MailboxConfiguration, MailboxCursor
+from mailimport.models import ContactReplayJob, MailboxConfiguration, MailboxCursor, MailReceipt
 from mailimport.parser import parse_eml
 from tests.test_imap_sync import body_result, mock_mailbox
+from tests.test_participant_identity import PERSONAL, booking_mail
+from tests.test_reconciliation import JUNE
 
 
 queue_ffp_contact_replay = import_module(
@@ -35,6 +39,25 @@ class RequestedContactReplayTests(TestCase):
         )
         cls.source_id = mailbox_source_id(cls.mailbox.host, cls.mailbox.port, cls.mailbox.username, cls.mailbox.mailbox)
         cls.cursor = MailboxCursor.objects.create(source_id=cls.source_id, uid_validity=42, last_uid=90)
+
+    def replay_from_mailbox(self, raw):
+        config = ImapConfig(self.mailbox.host, self.mailbox.port, self.mailbox.username, "synthetisch")
+        client = mock_mailbox(uid_validity=42, uid_next=91)
+        if raw is None:
+            client.uid.side_effect = [("OK", [b""])]
+        else:
+            client.uid.side_effect = [
+                ("OK", [b"43"]),
+                ("OK", [f"1 (UID 43 RFC822.SIZE {len(raw)})".encode()]),
+                body_result(43, raw),
+            ]
+        with (
+            patch("mailimport.contact_replay.load_configuration", return_value=config),
+            patch("mailimport.imap_sync._open_mailbox", return_value=nullcontext(client)),
+        ):
+            response = self.client.post(reverse("mailbox"), {"action": "start-contact-replay"}, secure=True)
+            self.assertRedirects(response, reverse("mailbox"), fetch_redirect_response=False)
+            return process_contact_replay()
 
     @override_settings(HTTPS=True, ALLOWED_HOSTS=["bms.planspielplatte.de"])
     def test_existing_enabled_ffp_instance_enqueues_one_bounded_job(self):
@@ -61,6 +84,53 @@ class RequestedContactReplayTests(TestCase):
         queue_ffp_contact_replay(apps, SimpleNamespace(connection=connection))
 
         self.assertFalse(ContactReplayJob.objects.exists())
+
+    @override_settings(HTTPS=True)
+    def test_operator_replay_uses_logged_mail_and_records_the_result_in_its_details(self):
+        raw = booking_mail(address=PERSONAL)
+        receipt = MailReceipt(source_id=self.source_id, uid_validity=42, uid=43)
+        event = _reconcile(replace(parse_eml(raw), participant_email=None), occurred_at=None, receipt=receipt)
+        refetched = raw + b"\n"
+        self.assertNotEqual(parse_eml(refetched).fingerprint, event.sha256)
+
+        job = self.replay_from_mailbox(refetched)
+
+        self.assertEqual(job.outcome_counts, {"ADDED": 1})
+        self.assertEqual(EmailEvent.objects.count(), 1)
+        self.assertEqual(event.seat.history.count(), 1)
+        event.seat.participant.refresh_from_db()
+        self.assertEqual(event.seat.participant.email, PERSONAL)
+        receipt.refresh_from_db()
+        self.assertNotIn("participant_email", receipt.fields)
+        detail = self.client.get(reverse("mail_receipt", args=[receipt.pk]), secure=True)
+        self.assertContains(detail, "Letzter Adressabgleich")
+        self.assertContains(detail, ContactReplayResult.ADDED.value)
+
+    @override_settings(HTTPS=True)
+    def test_logged_mail_does_not_authorize_an_address_for_a_different_course_date(self):
+        raw = booking_mail(address=PERSONAL)
+        receipt = MailReceipt(source_id=self.source_id, uid_validity=42, uid=43)
+        event = _reconcile(replace(parse_eml(raw), participant_email=None), occurred_at=None, receipt=receipt)
+        different = booking_mail(address=PERSONAL, period=JUNE)
+
+        job = self.replay_from_mailbox(different)
+
+        self.assertEqual(job.outcome_counts, {"BOOKING_CHANGED": 1})
+        event.seat.participant.refresh_from_db()
+        self.assertEqual(event.seat.participant.email, "")
+
+    @override_settings(HTTPS=True)
+    def test_replay_reports_mail_missing_from_the_folder_on_its_receipt(self):
+        receipt = MailReceipt.objects.create(
+            source_id=self.source_id, uid_validity=42, uid=43, outcome=MailReceipt.Outcome.SKIPPED,
+        )
+
+        job = self.replay_from_mailbox(None)
+
+        self.assertEqual(job.status, job.Status.COMPLETED)
+        self.assertEqual(job.outcome_counts, {"UNREADABLE": 1})
+        detail = self.client.get(reverse("mail_receipt", args=[receipt.pk]), secure=True)
+        self.assertContains(detail, "Die Mail ist im Importordner nicht mehr verfügbar.")
 
 
     @override_settings(HTTPS=True, ALLOWED_HOSTS=["bms.planspielplatte.de"])

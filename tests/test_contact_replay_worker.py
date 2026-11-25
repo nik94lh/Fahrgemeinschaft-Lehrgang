@@ -92,7 +92,7 @@ class ContactReplayWorkerTests(TestCase):
         client.close.assert_not_called()
         client.store.assert_not_called()
         client.expunge.assert_not_called()
-        self.assertEqual(callback.call_args_list, [call(self.raw)] * 25)
+        self.assertEqual(callback.call_args_list, [call(self.raw, imported_event_id=None)] * 25)
 
         second_client = mock_mailbox(uid_next=80)
         second_client.uid.side_effect = [("OK", [b"26"]), *self.fetch(26)]
@@ -119,6 +119,24 @@ class ContactReplayWorkerTests(TestCase):
         self.assertEqual(job.outcome_counts, {"UNREADABLE": 1})
         self.assertEqual(client.uid.call_count, 2)
         callback.assert_not_called()
+
+    def test_invalid_fetch_for_one_mail_does_not_block_the_rest_of_the_job(self):
+        self.queue(2)
+        client = mock_mailbox()
+        client.uid.side_effect = [
+            ("OK", [b"1 2"]),
+            ("OK", [f"1 (UID 1 RFC822.SIZE {len(self.raw) + 1})".encode()]),
+            body_result(1, self.raw),
+            *self.fetch(2),
+        ]
+        callback = Mock(return_value=ContactReplayResult.ADDED)
+
+        job = self.step(client, callback)
+
+        self.assertEqual(job.status, ContactReplayJob.Status.COMPLETED)
+        self.assertEqual(job.last_uid, 2)
+        self.assertEqual(job.outcome_counts, {"UNREADABLE": 1, "ADDED": 1})
+        self.assertEqual(callback.call_count, 1)
 
     def test_new_uid_validity_halts_the_job_before_any_fetch(self):
         self.queue(2)

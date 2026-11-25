@@ -14,6 +14,10 @@
             <p><a href="{% url 'booking_participant' receipt.event.seat_id %}">Verknüpfte Buchung ansehen</a></p>
             <p><strong>Adresse an der Buchung aktuell</strong> · {% if has_current_address %}Hinterlegt{% else %}Fehlt{% endif %}</p>
         {% endif %}
+        {% if receipt.address_checked_at %}
+            <h3>Letzter Adressabgleich</h3>
+            <p>{{ receipt.address_checked_at|date:"d.m.Y, H:i" }} Uhr · {{ receipt.address_check_detail }}</p>
+        {% endif %}
     </section>
 
     <div class="receipt-detail-layout">

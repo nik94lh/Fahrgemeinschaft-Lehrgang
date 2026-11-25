@@ -37,6 +37,10 @@ class ImapSyncError(RuntimeError):
     """A sanitized failure that can be shown to the mailbox operator."""
 
 
+class ImapMessageError(ImapSyncError):
+    """An invalid response for a specific message, independent of the connection."""
+
+
 def mailbox_source_id(host: str, port: int, username: str, mailbox: str) -> str:
     identity = (host.lower().rstrip("."), port, username, mailbox)
     return hashlib.sha256(json.dumps(identity, ensure_ascii=True).encode("ascii")).hexdigest()
@@ -166,13 +170,13 @@ def _fetch_size(client, uid: int) -> int | None:
     sizes = []
     for entry in payload:
         if not isinstance(entry, bytes):
-            raise ImapSyncError("Die IMAP-Größenabfrage enthielt unerwartete Daten.")
+            raise ImapMessageError("Die IMAP-Größenabfrage enthielt unerwartete Daten.")
         entry_uid = _UID.search(entry)
         size = _SIZE.search(entry)
         if entry_uid and size and int(entry_uid[1]) == uid:
             sizes.append(int(size[1]))
     if len(sizes) != 1:
-        raise ImapSyncError("Die IMAP-Größenabfrage enthielt keine eindeutige Nachricht.")
+        raise ImapMessageError("Die IMAP-Größenabfrage enthielt keine eindeutige Nachricht.")
     return sizes[0]
 
 
@@ -181,23 +185,20 @@ def _fetch_body(client, uid: int, expected_size: int) -> bytes | None:
     if not any(payload):
         return None
     literals = [(index, item) for index, item in enumerate(payload) if isinstance(item, tuple)]
-    if len(literals) != 1:
-        raise ImapSyncError("Die IMAP-Abfrage enthielt keine eindeutige Nachricht.")
+    if len(literals) != 1 or len(literals[0][1]) != 2:
+        raise ImapMessageError("Die IMAP-Abfrage enthielt keine eindeutige Nachricht.")
     index, (prefix, raw) = literals[0]
     trailer = payload[index + 1] if index + 1 < len(payload) else None
     if not isinstance(trailer, bytes) or not _BODY_TRAILER.fullmatch(trailer):
-        raise ImapSyncError("Die IMAP-Abfrage war unvollständig.")
+        raise ImapMessageError("Die IMAP-Abfrage war unvollständig.")
+    if not isinstance(prefix, bytes) or not isinstance(raw, bytes):
+        raise ImapMessageError("Die IMAP-Abfrage enthielt unerwartete Nachrichtendaten.")
     size = _BODY_LITERAL.search(prefix)
     uids = _UID.findall(prefix + b" " + trailer)
-    if not size or uids != [str(uid).encode()] or not isinstance(raw, bytes):
-        raise ImapSyncError("Die IMAP-Abfrage enthielt keine eindeutige Nachricht.")
+    if not size or uids != [str(uid).encode()]:
+        raise ImapMessageError("Die IMAP-Abfrage enthielt keine eindeutige Nachricht.")
     if len(raw) != int(size[1]) or len(raw) != expected_size or len(raw) > MAX_EML_BYTES:
-        raise ImapSyncError("Die IMAP-Nachricht hat eine unerwartete Größe.")
-    return raw
-
-
-def _read_uid(client, uid: int) -> bytes | None:
-    raw, _ = _read_message(client, uid)
+        raise ImapMessageError("Die IMAP-Nachricht hat eine unerwartete Größe.")
     return raw
 
 
