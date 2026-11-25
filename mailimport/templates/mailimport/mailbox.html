@@ -1,0 +1,96 @@
+{% extends "workspace/base.html" %}
+
+{% block live_region %}{% endblock %}
+{% block title %}Postfach{% endblock %}
+{% block page_styles %}
+#id_functional_addresses {
+    display: block;
+    width: 100%;
+    margin-block-start: .25rem;
+    padding: .6rem;
+    border: 1px solid var(--line);
+    border-radius: .45rem;
+    font: inherit;
+    resize: vertical;
+}
+{% endblock %}
+
+{% block content %}
+<div class="page-heading">
+  <div>
+    <h1>Postfach</h1>
+  </div>
+  <a class="button-link" href="{% url 'mail_receipts' %}">Zum Mail-Eingang</a>
+</div>
+<section class="panel" aria-label="Postfachverbindung" style="max-width: 38rem;">
+  {% if saved %}
+    <p role="status">Postfachkonfiguration gespeichert.</p>
+  {% endif %}
+  <div data-live-region="mailbox-status">
+  {% if configured %}
+    <p class="note">Abruf {% if enabled %}aktiviert{% else %}deaktiviert{% endif %}. {% if password_saved %}Ein Passwort ist hinterlegt.{% endif %}</p>
+    {% if last_sync_at %}
+      <p class="note">
+        {% if last_sync_ok %}Letzter Abruf erfolgreich.{% else %}Letzter Abruf fehlgeschlagen.{% endif %}
+        <time datetime="{{ last_sync_at|date:'c' }}">{{ last_sync_at|date:"d.m.Y, H:i" }} Uhr</time>
+      </p>
+    {% elif enabled %}
+      <p class="note">Für dieses Postfach liegt noch kein Abrufstatus vor.</p>
+    {% endif %}
+  {% endif %}
+  </div>
+  <form method="post">
+    {% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit">Postfach speichern</button>
+  </form>
+  <p class="note">Aktiviere den Abruf nur für ein freigegebenes Postfach.</p>
+</section>
+<section class="panel" aria-labelledby="functional-addresses-heading" style="max-width: 38rem; margin-block-start: 1rem;">
+  <h2 id="functional-addresses-heading">Funktionsadressen der Lehrgangskommunikation</h2>
+  {% if addresses_saved %}
+    <p role="status">Funktionsadressen gespeichert.</p>
+  {% endif %}
+  <p class="note">Trage Sammel- und Verteileradressen ein, damit BMS sie bei der Adresszuordnung auslässt.</p>
+  <form method="post" style="margin-block-start: 1rem;">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="save-functional-addresses">
+    {{ addresses_form.as_p }}
+    <button type="submit">Funktionsadressen speichern</button>
+  </form>
+</section>
+<section data-live-region="contact-replay" class="panel participant-profile" aria-labelledby="contact-replay-heading" style="max-width: 38rem; margin-block-start: 1rem;">
+  <h2 id="contact-replay-heading">Einmaliger Adressabgleich</h2>
+  <p class="note">Ergebnisse pro Nachricht findest du im <a href="{% url 'mail_receipts' %}">Mail-Eingang</a> unter „Letzter Adressabgleich“.</p>
+  {% if replay_error %}
+    <p class="errorlist" role="alert">{{ replay_error }}</p>
+  {% endif %}
+  {% if replay_job %}
+    <dl class="details" style="margin-block-start: .75rem;">
+      <div><dt>Status</dt><dd>{{ replay_job.get_status_display }}</dd></div>
+      <div><dt>Geprüfte Nachrichten</dt><dd>{{ replay_job.scanned_count }}</dd></div>
+      <div><dt>Ergänzte Adressen</dt><dd>{{ replay_job.enriched_count }}</dd></div>
+      {% if replay_job.finished_at %}<div><dt>Beendet</dt><dd>{{ replay_job.finished_at|date:"d.m.Y, H:i" }} Uhr</dd></div>{% endif %}
+    </dl>
+    {% if replay_skip_counts %}
+      <h3 style="margin-block-start: 1rem;">Nachrichten ohne Adressnachtrag</h3>
+      <dl class="details">
+        {% for reason, count in replay_skip_counts %}
+          <div><dt>{{ reason }}</dt><dd>{{ count }}</dd></div>
+        {% endfor %}
+      </dl>
+    {% endif %}
+    {% if replay_unclassified_count %}
+      <p class="note">Für {{ replay_unclassified_count }} geprüfte Nachrichten wurden noch keine Einzelgründe erfasst.</p>
+    {% endif %}
+    {% if replay_job.error_message %}<p class="note" role="status">{{ replay_job.error_message }}</p>{% endif %}
+  {% endif %}
+  {% if not replay_active %}
+    <form method="post">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="start-contact-replay">
+      <button type="submit">Adressabgleich starten</button>
+    </form>
+  {% endif %}
+</section>
+{% endblock %}

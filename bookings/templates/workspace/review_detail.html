@@ -1,0 +1,154 @@
+{% extends "workspace/base.html" %}
+{% block title %}Klärungsfall {{ event.pk }}{% endblock %}
+{% block page_styles %}
+    .review-layout { display: grid; gap: 1rem; }
+    .review-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; }
+    .review-actions { display: grid; gap: .7rem; }
+    .review-action { display: grid; gap: .2rem; padding: .85rem 1rem; border: 1px solid var(--line); border-radius: .5rem; text-decoration: none; color: var(--ink); }
+    .review-action span { color: var(--muted); font-size: .92rem; }
+    .review-action:hover, .review-action[aria-current] { border-color: var(--accent); background: #edf2ff; }
+    .review-action strong { color: var(--accent); }
+    .review-decision { border-block-start: 1px solid var(--rule); margin-block-start: 1.25rem; padding-block-start: 1rem; scroll-margin-block-start: 1rem; }
+    .review-decision h3 { margin-block-end: 1rem; }
+    .review-fields { max-width: 42rem; }
+    .review-field { margin-block: .8rem; }
+    .review-field label, .review-search label { display: block; font-weight: 650; }
+    .review-field select { display: block; width: 100%; min-width: 0; margin-block-start: .25rem; padding: .5rem; font: inherit; color: var(--ink); border: 1px solid var(--line); border-radius: .45rem; background: white; }
+    .review-search > div { display: flex; align-items: end; flex-wrap: wrap; gap: .65rem; }
+    .review-search > div > div { flex: 1 1 12rem; }
+    .review-search button, .review-form button { width: auto; margin-block: 0; }
+    .review-info { margin-block: .65rem 1rem; }
+    .review-confirm { margin-block: 1rem; }
+    .review-confirm label { display: flex; align-items: baseline; gap: .5rem; }
+    .review-confirm input { margin: 0; }
+    @media (max-width: 680px) { .review-facts { grid-template-columns: 1fr; } }
+{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'review' %}">← Zu den Klärungsfällen</a></p>
+    <h1>Klärungsfall {{ event.pk }}</h1>
+    <p class="intro">{{ event.get_kind_display }} · Importiert am {{ event.imported_at|date:"d.m.Y H:i" }}</p>
+
+    <div class="review-layout">
+        <section class="panel diagnostic-panel{% if actions %} diagnostic-warning{% endif %}" aria-labelledby="review-next">
+            {% if actions %}
+                <h2 id="review-next">{{ event.get_review_reason_display }}</h2>
+                {% if differences %}
+                    <p><strong>Abweichungen zur aktuellen Buchung</strong></p>
+                    <ul>{% for difference in differences %}<li>{{ difference }}</li>{% endfor %}</ul>
+                {% endif %}
+                <p>{{ guidance }}</p>
+            {% else %}
+                <h2 id="review-next">Entscheidung</h2>
+                <p><strong>{{ event.get_state_display }}</strong> · {{ event.get_review_resolution_display }}</p>
+                {% if event.reviewed_at %}<p>Gespeichert am {{ event.reviewed_at|date:"d.m.Y H:i" }}.</p>{% endif %}
+                {% if event.review_reason %}<p>{{ event.get_review_reason_display }}</p>{% endif %}
+            {% endif %}
+        </section>
+
+        <div class="review-facts">
+            <section class="panel" aria-labelledby="review-recognized">
+                <h2 id="review-recognized">Erkannte Angaben</h2>
+                {% if has_recognized_data or event.occurred_at %}
+                    <dl class="details">
+                        <div><dt>Teilnehmer</dt><dd>{{ recognized.participant_name|default:"Nicht eindeutig erkannt" }}</dd></div>
+                        {% if recognized.previous_participant_name %}<div><dt>Bisheriger Teilnehmer laut Nachricht</dt><dd>{{ recognized.previous_participant_name }}</dd></div>{% endif %}
+                        <div><dt>Lehrgang</dt><dd>{{ recognized.course_name|default:"Nicht eindeutig erkannt" }}</dd></div>
+                        <div><dt>Schule</dt><dd>{{ school_name|default:"Nicht eindeutig erkannt" }}</dd></div>
+                        {% if recognized.is_online %}<div><dt>Durchführung</dt><dd>Online</dd></div>{% endif %}
+                        <div><dt>Beginn</dt><dd>{{ recognized.starts_at|date:"d.m.Y H:i"|default:"Nicht eindeutig erkannt" }}</dd></div>
+                        <div><dt>Ende</dt><dd>{{ recognized.ends_at|date:"d.m.Y H:i"|default:"Nicht eindeutig erkannt" }}</dd></div>
+                        <div><dt>Buchungsreferenz</dt><dd>{{ recognized.booking_reference|default:"Keine erkannt" }}</dd></div>
+                        {% if event.occurred_at %}<div><dt>Meldungszeit</dt><dd>{{ event.occurred_at|date:"d.m.Y H:i" }}</dd></div>{% endif %}
+                    </dl>
+                {% endif %}
+                {% if not has_recognized_data %}
+                    <p>Keine Angaben für diesen Import gespeichert. Suche die Originalnachricht im Postfach anhand des Abrufzeitpunkts.</p>
+                {% endif %}
+                {% if receipt_id %}<p class="detail-note"><a href="{% url 'mail_receipt' receipt_id %}">Mail-Eingang ansehen →</a></p>{% endif %}
+            </section>
+
+            <section class="panel" aria-labelledby="review-linked">
+                <h2 id="review-linked">{% if event.seat_id %}Verknüpfte Lehrgangsbuchung{% else %}Mögliche Lehrgangsbuchung{% endif %}</h2>
+                {% if comparison_seat %}
+                    <dl class="details">
+                        <div><dt>Buchung</dt><dd>Nr. {{ comparison_seat.pk }}{% if comparison_seat.external_reference %} · {{ comparison_seat.external_reference }}{% endif %}</dd></div>
+                        <div><dt>Aktueller Teilnehmer</dt><dd>{{ comparison_seat.participant.name|default:"Ohne Zuordnung" }}</dd></div>
+                        <div><dt>Aktueller Status</dt><dd><span class="status-label status-{{ comparison_seat.status }}">{{ comparison_seat.get_status_display }}</span></dd></div>
+                        <div><dt>Lehrgang</dt><dd>{{ comparison_seat.session.course.name }}</dd></div>
+                        <div><dt>Schulungsort</dt><dd>{{ comparison_seat.session.get_venue_display }}</dd></div>
+                        <div><dt>Beginn</dt><dd>{{ comparison_seat.session.starts_at|date:"d.m.Y H:i" }}</dd></div>
+                        <div><dt>Ende</dt><dd>{{ comparison_seat.session.ends_at|date:"d.m.Y H:i" }}</dd></div>
+                    </dl>
+                    {% if actions and event.seat_id and comparison_seat.status == "confirmed" %}
+                        <p class="quiet review-info">Eine bestätigte Buchung kann nach Abschluss aller zugeordneten Klärungsfälle wieder für Fahrgemeinschaften berücksichtigt werden.</p>
+                    {% endif %}
+                {% else %}
+                    <p>Keine Zuordnung</p>
+                {% endif %}
+            </section>
+        </div>
+
+        {% if actions %}
+            <section class="panel" aria-labelledby="review-actions">
+                <h2 id="review-actions">Aktion wählen</h2>
+                <div class="review-actions">
+                    {% for key, details in actions.items %}
+                        <a class="review-action" href="?aktion={{ key }}#entscheidung"{% if key == action %} aria-current="true"{% endif %}>
+                            <strong>{{ details.0 }}</strong>
+                            <span>{{ details.1 }}</span>
+                        </a>
+                    {% endfor %}
+                </div>
+                {% if form %}
+                    <div id="entscheidung" class="review-decision">
+                        <h3>{{ action_details.0|default:"Entscheidung korrigieren" }}</h3>
+                        <div class="review-fields">
+                            {% if seat_search_available %}
+                                <form class="review-search" method="get" action="#entscheidung">
+                                    <input type="hidden" name="aktion" value="{{ action }}">
+                                    <div>
+                                        <div>
+                                            <label for="platzsuche">Buchung suchen</label>
+                                            <input type="search" id="platzsuche" name="platzsuche" value="{{ search }}" maxlength="80" aria-describedby="review-search-help">
+                                        </div>
+                                        <button type="submit">Suchen</button>
+                                    </div>
+                                    <p id="review-search-help" class="note review-info">Buchungsnummer, Referenz, Name oder Lehrgang</p>
+                                </form>
+                            {% endif %}
+                            <form class="review-form" method="post">
+                                {% csrf_token %}
+                                {{ form.action }}
+                                {{ form.action.errors }}
+                                {{ form.non_field_errors }}
+                                {% if action == "link" or action == "reassign" %}
+                                    {% if not has_candidate_seats %}
+                                        {% if search %}
+                                            <p class="quiet review-info">Keine Buchung zu diesem Suchbegriff gefunden.</p>
+                                        {% else %}
+                                            <p class="quiet review-info">Aus den erkannten Angaben ergibt sich kein Vorschlag. Suche nach der Lehrgangsbuchung.</p>
+                                        {% endif %}
+                                    {% elif results_capped %}
+                                        <p class="quiet review-info">Die ersten 20 Buchungen werden angezeigt. Grenze die Suche weiter ein.</p>
+                                    {% endif %}
+                                    <div class="review-field">{{ form.seat.label_tag }} {{ form.seat }} {{ form.seat.errors }}</div>
+                                {% endif %}
+                                {% if action == "reassign" %}
+                                    <div class="review-field">{{ form.previous_participant.label_tag }} {{ form.previous_participant }} {{ form.previous_participant.errors }}</div>
+                                    <div class="review-field">{{ form.replacement.label_tag }} {{ form.replacement }} {{ form.replacement.errors }}</div>
+                                {% elif action == "dismiss" %}
+                                    <div class="review-field">{{ form.reason.label_tag }} {{ form.reason }} {{ form.reason.errors }}</div>
+                                {% endif %}
+                                <div class="review-confirm">
+                                    <label for="{{ form.confirm.id_for_label }}">{{ form.confirm }} <span>{{ form.confirm.label }}</span></label>
+                                    {{ form.confirm.errors }}
+                                </div>
+                                <button type="submit">Entscheidung speichern</button>
+                            </form>
+                        </div>
+                    </div>
+                {% endif %}
+            </section>
+        {% endif %}
+    </div>
+{% endblock %}

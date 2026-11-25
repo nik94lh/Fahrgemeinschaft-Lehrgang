@@ -1,0 +1,43 @@
+<p class="calendar-hint quiet">Jeder Kalendertag mit Lehrgang zählt einmal.</p>
+<div class="calendar-occupancy-legend">
+    <span id="occupancy-legend-label">Belegte Tage</span>
+    <ul aria-labelledby="occupancy-legend-label" role="list">
+        {% for level, label in occupancy_legend %}
+            <li class="calendar-occupancy-band" data-occupancy="{{ level }}">{{ label }}</li>
+        {% endfor %}
+    </ul>
+</div>
+<ul class="calendar-year" role="list">
+    {% for tile in months %}
+        <li>
+            <a class="calendar-month-card" data-occupancy="{{ tile.occupancy_level }}" href="?{{ tile.query }}"
+               aria-label="{{ tile.start|date:'F Y' }}, {{ tile.session_count }} {% if tile.session_count == 1 %}Lehrgang{% else %}Lehrgänge{% endif %}, {{ tile.occupied_count }} {% if tile.occupied_count == 1 %}belegter Tag{% else %}belegte Tage{% endif %}"
+               {% if tile.occupied_days %}aria-describedby="month-days-{{ tile.start|date:'m' }}"{% endif %}>
+                <span class="calendar-month-title">
+                    <strong>{{ tile.start|date:"F" }}</strong>
+                    <span class="calendar-month-counts">
+                        <span class="calendar-occupied-count">{{ tile.occupied_count }} {% if tile.occupied_count == 1 %}belegter Tag{% else %}belegte Tage{% endif %}</span>
+                        <span>{{ tile.session_count }} {% if tile.session_count == 1 %}Lehrgang{% else %}Lehrgänge{% endif %}</span>
+                    </span>
+                </span>
+                <span class="calendar-mini" aria-hidden="true">
+                    <span class="calendar-mini-weekday">Mo</span><span class="calendar-mini-weekday">Di</span>
+                    <span class="calendar-mini-weekday">Mi</span><span class="calendar-mini-weekday">Do</span>
+                    <span class="calendar-mini-weekday">Fr</span><span class="calendar-mini-weekday">Sa</span>
+                    <span class="calendar-mini-weekday">So</span>
+                    {% for day in tile.days %}
+                        {% if day %}
+                            <span class="calendar-mini-day{% if day.count %} is-occupied{% endif %}{% if day.is_today %} is-today{% endif %}"
+                                  title="{{ day.date|date:'l, d.m.Y' }}{% if day.count %} · {{ day.count }} {% if day.count == 1 %}Lehrgang{% else %}Lehrgänge{% endif %}{% endif %}">{{ day.date.day }}</span>
+                        {% else %}
+                            <span></span>
+                        {% endif %}
+                    {% endfor %}
+                </span>
+            </a>
+            {% if tile.occupied_days %}
+                <span class="visually-hidden" id="month-days-{{ tile.start|date:'m' }}">Lehrgänge am {{ tile.occupied_days|join:", " }}.</span>
+            {% endif %}
+        </li>
+    {% endfor %}
+</ul>

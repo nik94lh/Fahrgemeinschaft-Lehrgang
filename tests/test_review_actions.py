@@ -1,0 +1,140 @@
+from django.test import Client, TestCase
+from django.urls import reverse
+
+from bookings.models import BookingStatus, CourseSeat, EmailEvent, Participant
+from bookings.services import ingest
+from tests.test_reconciliation import eml
+
+
+class ReviewActionTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.booking = ingest(eml("Teilnahmebestätigung", reference="TEST-17")).seat
+        cls.reassignment = ingest(eml(
+            "Ummeldung", participant="Toni Testperson", reference="TEST-17",
+        ))
+        cls.replacement = Participant.objects.create(name="Toni Testperson")
+
+    def detail_url(self):
+        return reverse("review_detail", kwargs={"event_id": self.reassignment.pk})
+
+    def test_resolution_requires_post_csrf_and_explicit_confirmation(self):
+        payload = {"action": "link", "seat": self.booking.pk, "confirm": "on"}
+        self.assertEqual(Client(enforce_csrf_checks=True).post(self.detail_url(), payload).status_code, 403)
+        self.assertEqual(self.client.get(self.detail_url(), payload).status_code, 200)
+        payload.pop("confirm")
+        self.assertEqual(self.client.post(self.detail_url(), payload).status_code, 200)
+        self.reassignment.refresh_from_db()
+        self.assertEqual(self.reassignment.state, EmailEvent.State.NEEDS_REVIEW)
+
+    def test_link_records_a_deliberate_review_without_changing_booking(self):
+        response = self.client.post(self.detail_url(), {
+            "action": "link", "seat": self.booking.pk, "confirm": "on",
+        })
+
+        self.assertRedirects(response, reverse("review"))
+        self.reassignment.refresh_from_db()
+        self.assertEqual(self.reassignment.state, EmailEvent.State.REVIEWED)
+        self.assertEqual(self.reassignment.review_resolution, EmailEvent.ReviewResolution.LINKED)
+        self.assertIsNotNone(self.reassignment.reviewed_at)
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, BookingStatus.CONFIRMED)
+
+    def test_dismiss_uses_structured_reason_and_cannot_be_repeated(self):
+        first = self.client.post(self.detail_url(), {
+            "action": "dismiss", "reason": "duplicate", "confirm": "on",
+        })
+        second = self.client.post(self.detail_url(), {
+            "action": "dismiss", "reason": "not_relevant", "confirm": "on",
+        })
+
+        self.assertRedirects(first, reverse("review"))
+        self.assertEqual(second.status_code, 409)
+        self.reassignment.refresh_from_db()
+        self.assertEqual(self.reassignment.state, EmailEvent.State.DISMISSED)
+        self.assertEqual(self.reassignment.review_resolution, EmailEvent.ReviewResolution.DUPLICATE)
+
+    def test_reassign_records_current_and_new_participant_on_existing_seat(self):
+        previous = self.booking.participant
+        response = self.client.post(self.detail_url(), {
+            "action": "reassign", "seat": self.booking.pk, "previous_participant": previous.pk,
+            "replacement": self.replacement.pk, "confirm": "on",
+        })
+
+        self.assertRedirects(response, reverse("review"))
+        self.booking.refresh_from_db()
+        history = self.booking.history.last()
+        self.assertEqual(CourseSeat.objects.count(), 1)
+        self.assertEqual(self.booking.participant, self.replacement)
+        self.assertEqual(self.booking.status, BookingStatus.REASSIGNED)
+        self.assertEqual(history.previous_participant, previous)
+        self.assertEqual(history.participant, self.replacement)
+        self.assertEqual(history.source_event, self.reassignment)
+
+    def test_reassign_stale_or_unverified_previous_participant_has_no_effect(self):
+        different_person = Participant.objects.create(name="Pat Muster")
+        response = self.client.post(self.detail_url(), {
+            "action": "reassign", "seat": self.booking.pk, "previous_participant": different_person.pk,
+            "replacement": self.replacement.pk, "confirm": "on",
+        })
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "bisherige Person stimmt nicht überein")
+        self.booking.refresh_from_db()
+        self.reassignment.refresh_from_db()
+        self.assertEqual(self.booking.status, BookingStatus.CONFIRMED)
+        self.assertEqual(self.reassignment.state, EmailEvent.State.NEEDS_REVIEW)
+
+    def test_detail_distinguishes_recognized_fields_and_current_booking(self):
+        response = self.client.get(self.detail_url())
+
+        self.assertContains(response, "Erkannte Angaben")
+        self.assertContains(response, "Verknüpfte Lehrgangsbuchung")
+        self.assertContains(response, "Toni Testperson")
+        self.assertContains(response, "Alex Beispiel")
+        self.assertContains(response, "Bestätigt")
+        self.assertContains(response, "TEST-17")
+        self.assertContains(response, "E-Mail zuordnen")
+        self.assertContains(response, "Ummeldung in BMS übernehmen")
+        self.assertContains(response, "Fall verwerfen")
+        self.assertNotContains(response, 'name="replacement"')
+
+    def test_legacy_case_has_no_automatic_seat_options_but_can_search(self):
+        legacy = EmailEvent.objects.create(
+            sha256="0" * 64, kind=EmailEvent.Kind.CONFIRMATION, state=EmailEvent.State.NEEDS_REVIEW,
+            review_reason=EmailEvent.ReviewReason.PARTICIPANT_UNCLEAR,
+        )
+        url = reverse("review_detail", kwargs={"event_id": legacy.pk})
+        empty = self.client.get(url, {"aktion": "link"})
+        self.assertContains(empty, "Keine Zuordnung")
+        self.assertContains(empty, "Originalnachricht im Postfach")
+        self.assertNotContains(empty, "Alex Beispiel")
+
+        found = self.client.get(url, {"aktion": "link", "platzsuche": "TEST-17"})
+        self.assertContains(found, "Alex Beispiel")
+        self.assertContains(found, f'<option value="{self.booking.pk}"')
+        legacy.refresh_from_db()
+        self.assertIsNone(legacy.seat_id)
+
+    def test_unlinked_reassignment_offers_only_context_supported_candidates(self):
+        other = ingest(eml("Teilnahmebestätigung", participant="Pat Muster", course="Truppführer"))
+        event = ingest(eml(
+            "Ummeldung", participant="Toni Testperson", extra="Bisheriger Teilnehmer: Alex Beispiel",
+        ))
+        self.assertIsNone(event.seat_id)
+        url = reverse("review_detail", kwargs={"event_id": event.pk})
+        response = self.client.get(url, {"aktion": "link"})
+
+        self.assertContains(response, f'<option value="{self.booking.pk}"')
+        self.assertNotContains(response, f'<option value="{other.seat_id}"')
+        self.assertNotContains(response, "Pat Muster")
+        self.assertNotContains(response, 'name="replacement"')
+        self.assertNotContains(response, 'name="reason"')
+
+    def test_dismiss_action_renders_only_its_own_fields(self):
+        response = self.client.get(self.detail_url(), {"aktion": "dismiss"})
+
+        self.assertContains(response, 'name="reason"')
+        self.assertContains(response, 'name="confirm"')
+        self.assertNotContains(response, 'name="seat"')
+        self.assertNotContains(response, 'name="replacement"')

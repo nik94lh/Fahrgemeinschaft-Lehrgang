@@ -1,0 +1,37 @@
+{% if request.method != "GET" or request.META.HTTP_X_BMS_LIVE != "1" %}
+<!doctype html>
+<html lang="de">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{% block title %}Übersicht{% endblock %} · BMS</title>
+    <style>
+        {% include "mailimport/preview.css" %}
+        {% include "workspace/workspace.css" %}
+        {% block page_styles %}{% endblock %}
+    </style>
+    {% if request.method == "GET" and request.resolver_match.url_name != "preview" %}
+        <script src="{% url 'live_script' %}?v={{ bms_version }}" defer></script>
+    {% endif %}
+</head>
+<body>
+    <a class="skip-link" href="#main-content">Zum Inhalt</a>
+    <header class="app-header">
+        <div class="header-inner">
+            <a class="brand" href="{% url 'overview' %}"><strong>BMS</strong><span>Lehrgangsverwaltung</span></a>
+            <div class="header-status">
+                <span class="mode">Testbetrieb</span>
+                <span class="version">Version {{ bms_version }}</span>
+                <span id="live-update-status" role="status" hidden></span>
+            </div>
+        </div>
+    </header>
+    {% include "workspace/navigation.html" %}
+{% endif %}
+    <main id="main-content" tabindex="-1"{% block live_region %} data-live-region="main"{% endblock %}>
+        {% block content %}{% endblock %}
+    </main>
+{% if request.method != "GET" or request.META.HTTP_X_BMS_LIVE != "1" %}
+</body>
+</html>
+{% endif %}

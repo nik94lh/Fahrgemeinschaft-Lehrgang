@@ -1,0 +1,9 @@
+{% extends "workspace/base.html" %}
+{% block title %}Klärungsfälle{% endblock %}
+{% block content %}
+    <div class="page-heading"><h1>Klärungsfälle</h1></div>
+    <section class="panel">
+        {% include "workspace/events.html" with events=page_obj only %}
+        {% include "workspace/pagination.html" %}
+    </section>
+{% endblock %}

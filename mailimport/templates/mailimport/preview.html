@@ -1,0 +1,67 @@
+{% extends "workspace/base.html" %}
+{% block title %}E-Mail-Vorschau{% endblock %}
+{% block content %}
+        <h1>E-Mail-Vorschau</h1>
+        <div class="workspace">
+            <section class="panel" aria-labelledby="upload-title">
+                <h2 id="upload-title">Datei auswählen</h2>
+                <form method="post" action="{% url 'preview' %}" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    {{ form.non_field_errors }}
+                    <div class="upload">
+                        <label class="visually-hidden" for="{{ form.file.id_for_label }}">EML-Datei</label>
+                        {{ form.file }}
+                        <p id="eml-hint">.eml · bis 1 MiB</p>
+                    </div>
+                    {{ form.file.errors }}
+                    <button type="submit">Prüfen</button>
+                    <button class="secondary-button" type="submit" formaction="{% url 'manual_import' %}">Testmail importieren</button>
+                    <p class="note">Verwende eine synthetische oder anonymisierte Testmail. „Testmail importieren“ speichert die Buchungsdaten. <a href="{% url 'sample_eml' %}">Beispiel-EML herunterladen</a></p>
+                </form>
+            </section>
+            <section class="panel" aria-labelledby="results-title">
+                <h2 id="results-title">Erkannte Daten</h2>
+                {% if result %}
+                    <dl class="details">
+                        <div><dt>Ereignis</dt><dd>{{ event_label|default:"—" }}</dd></div>
+                        <div><dt>Lehrgang</dt><dd>{{ result.course_name|default:"—" }}</dd></div>
+                        <div><dt>Schulungsort</dt><dd>{{ school_label|default:"—" }}</dd></div>
+                        {% if result.is_online %}<div><dt>Durchführung</dt><dd>Online</dd></div>{% endif %}
+                        <div><dt>Beginn</dt><dd>{{ result.starts_at|date:"d.m.Y, H:i"|default:"—" }}</dd></div>
+                        <div><dt>Ende</dt><dd>{{ result.ends_at|date:"d.m.Y, H:i"|default:"—" }}</dd></div>
+                        <div><dt>Teilnehmer/in</dt><dd>{{ result.participant_name|default:"—" }}</dd></div>
+                        {% if result.event_type == "approval" or result.event_type == "confirmation" %}
+                            {% if result.participant_email_candidate %}
+                                <div><dt>Adressvorschlag aus dem ursprünglichen An-Feld</dt><dd>{{ result.participant_email_candidate }}</dd></div>
+                            {% else %}
+                                <div><dt>Teilnehmeradresse</dt><dd>{{ result.participant_email|default:"Keine persönliche Adresse erkannt" }}</dd></div>
+                            {% endif %}
+                        {% endif %}
+                        {% if result.previous_participant_name %}
+                            <div><dt>Bisherige/r Teilnehmer/in</dt><dd>{{ result.previous_participant_name }}</dd></div>
+                        {% endif %}
+                        <div><dt>Buchungsreferenz</dt><dd>{{ result.booking_reference|default:"—" }}</dd></div>
+                        {% if result.confirmation_deadline %}
+                            <div><dt>Bestätigungsfrist</dt><dd>{{ result.confirmation_deadline|date:"d.m.Y" }}</dd></div>
+                        {% endif %}
+                        {% if result.cancellation_date %}
+                            <div><dt>Stornierungsdatum</dt><dd>{{ result.cancellation_date|date:"d.m.Y" }}</dd></div>
+                        {% endif %}
+                    </dl>
+                    {% if result.address_note %}
+                        <p class="note detail-note">{{ result.address_note }}</p>
+                    {% endif %}
+                    {% if result.warnings %}
+                        <aside class="warnings" aria-labelledby="warnings-title">
+                            <h3 id="warnings-title">Bitte prüfen</h3>
+                            <ul>{% for warning in result.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+                        </aside>
+                    {% endif %}
+                {% else %}
+                    <div class="empty">
+                        <h3>Noch keine Vorschau</h3>
+                    </div>
+                {% endif %}
+            </section>
+        </div>
+{% endblock %}

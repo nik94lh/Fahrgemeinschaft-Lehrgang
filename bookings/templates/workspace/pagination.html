@@ -1,0 +1,7 @@
+{% if page_obj.has_other_pages %}
+    <nav class="pagination" aria-label="Ergebnisseiten">
+        {% if page_obj.has_previous %}<a href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.previous_page_number }}">Zurück</a>{% endif %}
+        <span>Seite {{ page_obj.number }} von {{ page_obj.paginator.num_pages }}</span>
+        {% if page_obj.has_next %}<a href="?{% if querystring %}{{ querystring }}&amp;{% endif %}page={{ page_obj.next_page_number }}">Weiter</a>{% endif %}
+    </nav>
+{% endif %}

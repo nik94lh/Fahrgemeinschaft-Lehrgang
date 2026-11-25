@@ -1,0 +1,84 @@
+{% extends "workspace/base.html" %}
+{% block title %}Mail-Eingang {{ receipt.uid }}{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'mail_receipts' %}">← Zum Mail-Eingang</a></p>
+    <h1>Mail-Eingang {{ receipt.uid }}</h1>
+    <p class="intro">Abgerufen am {{ receipt.observed_at|date:"d.m.Y, H:i" }} Uhr{% if receipt.sent_at %} · Datum im Mailkopf {{ receipt.sent_at|date:"d.m.Y, H:i" }} Uhr{% endif %}</p>
+
+    <section class="panel diagnostic-panel{% if receipt.outcome == 'review' or receipt.outcome == 'skipped' %} diagnostic-warning{% endif %}" aria-labelledby="receipt-outcome">
+        <h2 id="receipt-outcome">{{ receipt.get_outcome_display }}</h2>
+        <p>{{ receipt.detail }}</p>
+        {% if has_review %}
+            <p><a href="{% url 'review_detail' receipt.event_id %}">Klärungsfall {{ receipt.event_id }} ansehen</a></p>
+        {% elif receipt.event.seat.participant_id %}
+            <p><a href="{% url 'booking_participant' receipt.event.seat_id %}">Verknüpfte Buchung ansehen</a></p>
+            <p><strong>Adresse an der Buchung aktuell</strong> · {% if has_current_address %}Hinterlegt{% else %}Fehlt{% endif %}</p>
+        {% endif %}
+        {% if receipt.address_checked_at %}
+            <h3>Letzter Adressabgleich</h3>
+            <p>{{ receipt.address_checked_at|date:"d.m.Y, H:i" }} Uhr · {{ receipt.address_check_detail }}</p>
+        {% endif %}
+        {% if recheck_error %}<p class="errorlist detail-note" role="alert">{{ recheck_error }}</p>{% endif %}
+        {% if recheck_job and recheck_job.status != 'failed' %}
+            <p class="detail-note" role="status">{% if recheck_job.status == 'queued' %}Adressprüfung vorgemerkt.{% else %}Adressprüfung läuft.{% endif %}</p>
+            {% if recheck_job.error_message %}<p class="note">{{ recheck_job.error_message }}</p>{% endif %}
+        {% elif can_recheck %}
+            {% if recheck_job.error_message %}<p class="errorlist detail-note" role="alert">{{ recheck_job.error_message }}</p>{% endif %}
+            <form class="detail-note" method="post" action="{% url 'mail_receipt_recheck' receipt.pk %}">
+                {% csrf_token %}
+                <button type="submit">Adresse erneut prüfen</button>
+            </form>
+        {% endif %}
+    </section>
+
+    <div class="receipt-detail-layout">
+        <section class="panel" aria-labelledby="receipt-fields">
+            <h2 id="receipt-fields">Erkannte Angaben beim Abruf</h2>
+            {% if receipt.outcome == 'skipped' %}
+                <p>Keine Buchungsdaten erkannt.</p>
+            {% else %}
+                <dl class="details">
+                    <div><dt>Mailtyp</dt><dd>{{ fields.mail_type|default:"Unbekannt" }}</dd></div>
+                    <div><dt>Teilnehmer</dt><dd>{{ fields.participant_name|default:"Nicht eindeutig erkannt" }}</dd></div>
+                    {% if fields.previous_participant_name %}<div><dt>Bisheriger Teilnehmer</dt><dd>{{ fields.previous_participant_name }}</dd></div>{% endif %}
+                    {% if fields.participant_email_candidate and not fields.participant_email %}
+                        <div><dt>Adressvorschlag aus dem ursprünglichen An-Feld</dt><dd>{{ fields.participant_email_candidate }}</dd></div>
+                    {% else %}
+                        <div><dt>Teilnehmeradresse</dt><dd>{{ fields.participant_email|default:"Nicht erkannt" }}</dd></div>
+                    {% endif %}
+                    <div><dt>Lehrgang</dt><dd>{{ fields.course_name|default:"Nicht eindeutig erkannt" }}</dd></div>
+                    <div><dt>Schule</dt><dd>{{ school_name|default:"Nicht eindeutig erkannt" }}</dd></div>
+                    {% if fields.is_online %}<div><dt>Durchführung</dt><dd>Online</dd></div>{% endif %}
+                    <div><dt>Beginn</dt><dd>{{ fields.starts_at|date:"d.m.Y, H:i"|default:"Nicht eindeutig erkannt" }}</dd></div>
+                    <div><dt>Ende</dt><dd>{{ fields.ends_at|date:"d.m.Y, H:i"|default:"Nicht eindeutig erkannt" }}</dd></div>
+                    <div><dt>Buchungsreferenz</dt><dd>{{ fields.booking_reference|default:"Keine erkannt" }}</dd></div>
+                    {% if fields.confirmation_deadline %}<div><dt>Bestätigungsfrist</dt><dd>{{ fields.confirmation_deadline|date:"d.m.Y" }}</dd></div>{% endif %}
+                    {% if fields.cancellation_date %}<div><dt>Stornierungsdatum</dt><dd>{{ fields.cancellation_date|date:"d.m.Y" }}</dd></div>{% endif %}
+                </dl>
+                {% if fields.address_note and not receipt.address_checked_at %}<p class="note detail-note">{{ fields.address_note }}</p>{% endif %}
+                {% if fields.participant_email_candidate and not fields.participant_email and receipt.event.state == 'applied' and receipt.event.seat.participant_id and not has_current_address %}
+                    <p class="detail-note"><a href="{% url 'booking_participant' receipt.event.seat_id %}?mail={{ receipt.pk }}">Adressvorschlag bei der Buchung prüfen</a></p>
+                {% endif %}
+                {% if fields.warnings %}
+                    <aside class="warnings">
+                        <h3>Hinweise zur Auswertung</h3>
+                        <ul>{% for warning in fields.warnings %}<li>{{ warning }}</li>{% endfor %}</ul>
+                    </aside>
+                {% endif %}
+            {% endif %}
+        </section>
+        <section class="panel" aria-labelledby="receipt-source">
+            <h2 id="receipt-source">Original im Postfach finden</h2>
+            {% if mailbox %}
+                <p>Suche im Importordner <strong>{{ mailbox }}</strong> nach der Nachricht rund um den Abrufzeitpunkt{% if fields.participant_name %} und anhand des erkannten Namens{% endif %}. Bei einer erneuten Zustellung kann das Datum im Mailkopf älter sein.</p>
+            {% else %}
+                <p>Die Mail wurde über eine aktuell nicht aktive Postfachverbindung abgerufen. Suche im damals verwendeten Importordner.</p>
+            {% endif %}
+            <dl class="details detail-note">
+                <div><dt>IMAP-Nachrichtennummer</dt><dd>{{ receipt.uid }}</dd></div>
+                <div><dt>IMAP-Ordnergeneration</dt><dd>{{ receipt.uid_validity }}</dd></div>
+                {% if receipt.event_id %}<div><dt>BMS-Ereignis</dt><dd>{{ receipt.event_id }} · {{ receipt.event.get_state_display }}</dd></div>{% endif %}
+            </dl>
+        </section>
+    </div>
+{% endblock %}

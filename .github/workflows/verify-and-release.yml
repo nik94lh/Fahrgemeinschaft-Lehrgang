@@ -1,0 +1,80 @@
+name: BMS checks and test releases
+on:
+  pull_request:
+  push:
+    branches: [main, feat/bms-foundation]
+    tags: ['v*']
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    services:
+      postgres:
+        image: postgres:17-bookworm
+        env:
+          POSTGRES_DB: bms
+          POSTGRES_USER: bms
+          POSTGRES_PASSWORD: bms-ci-fixture
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U bms -d bms"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      DB_HOST: 127.0.0.1
+      DB_NAME: bms
+      DB_USER: bms
+      DB_PASSWORD: bms-ci-fixture
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+      - name: Install dependencies
+        run: |
+          python3 -m venv .venv
+          .venv/bin/python -m pip install -r requirements.txt
+      - name: Verify Django and migrations
+        run: |
+          .venv/bin/python manage.py check
+          .venv/bin/python manage.py makemigrations --check --dry-run
+          .venv/bin/python manage.py test
+  release:
+    if: startsWith(github.ref, 'refs/tags/v') || github.ref == 'refs/heads/feat/bms-foundation'
+    needs: verify
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    concurrency:
+      group: bms-release-publisher
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Publish GitHub prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tags="${GITHUB_REF#refs/tags/}"
+          else
+            tags=""
+            # Only publish a tag when the verified application tree matches it.
+            while IFS= read -r candidate; do
+              [[ -n "$candidate" ]] || continue
+              if git diff --quiet "$candidate^{commit}" HEAD -- . ':(exclude).github/workflows'; then
+                tags+="$(printf '\n%s' "$candidate")"
+              fi
+            done < <(git tag --list 'v*' --merged HEAD)
+          fi
+          while IFS= read -r tag; do
+            [[ -n "$tag" ]] || continue
+            if ! gh release view "$tag" --repo "$RELEASE_REPO" >/dev/null 2>&1; then
+              notes="$RUNNER_TEMP/bms-release-notes.md"
+              git for-each-ref --format='%(contents)' "refs/tags/$tag" > "$notes"
+              gh release create "$tag" --repo "$RELEASE_REPO" --verify-tag --notes-file "$notes" --prerelease
+            fi
+          done <<< "$tags"

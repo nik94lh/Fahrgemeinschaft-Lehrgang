@@ -1,0 +1,101 @@
+{% extends "workspace/base.html" %}
+{% block title %}Mail-Eingang{% endblock %}
+{% block content %}
+    <div class="page-heading">
+        <div>
+            <h1>Mail-Eingang</h1>
+        </div>
+        <a class="button-link" href="{% url 'mailbox' %}">Postfachstatus</a>
+    </div>
+    <div class="status-strip{% if cursor and not cursor.last_sync_ok %} status-strip-warning{% endif %}">
+        {% if cursor %}
+            <strong>Letzter Abruf</strong>
+            <time datetime="{{ cursor.last_sync_at|date:'c' }}">{{ cursor.last_sync_at|date:"d.m.Y, H:i" }} Uhr</time>
+            {% if not cursor.last_sync_ok %}
+                <span>Fehlgeschlagen. Prüfe die Einstellungen unter Postfach.</span>
+            {% elif cursor.last_has_more %}
+                <span>{{ cursor.last_processed }} ausgewertet · {{ cursor.last_skipped }} übersprungen. Weitere Nachrichten werden noch geprüft.</span>
+            {% elif cursor.last_processed == 0 and cursor.last_skipped == 0 %}
+                <span>Keine neuen Nachrichten im ausgewählten Ordner.</span>
+            {% elif cursor.last_processed is not None %}
+                <span>{{ cursor.last_processed }} ausgewertet · {{ cursor.last_skipped }} übersprungen</span>
+            {% else %}
+                <span>Erfolgreich. Für diesen Abruf wurden noch keine Einzelheiten erfasst.</span>
+            {% endif %}
+        {% else %}
+            <span>{{ mailbox_status }}</span>
+        {% endif %}
+    </div>
+
+    <nav class="section-tabs" aria-label="Ansicht Mail-Eingang">
+        <a href="{% url 'mail_receipts' %}"{% if not archive %} aria-current="page"{% endif %}>Neu im Postfach</a>
+        <a href="{% url 'mail_receipts' %}?ansicht=frueher"{% if archive %} aria-current="page"{% endif %}>Frühere Importe</a>
+    </nav>
+
+    <section class="panel receipt-list" aria-label="{% if archive %}Frühere Importe{% else %}Neu empfangene Mails{% endif %}">
+        {% if archive %}
+            <p class="note list-note">Ursprüngliche Maildaten wurden nicht erfasst.</p>
+        {% else %}
+            <form class="receipt-search" method="get" role="search">
+                <label>Mail suchen<input type="search" name="q" value="{{ query }}" maxlength="100" placeholder="Name, Lehrgang, Referenz oder Nr."></label>
+                <button type="submit">Suchen</button>
+                {% if query %}<a href="{% url 'mail_receipts' %}">Zurücksetzen</a>{% endif %}
+            </form>
+        {% endif %}
+        {% if page_obj.object_list %}
+            <div class="table-scroll" tabindex="0" role="region" aria-label="Importierte Nachrichten">
+                <table class="mobile-table">
+                    <thead>
+                        <tr><th scope="col">Abruf</th><th scope="col">Erkannte Mail</th><th scope="col">Ergebnis</th><th scope="col">Details</th></tr>
+                    </thead>
+                    <tbody>
+                        {% if archive %}
+                            {% for event in page_obj %}
+                                <tr>
+                                    <td data-label="Abruf"><span>{{ event.imported_at|date:"d.m.Y, H:i" }}<small>Ereignis {{ event.pk }}</small></span></td>
+                                    <td data-label="Erkannte Mail"><span><strong>{{ event.get_kind_display }}</strong>{% if event.seat %}<small>{{ event.seat.participant.name|default:"Ohne Teilnehmer" }} · {{ event.seat.session.course.name }}</small>{% endif %}</span></td>
+                                    <td data-label="Ergebnis"><span class="status-label status-{{ event.state }}">{{ event.get_state_display }}</span></td>
+                                    <td data-label="Details">
+                                        {% if event.state in case_states %}
+                                            <a href="{% url 'review_detail' event.pk %}">Klärungsfall ansehen</a>
+                                        {% elif event.seat.participant_id %}
+                                            <a href="{% url 'booking_participant' event.seat_id %}">Buchung ansehen</a>
+                                        {% else %}
+                                            <span class="quiet">Keine weiteren Angaben</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        {% else %}
+                            {% for receipt in page_obj %}
+                                <tr>
+                                    <td data-label="Abruf"><span>{{ receipt.observed_at|date:"d.m.Y, H:i" }}<small>IMAP-Nr. {{ receipt.uid }}{% if source_id and receipt.source_id != source_id %} · Früheres Postfach{% endif %}</small></span></td>
+                                    <td data-label="Erkannte Mail">
+                                        <span><strong>{{ receipt.fields.mail_type|default:"Nicht ausgewertet" }}</strong>
+                                        {% if receipt.fields.participant_name or receipt.fields.course_name %}
+                                            <small>{{ receipt.fields.participant_name|default:"Teilnehmer offen" }} · {{ receipt.fields.course_name|default:"Lehrgang offen" }}</small>
+                                        {% endif %}</span>
+                                    </td>
+                                    <td data-label="Ergebnis"><span class="status-label status-{{ receipt.outcome }}">{{ receipt.get_outcome_display }}</span></td>
+                                    <td data-label="Details"><a href="{% url 'mail_receipt' receipt.pk %}" aria-label="Mail {{ receipt.uid }} ansehen">Mail ansehen</a></td>
+                                </tr>
+                            {% endfor %}
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+            {% include "workspace/pagination.html" %}
+        {% else %}
+            <div class="receipt-list-empty">
+                {% if archive %}
+                    <h2>Keine früheren Importe</h2>
+                {% elif query %}
+                    <h2>Keine Mail zur Suche gefunden</h2>
+                {% else %}
+                    <h2>Hier ist noch kein neuer Eingang erfasst</h2>
+                    <p class="quiet">Bei einer erwarteten Mail prüfe den letzten Abruf und den eingestellten Ordner unter <a href="{% url 'mailbox' %}">Postfach</a>.</p>
+                {% endif %}
+            </div>
+        {% endif %}
+    </section>
+{% endblock %}
