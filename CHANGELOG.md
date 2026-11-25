@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.10.4
+
+- BMS findet den ursprünglichen Buchungsblock auch über bis zu zwölf zusammenhängende Weiterleitungsstufen aus Klartext, HTML und EML-Anhängen. Geänderte Zwischenbetreffe und umgebrochene Empfängerzeilen bleiben auswertbar.
+- Wiederholt eine Weiterleitung dieselbe Adresse als `mailto:`-Zusatz im Originalkopf, erkennt BMS die Adresse. Widersprüchliche oder unabhängige Buchungsblöcke werden als mehrdeutig gemeldet.
+
 ## 0.10.3
 
 - Bei weitergeleiteten Lehrgangsmails kann BMS einen im Klartext fehlenden Empfängernamen aus der HTML-Fassung ergänzen, wenn beide Fassungen dieselbe Nachricht und Buchung beschreiben. So lassen sich weitere Teilnehmeradressen eindeutig zuordnen.

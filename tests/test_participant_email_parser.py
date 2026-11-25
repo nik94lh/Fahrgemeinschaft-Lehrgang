@@ -82,6 +82,19 @@ def nested_booking_forward(original, *, inner_separator=""):
     )
 
 
+def forward_inline(message, *, layer, separator="", omit_subject=False):
+    subject = "" if omit_subject else f"Betreff: {message['Subject']}\n"
+    return booking_message(
+        f"Alex Beispiel <weiterleitung{layer}@example.invalid>",
+        subject=f"Unterlagen Stufe {layer}" if layer % 2 else f"WG: Unterlagen Stufe {layer}",
+        body=(
+            "Zur Kenntnis.\n\n" + separator
+            + f"Von: {message['From']}\nDatum: 12. April 2027 09:00\nAn: {message['To']}\n"
+            + subject + "\n" + message.get_content()
+        ),
+    )
+
+
 class ParticipantEmailParserTests(TestCase):
     def test_prefers_exact_normalized_display_name_with_multiple_recipients(self):
         message = booking_message(
@@ -223,6 +236,135 @@ class ParticipantEmailParserTests(TestCase):
                 result = parse_eml(mail.as_bytes())
 
                 self.assertEqual(replace(result, fingerprint=expected.fingerprint, address_note=expected.address_note), expected)
+
+    def test_ten_forwards_find_original_in_plain_text_and_html_despite_renamed_or_missing_subjects(self):
+        address = "lernplatz97@example.invalid"
+        original = booking_message(address)
+        expected = parse_eml(original.as_bytes())
+        message = original
+        for layer in range(1, 11):
+            separator = ""
+            if layer == 6:
+                separator = "Begin forwarded message:\n"
+            elif layer % 2 == 0:
+                separator = "----- Ursprüngliche Nachricht -----\n"
+            message = forward_inline(message, layer=layer, separator=separator, omit_subject=layer == 6)
+
+        for subtype in ("plain", "html"):
+            with self.subTest(subtype=subtype):
+                if subtype == "html":
+                    html = "<div>" + escape(message.get_content()).replace("\n", "<br>") + "</div>"
+                    message.set_content(html, subtype="html")
+
+                parsed = parse_eml(message.as_bytes())
+
+                self.assertEqual(parsed.participant_email_candidate, address)
+                self.assertEqual(replace(parsed, fingerprint=expected.fingerprint, address_note=expected.address_note), expected)
+
+    def test_folded_original_to_in_renamed_forward_does_not_use_outer_address(self):
+        message = booking_message(
+            "Alex Beispiel <import@example.invalid>",
+            subject="Zur Kenntnis",
+            body=(
+                "> Von: Schule <schule@example.invalid>\n"
+                "> Gesendet: 10. Mai 2027 um 09:00\n"
+                "> An: Alex Beispiel\n"
+                ">     <alex@example.invalid>\n"
+                "> Betreff: Ihre Lehrgangsanmeldung\n\n"
+                + APPROVAL
+            ),
+        )
+
+        quote = message.get_content().splitlines()
+        for prefix in ("> ", "\u00a0> ", ">\u202f> ", "\u2009> ", ">\u2007> "):
+            with self.subTest(prefix=prefix):
+                message.set_content("\n".join(prefix + line[2:] if line.startswith("> ") else line for line in quote))
+
+                self.assertEqual(parse_eml(message.as_bytes()).participant_email, "alex@example.invalid")
+
+    def test_nested_plain_text_can_read_identical_mailto_copies_from_original_headers(self):
+        address = "lernplatz97@example.invalid"
+        original = booking_message(address)
+        forwarded = nested_booking_forward(original)
+        plain = forwarded.get_content().replace(
+            f"Von: {original['From']}",
+            'Von: "Schule" <absender@example.invalid mailto:absender@example.invalid>',
+        ).replace(f"An: {address}", f'An: "{address}" <{address} mailto:{address}>')
+        forwarded.set_content(plain)
+
+        parsed = parse_eml(forwarded.as_bytes())
+
+        self.assertEqual(parsed.participant_email_candidate, address)
+        self.assertIsNone(parsed.participant_email)
+
+        forwarded.set_content(plain.replace(f"mailto:{address}", "mailto:falsch@example.invalid"))
+        mismatch = parse_eml(forwarded.as_bytes())
+        self.assertIsNone(mismatch.participant_email_candidate)
+        self.assertIsNone(mismatch.participant_email)
+
+    def test_subjectless_wrapper_ends_before_an_immediate_original_header(self):
+        original = booking_message("Alex Beispiel <original@example.invalid>")
+        inner = forward_inline(original, layer=1)
+        wrapper = forward_inline(inner, layer=2, separator="Begin forwarded message:\n", omit_subject=True)
+        wrapper.set_content(wrapper.get_content().replace("\n\nZur Kenntnis.\n\nVon:", "\n\nVon:"))
+
+        self.assertEqual(parse_eml(wrapper.as_bytes()).participant_email, "original@example.invalid")
+
+    def test_ten_mixed_forwards_share_a_limit_with_attachments(self):
+        message = booking_message("Alex Beispiel <alex@example.invalid>")
+        for layer in range(1, 7):
+            message = forward_inline(message, layer=layer)
+        for forwards in range(7, 14):
+            wrapper = booking_message("Alex Beispiel <outer@example.invalid>", subject="Zur Weitergabe", body="Im Anhang.")
+            wrapper.add_attachment(message)
+            message = wrapper
+
+            if forwards in (10, 12):
+                self.assertEqual(parse_eml(message.as_bytes()).participant_email, "alex@example.invalid")
+            if forwards == 13:
+                with self.assertRaisesRegex(MailParseError, "zu viele verschachtelte Nachrichten"):
+                    parse_eml(message.as_bytes())
+
+    def test_forward_subject_does_not_hide_an_independent_booking_in_the_previous_block(self):
+        original = booking_message("Alex Beispiel <first@example.invalid>", subject="WG: Ihre Lehrgangsanmeldung")
+        innocent_forward = forward_inline(booking_message("Alex Beispiel <second@example.invalid>"), layer=1)
+        original.set_content(APPROVAL + "\n\n" + innocent_forward.get_content())
+        message = forward_inline(original, layer=2)
+
+        with self.assertRaisesRegex(MailParseError, "mehrere zitierte Nachrichten"):
+            parse_eml(message.as_bytes())
+
+    def test_inline_and_attached_originals_in_one_message_cannot_choose_by_outer_subject(self):
+        original = booking_message("Alex Beispiel <inline@example.invalid>")
+        message = forward_inline(original, layer=2)
+        message.add_attachment(booking_message("Alex Beispiel <attachment@example.invalid>"))
+
+        with self.assertRaisesRegex(MailParseError, "mehrere E-Mails"):
+            parse_eml(message.as_bytes())
+
+    def test_valid_html_forward_can_complete_a_plain_text_cover_note(self):
+        original = booking_message("Alex Beispiel <original@example.invalid>")
+        inline = forward_inline(original, layer=1).get_content()
+        message = booking_message(subject="Zur Kenntnis", body="Hier die Weiterleitung.")
+        message.add_alternative(escape(inline).replace("\n", "<br>"), subtype="html")
+
+        self.assertEqual(parse_eml(message.as_bytes()).participant_email, "original@example.invalid")
+
+        message.get_body(("html",)).add_related(b"fixture", maintype="image", subtype="png", cid="<logo@example.invalid>")
+        self.assertEqual(parse_eml(message.as_bytes()).participant_email, "original@example.invalid")
+
+        message.add_attachment(booking_message("Alex Beispiel <other@example.invalid>"))
+        with self.assertRaisesRegex(MailParseError, "mehrere E-Mails"):
+            parse_eml(message.as_bytes())
+
+    def test_conflicting_originals_in_html_are_not_ignored_when_plain_text_has_one(self):
+        first = forward_inline(booking_message("Alex Beispiel <one@example.invalid>"), layer=1).get_content()
+        second = forward_inline(booking_message("Alex Beispiel <two@example.invalid>"), layer=1).get_content()
+        message = booking_message(subject="Weitergabe", body=first)
+        message.add_alternative(escape(first + "\n" + second).replace("\n", "<br>"), subtype="html")
+
+        with self.assertRaisesRegex(MailParseError, "mehrere zitierte Nachrichten"):
+            parse_eml(message.as_bytes())
 
     def test_nested_approval_recognizes_additional_given_name_in_original_address(self):
         address = "alex.marie.beispiel@example.invalid"
