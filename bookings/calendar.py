@@ -191,7 +191,10 @@ def _month_week_bars(session_dates, week_start, first_visible_day, last_visible_
 
 def _month_weeks(sessions, period, today):
     # Clipping preserves the start order. The session query supplies stable tie-breaks.
-    session_dates = [(session, *_session_dates(session)) for session in sessions]
+    session_dates_by_school = defaultdict(list)
+    for session in sessions:
+        session_dates_by_school[session.school].append((session, *_session_dates(session)))
+
     weeks = []
     for week in Calendar().monthdatescalendar(period.start.year, period.start.month):
         days = [{
@@ -200,10 +203,16 @@ def _month_weeks(sessions, period, today):
             "is_weekend": day.weekday() >= 5,
             "is_today": day == today,
         } for day in week]
-        bars, lane_count = _month_week_bars(
-            session_dates, week[0], max(week[0], period.start), min(week[-1], period.last_day),
-        )
-        weeks.append({"days": days, "bars": bars, "lane_count": lane_count})
+        first_visible_day = max(week[0], period.start)
+        last_visible_day = min(week[-1], period.last_day)
+        groups = []
+        for school in School:
+            bars, lane_count = _month_week_bars(
+                session_dates_by_school.get(school, ()), week[0], first_visible_day, last_visible_day,
+            )
+            if bars:
+                groups.append({"school": school, "bars": bars, "lane_count": lane_count})
+        weeks.append({"days": days, "groups": groups})
     return weeks
 
 
@@ -286,9 +295,7 @@ def calendar(request):
         context["months"] = _month_overview(sessions, period, today, school)
         context["occupancy_legend"] = tuple(enumerate(label for _, label in MONTH_OCCUPANCY_RANGES))
     elif period.view == "month":
-        schools_with_sessions = {session.school for session in sessions}
         context["month_weeks"] = _month_weeks(sessions, period, today)
-        context["month_schools"] = [school for school in School if school in schools_with_sessions]
         context["sessions"] = sessions
     else:
         ticks = _ticks(period, today)

@@ -52,7 +52,11 @@ class CalendarTests(WorkspaceTestCase):
         self.assertNotContains(response, "Musterlehrgang Regensburg")
         self.assertContains(response, "?month=2031-04&amp;school=wuerzburg")
         self.assertContains(response, "?month=2031-06&amp;school=wuerzburg")
-        self.assertEqual(response.context["month_schools"], [School.WUERZBURG])
+        self.assertEqual({
+            group["school"]
+            for week in response.context["month_weeks"]
+            for group in week["groups"]
+        }, {School.WUERZBURG})
 
     def test_invalid_month_falls_back_to_the_current_month(self):
         default_response = self.client.get("/kalender/")
@@ -74,8 +78,7 @@ class CalendarTests(WorkspaceTestCase):
         self.assertEqual([len(week["days"]) for week in weeks], [7] * 5)
         self.assertEqual(weeks[0]["days"][0]["date"], date(2031, 4, 28))
         self.assertEqual(weeks[-1]["days"][-1]["date"], date(2031, 6, 1))
-        self.assertTrue(all(week["bars"] == [] and week["lane_count"] == 1 for week in weeks))
-        self.assertEqual(response.context["month_schools"], [])
+        self.assertTrue(all(week["groups"] == [] for week in weeks))
         self.assertContains(response, '?month=2031-06&amp;school=geretsried')
 
     def test_month_grid_uses_berlin_days_and_clips_overlapping_courses(self):
@@ -98,7 +101,8 @@ class CalendarTests(WorkspaceTestCase):
                 bar["starts_before"], bar["ends_after"],
             )
             for week in response.context["month_weeks"]
-            for bar in week["bars"]
+            for group in week["groups"]
+            for bar in group["bars"]
         }
         self.assertEqual(bars, {
             "Übergreifender Musterlehrgang": (date(2031, 5, 1), date(2031, 5, 2), True, False),
@@ -131,6 +135,10 @@ class CalendarTests(WorkspaceTestCase):
             "Kurs am Dienstag", School.WUERZBURG,
             datetime(2031, 5, 13, 8, tzinfo=UTC), datetime(2031, 5, 13, 10, tzinfo=UTC),
         )
+        monday = self.add_session(
+            "Kurs am Montag", School.WUERZBURG,
+            datetime(2031, 5, 12, 12, tzinfo=UTC), datetime(2031, 5, 12, 13, tzinfo=UTC),
+        )
         ends_sunday = self.add_session(
             "Ende um Mitternacht zum Wochenwechsel", School.WUERZBURG,
             datetime(2031, 5, 24, 8, tzinfo=UTC), datetime(2031, 5, 25, 22, tzinfo=UTC),
@@ -140,22 +148,48 @@ class CalendarTests(WorkspaceTestCase):
         response = self.client.get("/kalender/", {"month": "2031-05"})
 
         _, first, second, third, fourth = response.context["month_weeks"]
-        self.assertEqual([week["lane_count"] for week in (first, second, third, fourth)], [1, 2, 1, 1])
+        self.assertEqual([
+            [(group["school"], group["lane_count"]) for group in week["groups"]]
+            for week in (first, second, third, fourth)
+        ], [
+            [(School.WUERZBURG, 1)],
+            [(School.WUERZBURG, 2), (School.REGENSBURG, 1)],
+            [(School.WUERZBURG, 1)],
+            [],
+        ])
         fields = ("session", "start_column", "end_column", "lane", "starts_before", "ends_after")
         self.assertEqual(
-            [tuple(bar[field] for field in fields) for bar in first["bars"]],
+            [tuple(bar[field] for field in fields) for bar in first["groups"][0]["bars"]],
             [(over_weekend, 5, 8, 2, False, True)],
         )
         self.assertEqual(
-            [tuple(bar[field] for field in fields) for bar in second["bars"]],
-            [(over_weekend, 1, 4, 2, True, False), (regensburg, 1, 2, 3, False, False),
+            [tuple(bar[field] for field in fields) for bar in second["groups"][0]["bars"]],
+            [(over_weekend, 1, 4, 2, True, False), (monday, 1, 2, 3, False, False),
              (tuesday, 2, 3, 3, False, False)],
         )
         self.assertEqual(
-            [tuple(bar[field] for field in fields) for bar in third["bars"]],
+            [tuple(bar[field] for field in fields) for bar in second["groups"][1]["bars"]],
+            [(regensburg, 1, 2, 2, False, False)],
+        )
+        self.assertEqual(
+            [tuple(bar[field] for field in fields) for bar in third["groups"][0]["bars"]],
             [(ends_sunday, 6, 8, 2, False, False)],
         )
-        self.assertEqual(fourth["bars"], [])
+
+    def test_month_shows_school_headings_in_school_order_inside_each_week(self):
+        self.add_session(
+            "Späterer Kurs in Würzburg", School.WUERZBURG,
+            datetime(2031, 5, 13, 8, tzinfo=UTC), datetime(2031, 5, 13, 10, tzinfo=UTC),
+        )
+
+        response = self.client.get("/kalender/", {"month": "2031-05"})
+
+        school_group_markup = response.content.decode().split('aria-label="Woche vom 12.05. bis 18.05."', 1)[1]
+        school_group_markup = school_group_markup.split('aria-label="Woche vom 19.05. bis 25.05."', 1)[0]
+        self.assertRegex(school_group_markup, (
+            r"(?s)<h[3-6][^>]*>\s*SFS Würzburg\s*</h[3-6]>.*"
+            r"<h[3-6][^>]*>\s*SFS Regensburg\s*</h[3-6]>"
+        ))
 
     def test_week_shows_an_iso_week_and_retains_school_in_zoom_links(self):
         response = self.client.get("/kalender/", {

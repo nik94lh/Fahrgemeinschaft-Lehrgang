@@ -2,7 +2,7 @@
 
 ## 0.14.1
 
-- Der Monatskalender verbindet das vollständige Wochenraster mit farbigen Balken für Lehrgänge. Mehrtägige Termine bleiben innerhalb einer Woche zusammenhängend. Pfeile markieren Fortsetzungen über Wochen- oder Monatsgrenzen.
+- Der Monatskalender verbindet das vollständige Wochenraster mit beschrifteten Schulblöcken und farbigen Balken für Lehrgänge. Mehrtägige Termine bleiben innerhalb einer Woche zusammenhängend. Pfeile markieren Fortsetzungen über Wochen- oder Monatsgrenzen.
 
 ## 0.14.0
 

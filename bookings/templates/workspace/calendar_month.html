@@ -1,10 +1,3 @@
-{% if month_schools %}
-    <ul class="calendar-month-legend" role="list" aria-label="Schulungsorte im Monatsplan">
-        {% for school in month_schools %}
-            <li class="calendar-month-legend-item school-{{ school }}"><span aria-hidden="true"></span>{{ school.label }}</li>
-        {% endfor %}
-    </ul>
-{% endif %}
 <div class="calendar-month-grid" role="group" aria-labelledby="calendar-period">
     <div class="calendar-month-weekdays" aria-hidden="true">
         {% for day in month_weeks.0.days %}
@@ -12,7 +5,7 @@
         {% endfor %}
     </div>
     {% for week in month_weeks %}
-        <div class="calendar-month-week" style="--course-lanes: {{ week.lane_count }};" role="group"
+        <div class="calendar-month-week" style="--school-rows: {{ week.groups|length|default:1 }};" role="group"
              aria-label="Woche vom {{ week.days.0.date|date:'d.m.' }} bis {{ week.days.6.date|date:'d.m.' }}">
             {% for day in week.days %}
                 <div class="calendar-month-day{% if day.is_weekend %} is-weekend{% endif %}{% if day.is_outside %} is-outside{% endif %}{% if day.is_today %} is-today{% endif %}" style="grid-column: {{ forloop.counter }};">
@@ -22,18 +15,25 @@
                     </time>
                 </div>
             {% endfor %}
-            {% for bar in week.bars %}
-                {% with session=bar.session %}
-                    <a class="calendar-bar calendar-month-bar school-{{ session.school }}{% if bar.starts_before %} continues-before{% endif %}{% if bar.ends_after %} continues-after{% endif %}"
-                       style="grid-column: {{ bar.start_column }} / {{ bar.end_column }}; grid-row: {{ bar.lane }};"
-                       href="{% url 'calendar_detail' session.pk %}?{{ current_query }}"
-                       aria-label="{{ session.course.name }}, {{ session.get_venue_display }}, {{ session.starts_at|date:'d.m.Y, H:i' }} bis {{ session.ends_at|date:'d.m.Y, H:i' }}"
-                       title="{{ session.course.name }} · {{ session.get_venue_display }}">
-                        {% if bar.starts_before %}<span class="continuation" aria-hidden="true">‹</span>{% endif %}
-                        <span class="calendar-bar-text" aria-hidden="true">{{ session.course.name }}{% if session.is_online and session.school != 'online' %} · Online{% endif %}</span>
-                        {% if bar.ends_after %}<span class="continuation" aria-hidden="true">›</span>{% endif %}
-                    </a>
-                {% endwith %}
+            {% for group in week.groups %}
+                <div class="calendar-month-school school-{{ group.school }}"
+                     style="--course-lanes: {{ group.lane_count }}; grid-row: {{ forloop.counter|add:1 }};"
+                     role="group" aria-labelledby="month-school-{{ forloop.parentloop.counter }}-{{ group.school }}">
+                    <h3 class="calendar-month-school-label" id="month-school-{{ forloop.parentloop.counter }}-{{ group.school }}">{{ group.school.label }}</h3>
+                    {% for bar in group.bars %}
+                        {% with session=bar.session %}
+                            <a class="calendar-bar calendar-month-bar school-{{ group.school }}{% if bar.starts_before %} continues-before{% endif %}{% if bar.ends_after %} continues-after{% endif %}"
+                               style="grid-column: {{ bar.start_column }} / {{ bar.end_column }}; grid-row: {{ bar.lane }};"
+                               href="{% url 'calendar_detail' session.pk %}?{{ current_query }}"
+                               aria-label="{{ session.course.name }}, {{ session.get_venue_display }}, {{ session.starts_at|date:'d.m.Y, H:i' }} bis {{ session.ends_at|date:'d.m.Y, H:i' }}"
+                               title="{{ session.course.name }} · {{ session.get_venue_display }}">
+                                {% if bar.starts_before %}<span class="continuation" aria-hidden="true">‹</span>{% endif %}
+                                <span class="calendar-bar-text" aria-hidden="true">{{ session.course.name }}{% if session.is_online and session.school != 'online' %} · Online{% endif %}</span>
+                                {% if bar.ends_after %}<span class="continuation" aria-hidden="true">›</span>{% endif %}
+                            </a>
+                        {% endwith %}
+                    {% endfor %}
+                </div>
             {% endfor %}
         </div>
     {% endfor %}
