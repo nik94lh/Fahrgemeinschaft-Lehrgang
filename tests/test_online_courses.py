@@ -2,7 +2,7 @@ from datetime import timedelta
 
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
-from django.test import TestCase, TransactionTestCase
+from django.test import TransactionTestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -11,9 +11,10 @@ from bookings.rides_matching import sync_ride_cases
 from bookings.services import ingest
 from tests.test_reconciliation import eml
 from tests.test_ride_cases import NOW
+from tests.workspace_client import WorkspaceTestCase
 
 
-class OnlineCourseTests(TestCase):
+class OnlineCourseTests(WorkspaceTestCase):
     def test_online_location_produces_a_confirmed_booking_without_a_physical_school(self):
         event = ingest(eml("Teilnahmebestätigung", school="Online", reference="ONLINE-1"))
 

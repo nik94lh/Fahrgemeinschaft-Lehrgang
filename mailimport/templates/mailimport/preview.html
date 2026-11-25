@@ -2,6 +2,7 @@
 {% block title %}E-Mail-Vorschau{% endblock %}
 {% block content %}
         <h1>E-Mail-Vorschau</h1>
+        {% if review_created %}<p class="notice" role="status">Die Testmail wurde ausgewertet und zur Klärung gespeichert.</p>{% endif %}
         <div class="workspace">
             <section class="panel" aria-labelledby="upload-title">
                 <h2 id="upload-title">Datei auswählen</h2>
@@ -15,8 +16,10 @@
                     </div>
                     {{ form.file.errors }}
                     <button type="submit">Prüfen</button>
-                    <button class="secondary-button" type="submit" formaction="{% url 'manual_import' %}">Testmail importieren</button>
-                    <p class="note">Verwende eine synthetische oder anonymisierte Testmail. „Testmail importieren“ speichert die Buchungsdaten. <a href="{% url 'sample_eml' %}">Beispiel-EML herunterladen</a></p>
+                    {% if workspace_edit.preview and workspace_edit.bookings %}
+                        <button class="secondary-button" type="submit" formaction="{% url 'manual_import' %}">Testmail importieren</button>
+                    {% endif %}
+                    <p class="note">Verwende eine synthetische oder anonymisierte Testmail. {% if workspace_edit.preview and workspace_edit.bookings %}„Testmail importieren“ speichert die Buchungsdaten. {% endif %}<a href="{% url 'sample_eml' %}">Beispiel-EML herunterladen</a></p>
                 </form>
             </section>
             <section class="panel" aria-labelledby="results-title">

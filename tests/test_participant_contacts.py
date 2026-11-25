@@ -1,16 +1,17 @@
 from datetime import UTC, datetime
 
-from django.test import Client, TestCase, override_settings
+from django.test import override_settings
 from django.urls import reverse
 
 from bookings.models import BookingHistory, BookingStatus, Course, CourseSeat, CourseSession, EmailEvent, Participant, School
 from mailimport.models import MailReceipt, ParticipantRecognitionConfiguration
+from tests.workspace_client import WorkspaceTestCase
 
 
 OPAQUE_ADDRESS = "x7q19@example.invalid"
 
 
-class ParticipantContactTests(TestCase):
+class ParticipantContactTests(WorkspaceTestCase):
     @classmethod
     def setUpTestData(cls):
         cls.person = Participant.objects.create(name="Alex Beispiel")
@@ -23,6 +24,7 @@ class ParticipantContactTests(TestCase):
         cls.seat = CourseSeat.objects.create(session=session, participant=cls.person)
 
     def setUp(self):
+        super().setUp()
         self.url = f"/buchungen/{self.seat.pk}/teilnehmer/"
 
     def make_address_receipt(self):
@@ -69,7 +71,8 @@ class ParticipantContactTests(TestCase):
         body = {"email": "alex.beispiel@example.invalid", "participant_id": old_participant.pk}
         invalid = self.client.post(self.url, body)
         self.assertContains(invalid, "Lade die Buchung neu.", status_code=400)
-        self.assertEqual(Client(enforce_csrf_checks=True).post(self.url, body).status_code, 403)
+        client = self.authenticated_client(enforce_csrf_checks=True)
+        self.assertEqual(client.post(self.url, body).status_code, 403)
         replacement.refresh_from_db()
         self.assertEqual(replacement.email, "")
 

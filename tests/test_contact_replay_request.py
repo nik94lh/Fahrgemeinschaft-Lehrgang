@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from django.apps import apps
 from django.db import connection
-from django.test import TestCase, override_settings
+from django.test import override_settings
 from django.urls import reverse
 
 from bookings.contact_replay import ContactReplayResult
@@ -20,6 +20,7 @@ from mailimport.parser import parse_eml
 from tests.test_imap_sync import body_result, mock_mailbox
 from tests.test_participant_identity import PERSONAL, booking_mail
 from tests.test_reconciliation import JUNE
+from tests.workspace_client import WorkspaceTestCase
 
 
 queue_ffp_contact_replay = import_module(
@@ -27,7 +28,7 @@ queue_ffp_contact_replay = import_module(
 ).queue_ffp_contact_replay
 
 
-class RequestedContactReplayTests(TestCase):
+class RequestedContactReplayTests(WorkspaceTestCase):
     @classmethod
     def setUpTestData(cls):
         cls.mailbox = MailboxConfiguration.objects.create(

@@ -1,11 +1,12 @@
-from django.test import TestCase, override_settings
+from django.test import override_settings
 from django.urls import reverse
 
 from bookings.services import ingest
 from tests.test_reconciliation import eml
+from tests.workspace_client import WorkspaceTestCase
 
 
-class LiveRefreshTests(TestCase):
+class LiveRefreshTests(WorkspaceTestCase):
     def test_local_script_is_available_with_javascript_content_type(self):
         response = self.client.get(reverse("live_script"))
         self.assertEqual(response.headers["Content-Type"], "text/javascript; charset=utf-8")

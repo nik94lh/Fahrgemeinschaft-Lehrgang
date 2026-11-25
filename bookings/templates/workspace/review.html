@@ -3,7 +3,7 @@
 {% block content %}
     <div class="page-heading"><h1>Klärungsfälle</h1></div>
     <section class="panel">
-        {% include "workspace/events.html" with events=page_obj only %}
+        {% include "workspace/events.html" with events=page_obj can_review=True show_bookings=workspace_view.bookings only %}
         {% include "workspace/pagination.html" %}
     </section>
 {% endblock %}

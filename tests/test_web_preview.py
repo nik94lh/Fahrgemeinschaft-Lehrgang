@@ -2,11 +2,11 @@ from email.message import EmailMessage
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase
 
 from bookings.models import EmailEvent
 from mailimport.parser import MAX_EML_BYTES
 from tests.test_participant_email_parser import forwarded_approval_with_repeated_mailto
+from tests.workspace_client import WorkspaceTestCase
 
 
 def eml_file(html, name="beispiel.eml"):
@@ -16,9 +16,8 @@ def eml_file(html, name="beispiel.eml"):
     return SimpleUploadedFile(name, message.as_bytes(), content_type="message/rfc822")
 
 
-class MailPreviewTests(TestCase):
-    def setUp(self):
-        self.client = Client(enforce_csrf_checks=True)
+class MailPreviewTests(WorkspaceTestCase):
+    enforce_csrf_checks = True
 
     def post_file(self, file):
         self.client.get("/vorschau/")

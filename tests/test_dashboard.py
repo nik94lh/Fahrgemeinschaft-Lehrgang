@@ -1,7 +1,6 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
-from django.test import TestCase
 from django.urls import reverse
 from django.utils import timezone
 
@@ -14,9 +13,10 @@ from bookings.models import (
     Participant,
     School,
 )
+from tests.workspace_client import WorkspaceTestCase
 
 
-class DashboardTests(TestCase):
+class DashboardTests(WorkspaceTestCase):
     @classmethod
     def setUpTestData(cls):
         upcoming = timezone.now() + timedelta(days=14)
@@ -120,7 +120,7 @@ class DashboardTests(TestCase):
         self.assertContains(response, 'enctype="multipart/form-data"')
 
 
-class CoursePeriodTests(TestCase):
+class CoursePeriodTests(WorkspaceTestCase):
     @classmethod
     def setUpTestData(cls):
         cls.now = datetime(2027, 5, 1, tzinfo=UTC)
@@ -136,7 +136,8 @@ class CoursePeriodTests(TestCase):
             CourseSeat.objects.create(session=cls.session, participant=Participant.objects.create(name=name))
 
     def test_overview_lists_a_session_once_with_its_calendar_link_and_period(self):
-        with patch.object(timezone, "now", return_value=self.now):
+        with patch("bookings.views.timezone", wraps=timezone) as view_timezone:
+            view_timezone.now.return_value = self.now
             response = self.client.get(reverse("overview"))
 
         self.assertContains(response, "Anstehende Lehrgänge")
@@ -163,7 +164,8 @@ class CoursePeriodTests(TestCase):
             )
             expected.append(created)
 
-        with patch.object(timezone, "now", return_value=self.now):
+        with patch("bookings.views.timezone", wraps=timezone) as view_timezone:
+            view_timezone.now.return_value = self.now
             response = self.client.get(reverse("overview"))
 
         self.assertEqual(list(response.context["upcoming_sessions"]), expected[:6])

@@ -8,9 +8,9 @@
     <section class="panel diagnostic-panel{% if receipt.outcome == 'review' or receipt.outcome == 'skipped' %} diagnostic-warning{% endif %}" aria-labelledby="receipt-outcome">
         <h2 id="receipt-outcome">{{ receipt.get_outcome_display }}</h2>
         <p>{{ receipt.detail }}</p>
-        {% if has_review %}
+        {% if has_review and workspace_view.review %}
             <p><a href="{% url 'review_detail' receipt.event_id %}">Klärungsfall {{ receipt.event_id }} ansehen</a></p>
-        {% elif receipt.event.seat.participant_id %}
+        {% elif receipt.event.seat.participant_id and workspace_view.bookings %}
             <p><a href="{% url 'booking_participant' receipt.event.seat_id %}">Verknüpfte Buchung ansehen</a></p>
             <p><strong>Adresse an der Buchung aktuell</strong> · {% if has_current_address %}Hinterlegt{% else %}Fehlt{% endif %}</p>
         {% endif %}
@@ -22,7 +22,7 @@
         {% if recheck_job and recheck_job.status != 'failed' %}
             <p class="detail-note" role="status">{% if recheck_job.status == 'queued' %}Adressprüfung vorgemerkt.{% else %}Adressprüfung läuft.{% endif %}</p>
             {% if recheck_job.error_message %}<p class="note">{{ recheck_job.error_message }}</p>{% endif %}
-        {% elif can_recheck %}
+        {% elif can_recheck and workspace_edit.mail_receipts and workspace_edit.bookings %}
             {% if recheck_job.error_message %}<p class="errorlist detail-note" role="alert">{{ recheck_job.error_message }}</p>{% endif %}
             <form class="detail-note" method="post" action="{% url 'mail_receipt_recheck' receipt.pk %}">
                 {% csrf_token %}
@@ -56,7 +56,7 @@
                     {% if fields.cancellation_date %}<div><dt>Stornierungsdatum</dt><dd>{{ fields.cancellation_date|date:"d.m.Y" }}</dd></div>{% endif %}
                 </dl>
                 {% if fields.address_note and not receipt.address_checked_at %}<p class="note detail-note">{{ fields.address_note }}</p>{% endif %}
-                {% if fields.participant_email_candidate and not fields.participant_email and receipt.event.state == 'applied' and receipt.event.seat.participant_id and not has_current_address %}
+                {% if fields.participant_email_candidate and not fields.participant_email and receipt.event.state == 'applied' and receipt.event.seat.participant_id and not has_current_address and workspace_edit.bookings %}
                     <p class="detail-note"><a href="{% url 'booking_participant' receipt.event.seat_id %}?mail={{ receipt.pk }}">Adressvorschlag bei der Buchung prüfen</a></p>
                 {% endif %}
                 {% if fields.warnings %}

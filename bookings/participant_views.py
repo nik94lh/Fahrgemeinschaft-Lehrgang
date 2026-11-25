@@ -8,6 +8,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_http_methods
 
+from accounts.access import can_edit, can_view
 from mailimport.email_address import normalize_contact_email
 from mailimport.models import MailReceipt
 from mailimport.participant_settings import get_functional_addresses
@@ -114,9 +115,9 @@ def booking_participant(request, seat_id):
                 form.add_error("email", str(error))
             else:
                 return redirect("booking_participant", seat_id=seat.pk)
-    elif not seat.participant.email:
+    elif not seat.participant.email and can_edit(request.user, "bookings"):
         initial = {"participant_id": seat.participant_id}
-        if settings.HTTPS and request.is_secure():
+        if settings.HTTPS and request.is_secure() and can_view(request.user, "mail_receipts"):
             suggestion = _receipt_address(seat, request.GET.get("mail", ""))
             if suggestion:
                 initial["email"], address_receipt_id = suggestion

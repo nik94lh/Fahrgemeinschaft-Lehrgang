@@ -1,12 +1,12 @@
 from email.message import EmailMessage
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import Client, TestCase
 
 from bookings.models import CourseSeat, EmailEvent
+from tests.workspace_client import WorkspaceTestCase
 
 
-class ManualImportTests(TestCase):
+class ManualImportTests(WorkspaceTestCase):
     @staticmethod
     def fixture():
         mail = EmailMessage()
@@ -34,7 +34,7 @@ class ManualImportTests(TestCase):
 
     def test_manual_import_requires_post_and_csrf(self):
         self.assertEqual(self.client.get("/importieren/").status_code, 405)
-        client = Client(enforce_csrf_checks=True)
+        client = self.authenticated_client(enforce_csrf_checks=True)
         self.assertEqual(client.post("/importieren/", {"file": self.fixture()}).status_code, 403)
         self.assertFalse(EmailEvent.objects.exists())
 

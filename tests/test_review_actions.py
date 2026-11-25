@@ -1,12 +1,12 @@
-from django.test import Client, TestCase
 from django.urls import reverse
 
 from bookings.models import BookingStatus, CourseSeat, EmailEvent, Participant
 from bookings.services import ingest
 from tests.test_reconciliation import eml
+from tests.workspace_client import WorkspaceTestCase
 
 
-class ReviewActionTests(TestCase):
+class ReviewActionTests(WorkspaceTestCase):
     @classmethod
     def setUpTestData(cls):
         cls.booking = ingest(eml("Teilnahmebestätigung", reference="TEST-17")).seat
@@ -20,7 +20,8 @@ class ReviewActionTests(TestCase):
 
     def test_resolution_requires_post_csrf_and_explicit_confirmation(self):
         payload = {"action": "link", "seat": self.booking.pk, "confirm": "on"}
-        self.assertEqual(Client(enforce_csrf_checks=True).post(self.detail_url(), payload).status_code, 403)
+        client = self.authenticated_client(enforce_csrf_checks=True)
+        self.assertEqual(client.post(self.detail_url(), payload).status_code, 403)
         self.assertEqual(self.client.get(self.detail_url(), payload).status_code, 200)
         payload.pop("confirm")
         self.assertEqual(self.client.post(self.detail_url(), payload).status_code, 200)

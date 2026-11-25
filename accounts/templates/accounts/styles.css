@@ -1,0 +1,23 @@
+.account-narrow { width: min(100%, 34rem); }
+.account-layout { display: grid; grid-template-columns: minmax(0, 20rem) minmax(0, 33rem); gap: 1.25rem; align-items: start; }
+.account-controls { display: flex; flex-wrap: wrap; align-items: center; gap: .75rem; margin-block-start: 1rem; }
+.account-controls button, .account-narrow button { width: auto; margin: 0; }
+.account-form-fields > p { margin-block-start: .85rem; }
+.account-form-fields > p:first-child { margin-block-start: 0; }
+.account-field + .account-field { margin-block-start: .85rem; }
+.account-field > label { display: block; font-weight: 650; }
+.account-narrow .details + form { margin-block-start: 1rem; }
+.account-form-fields ul:not(.errorlist) { margin-block: .35rem .75rem; padding-inline-start: 1.35rem; color: var(--muted); font-size: .9rem; }
+.account-form-fields .helptext { display: block; margin-block-start: .25rem; color: var(--muted); font-size: .9rem; }
+.access-fields { display: grid; gap: .7rem; }
+.access-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(9.5rem, 1fr); gap: .75rem; align-items: center; }
+.access-field label { font-weight: 600; }
+.access-field select { min-width: 0; padding: .45rem .6rem; border: 1px solid var(--line); border-radius: .45rem; background: white; color: var(--ink); font: inherit; }
+.account-list-actions { display: flex; flex-wrap: wrap; column-gap: .85rem; }
+.account-identity { overflow-wrap: anywhere; }
+@media (max-width: 690px) {
+    .account-layout { grid-template-columns: minmax(0, 1fr); gap: .9rem; }
+}
+@media (max-width: 340px) {
+    .access-field { grid-template-columns: minmax(0, 1fr); gap: .2rem; }
+}

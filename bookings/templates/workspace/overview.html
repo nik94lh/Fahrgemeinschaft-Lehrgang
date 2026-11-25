@@ -4,7 +4,7 @@
         <div>
             <h1>Übersicht</h1>
         </div>
-        {% if request.is_secure %}<a class="button-link" href="{% url 'mail_receipts' %}">Mail-Eingang ansehen</a>{% endif %}
+        {% if request.is_secure and workspace_view.mail_receipts %}<a class="button-link" href="{% url 'mail_receipts' %}">Mail-Eingang ansehen</a>{% endif %}
     </div>
     <dl class="stats">
         <div><dt>Buchungen</dt><dd>{{ seats.total }}</dd></div>
@@ -21,7 +21,7 @@
                     <tbody>
                         {% for session in upcoming_sessions %}
                             <tr>
-                                <td data-label="Lehrgang"><a href="{% url 'calendar_detail' session.pk %}">{{ session.course.name }}</a></td>
+                                <td data-label="Lehrgang">{% if workspace_view.calendar %}<a href="{% url 'calendar_detail' session.pk %}">{{ session.course.name }}</a>{% else %}{{ session.course.name }}{% endif %}</td>
                                 <td data-label="Schulungsort">{{ session.get_venue_display }}</td>
                                 <td data-label="Zeitraum">{% include "workspace/session_period.html" with session=session only %}</td>
                             </tr>
@@ -33,8 +33,10 @@
             <p class="quiet">Keine anstehenden Lehrgänge vorhanden.</p>
         {% endif %}
     </section>
-    <section class="panel" aria-labelledby="events-title">
-        <h2 id="events-title">Letzte E-Mail-Ereignisse</h2>
-        {% include "workspace/events.html" with events=recent_events only %}
-    </section>
+    {% if workspace_view.mail_receipts and workspace_view.bookings %}
+        <section class="panel" aria-labelledby="events-title">
+            <h2 id="events-title">Letzte E-Mail-Ereignisse</h2>
+            {% include "workspace/events.html" with events=recent_events can_review=workspace_view.review show_bookings=True only %}
+        </section>
+    {% endif %}
 {% endblock %}

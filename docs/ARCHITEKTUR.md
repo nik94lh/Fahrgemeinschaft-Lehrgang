@@ -57,3 +57,19 @@ curl --fail --user testadmin https://bms.planspielplatte.de/health/
 ```
 
 Ersetze `<CADDY_KENNWORTHASH>` durch einen Hash aus `sudo docker exec -it proxy-caddy-1 caddy hash-password`. Caddy fragt das Passwort interaktiv ab. Caddy beschafft das Zertifikat, wenn DNS und öffentliche Erreichbarkeit für die Zertifikatsprüfung stimmen. Bis ein Bereitstellungszugang für dieses Projekt eingerichtet ist, führt der Serverbetreiber die Befehle aus. Die konkreten Deployment-Rechte sowie Sicherung und Wiederherstellung sind vor einem Produktivbetrieb festzulegen. Binde an `fpp-web` ausschließlich vertrauenswürdige Dienste. Django vertraut im HTTPS-Betrieb der vom Proxy übermittelten Protokollinformation.
+
+### Persönliche Konten für den Testserver
+
+Lege vor der Umstellung im BMS-Compose-Verzeichnis das erste persönliche Administratorkonto an. Der Befehl fragt Benutzername und Passwort interaktiv ab. Bei einer Neuinstallation führe zuerst die Migrationen aus.
+
+```bash
+sudo docker compose -f compose.yaml -f compose.server.yaml exec web python manage.py createsuperuser
+```
+
+1. Stelle den geprüften BMS-Stand bereit und behalte während der Prüfung den Caddy-Testzugang bei. Melde dich zusätzlich mit dem persönlichen Konto an und prüfe unter **Benutzer**, ob du ein weiteres Testkonto anlegen kannst.
+2. Prüfe mit diesem Testkonto **Kein Zugriff**, **Ansehen** und **Bearbeiten** an einer synthetischen Buchung. Prüfe den direkten Aufruf eines gesperrten Reiters und die Buchungsdetails aus dem Kalender. Melde dich ab und prüfe, dass direkte URLs zur Anmeldeseite führen.
+3. Entferne im Caddyfile den `basic_auth`-Block des BMS-Hosts. Prüfe die Caddy-Konfiguration mit `caddy validate` und lade sie mit `caddy reload` wie oben. In einem privaten Browserfenster soll die Domain zur BMS-Anmeldung führen. Prüfe `/health/`, einen direkten Buchungslink und die persönliche Anmeldung.
+
+Bei einer Rückkehr zu einer älteren BMS-Version ohne Kontoschutz aktiviere den Caddy-Testzugang vor der Rückkehr. Die BMS-Superuser verwalten die Konten. Die Reiterrechte normaler Konten werden direkt pro Benutzer gespeichert. **Bearbeiten** umfasst **Ansehen**. Funktionen, die Buchungen verändern, brauchen zusätzlich das Bearbeitungsrecht für Buchungen.
+
+Die Anmeldung begrenzt Formularversuche pro Adresse und Minute in der gemeinsamen Datenbank. Im HTTPS-Betrieb ermittelt BMS die Adresse aus dem letzten von Caddy weitergegebenen Eintrag. Der Webdienst ist nur über den vertrauenswürdigen Proxy erreichbar. BMS speichert für die Begrenzung einen zeitgebundenen Hash und räumt abgelaufene Einträge bei weiteren Anmeldungen auf.

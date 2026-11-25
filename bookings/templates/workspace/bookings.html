@@ -2,7 +2,7 @@
 {% block title %}Buchungen{% endblock %}
 {% block content %}
     <div class="page-heading"><h1>Buchungen</h1></div>
-    {% if imported %}<p class="notice" role="status">Die Testmail wurde ausgewertet. Nicht eindeutige Ereignisse findest du unter <a href="{% url 'review' %}">Klärung</a>.</p>{% endif %}
+    {% if imported %}<p class="notice" role="status">Die Testmail wurde ausgewertet.{% if workspace_view.review %} Nicht eindeutige Ereignisse findest du unter <a href="{% url 'review' %}">Klärung</a>.{% endif %}</p>{% endif %}
     <form class="panel filters" method="get">
         <label>Suche<input name="q" type="search" maxlength="100" value="{{ query }}"></label>
         <label>Schulungsort<select name="school"><option value="">Alle Schulungsorte</option>{% for key, label in school_choices %}<option value="{{ key }}"{% if key == selected_school %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>

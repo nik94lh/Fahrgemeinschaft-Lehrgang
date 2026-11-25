@@ -64,9 +64,10 @@
                 {% if not has_recognized_data %}
                     <p>Keine Angaben für diesen Import gespeichert. Suche die Originalnachricht im Postfach anhand des Abrufzeitpunkts.</p>
                 {% endif %}
-                {% if receipt_id %}<p class="detail-note"><a href="{% url 'mail_receipt' receipt_id %}">Mail-Eingang ansehen →</a></p>{% endif %}
+                {% if receipt_id and workspace_view.mail_receipts %}<p class="detail-note"><a href="{% url 'mail_receipt' receipt_id %}">Mail-Eingang ansehen →</a></p>{% endif %}
             </section>
 
+            {% if workspace_view.bookings %}
             <section class="panel" aria-labelledby="review-linked">
                 <h2 id="review-linked">{% if event.seat_id %}Verknüpfte Lehrgangsbuchung{% else %}Mögliche Lehrgangsbuchung{% endif %}</h2>
                 {% if comparison_seat %}
@@ -86,9 +87,10 @@
                     <p>Keine Zuordnung</p>
                 {% endif %}
             </section>
+            {% endif %}
         </div>
 
-        {% if actions %}
+        {% if actions and workspace_edit.review and workspace_edit.bookings %}
             <section class="panel" aria-labelledby="review-actions">
                 <h2 id="review-actions">Aktion wählen</h2>
                 <div class="review-actions">

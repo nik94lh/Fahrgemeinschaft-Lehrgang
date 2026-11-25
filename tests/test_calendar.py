@@ -1,12 +1,12 @@
 from datetime import UTC, date, datetime
 
-from django.test import TestCase
 from django.utils.dateformat import format as format_date
 
 from bookings.models import BookingStatus, Course, CourseSeat, CourseSession, Participant, School
+from tests.workspace_client import WorkspaceTestCase
 
 
-class CalendarTests(TestCase):
+class CalendarTests(WorkspaceTestCase):
     @classmethod
     def setUpTestData(cls):
         cls.next_month_start = datetime(2031, 5, 31, 22, tzinfo=UTC)

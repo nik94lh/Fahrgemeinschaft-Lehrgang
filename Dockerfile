@@ -10,6 +10,7 @@ RUN pip install --no-cache-dir -r requirements.txt \
 
 COPY --chown=bms:bms manage.py .
 COPY --chown=bms:bms config config
+COPY --chown=bms:bms accounts accounts
 COPY --chown=bms:bms bookings bookings
 COPY --chown=bms:bms mailimport mailimport
 COPY --chown=bms:bms tests tests
