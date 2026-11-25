@@ -1,12 +1,14 @@
 from dataclasses import replace
+from html import escape
 
 from django.test import TestCase
 
 from bookings.contact_replay import ContactReplayResult, contact_replay_outcome, enrich_contact_from_imported_mail
 from bookings.models import BookingHistory, BookingStatus, CourseSeat, EmailEvent, Participant
-from bookings.services import _reconcile
+from bookings.services import _reconcile, ingest
 from mailimport.models import ParticipantRecognitionConfiguration
 from mailimport.parser import parse_eml
+from tests.test_participant_email_parser import CONFIRMATION, booking_message
 from tests.test_participant_identity import PERSONAL, booking_mail
 
 
@@ -16,6 +18,46 @@ FUNCTIONAL = "lehrgaenge@example.invalid"
 def import_as_legacy(raw):
     mail = parse_eml(raw, functional_addresses=(FUNCTIONAL,))
     return _reconcile(replace(mail, participant_email=None), occurred_at=None)
+
+
+class ForwardedContactReplayTests(TestCase):
+    address = "lernplatz97@example.invalid"
+
+    def forwarded_confirmation(self, plain_to, html_to):
+        def quoted(to):
+            return (
+                "----- Weitergeleitete Nachricht -----\n"
+                "Von: Schule <schule@example.invalid>\n"
+                "Datum: 10. Mai 2027 um 09:00\n"
+                f"An: {to}\nBetreff: Teilnahmebestätigung\n\n{CONFIRMATION}"
+            )
+
+        message = booking_message(subject="WG: Teilnahmebestätigung", body=quoted(plain_to))
+        message.add_alternative(escape(quoted(html_to)).replace("\n", "<br>"), subtype="html")
+        return message.as_bytes()
+
+    def test_import_saves_address_with_matching_name_in_html(self):
+        raw = self.forwarded_confirmation(self.address, f"Alex Beispiel <{self.address}>")
+
+        event = ingest(raw)
+
+        self.assertEqual(event.state, EmailEvent.State.APPLIED)
+        self.assertEqual(event.seat.status, BookingStatus.CONFIRMED)
+        event.seat.participant.refresh_from_db()
+        self.assertEqual(event.seat.participant.email, self.address)
+
+    def test_replay_keeps_legacy_contact_blank_when_original_recipient_names_conflict(self):
+        raw = self.forwarded_confirmation(f"Alex Beispiel <{self.address}>", f"Robin Muster <{self.address}>")
+        legacy_mail = replace(parse_eml(raw), participant_email=None, participant_email_ambiguous=False)
+        event = _reconcile(legacy_mail, occurred_at=None)
+        self.assertEqual(event.state, EmailEvent.State.APPLIED)
+        participant = event.seat.participant
+        self.assertEqual(participant.email, "")
+
+        self.assertEqual(contact_replay_outcome(raw), ContactReplayResult.AMBIGUOUS_ADDRESS)
+
+        participant.refresh_from_db()
+        self.assertEqual(participant.email, "")
 
 
 class ContactReplayTests(TestCase):
