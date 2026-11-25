@@ -36,7 +36,11 @@ MONTHS = {
     )
 }
 MONTHS["maerz"] = 3
-CONFIRMATION_SUBJECT = r"^(?:teilnahmebestätigung|lehrgangsanmeldung wurde bestätigt)\b"
+PERSONAL_CONFIRMATION_SUBJECT = r"^(?:ihr lehrgangstermin wurde bestätigt|bestätigung ihrer lehrgangsanmeldung)[.!]?$"
+CONFIRMATION_SUBJECT = (
+    r"^(?:teilnahmebestätigung|lehrgangsanmeldung wurde bestätigt)\b"
+    rf"|{PERSONAL_CONFIRMATION_SUBJECT}"
+)
 BOOKING_SUBJECT = "ihre lehrgangsanmeldung"
 APPROVAL_SUBJECT = r"^lehrgangsgenehmigung\b"
 
@@ -254,7 +258,7 @@ def _quoted_mail(subject: str, body: str, original_headers: list[str]) -> _Inlin
 def _body_identity(mail: _InlineMail) -> tuple | None:
     text = _clean_text(mail.text)
     event_type = _classify(mail.subject, text)
-    participant = _participant_name(text, event_type)
+    participant = _participant_name(text, event_type, mail.subject)
     course = _unique(_values(text, "Lehrgangsart|Lehrgang"), _course_name)
     starts_at, ends_at = _period(text)
     venues = tuple(_values(text, LOCATION_LABELS))
@@ -419,11 +423,14 @@ def _sent_at(message: EmailMessage) -> datetime | None:
 PARTICIPANT_LABELS = "Teilnehmer(?:in)?|Neue[rs]? Teilnehmer(?:in)?"
 
 
-def _participant_name(text: str, event_type: str) -> str | None:
+def _participant_name(text: str, event_type: str, subject: str) -> str | None:
     names = _values(text, PARTICIPANT_LABELS)
+    if not names and event_type == "confirmation":
+        names = re.findall(CONFIRMED_PARTICIPANT, text, re.IGNORECASE | re.MULTILINE)
+        if not names and not re.match(PERSONAL_CONFIRMATION_SUBJECT, subject, re.IGNORECASE):
+            return None
     if not names:
-        pattern = CONFIRMED_PARTICIPANT if event_type == "confirmation" else GREETING
-        names = re.findall(pattern, text, re.IGNORECASE | re.MULTILINE)
+        names = re.findall(GREETING, text, re.IGNORECASE | re.MULTILINE)
     return _unique(names, _name)
 
 
@@ -447,7 +454,7 @@ def parse_eml(raw: bytes, *, functional_addresses: Iterable[str] = ()) -> Parsed
     if is_reply:
         subject, text = "", ""
     event_type = _classify(subject, text)
-    participant_name = _participant_name(text, event_type)
+    participant_name = _participant_name(text, event_type, subject)
     selection = AddressSelection()
     if is_reply:
         selection = AddressSelection(note="Die Mail ist als Antwort gekennzeichnet. Leite die Original-Buchungsmail als EML oder mit ihren ursprünglichen Kopfzeilen weiter.")

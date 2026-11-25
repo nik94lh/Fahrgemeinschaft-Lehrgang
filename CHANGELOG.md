@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.9.2
+
+- Der Import erkennt „Ihr Lehrgangstermin wurde bestätigt“ und „Bestätigung Ihrer Lehrgangsanmeldung“ als Teilnahmebestätigungen und kann den Teilnehmer aus der Anrede ermitteln.
+- Bei bytegleicher Neuzustellung einer jetzt erkennbaren Bestätigung wertet BMS den offenen Klärungsfall erneut aus und verwendet die bestehende Buchungszuordnung, wenn sie eindeutig ist.
+
 ## 0.9.1
 
 - Die Maildetails zeigen die beim Abruf erkannten Angaben und den aktuellen Adressstand der verknüpften Buchung getrennt.

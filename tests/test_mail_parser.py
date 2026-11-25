@@ -86,6 +86,45 @@ class MailParserTests(unittest.TestCase):
         self.assertEqual(result.course_name, "Gruppenführer")
         self.assertEqual(result.school, "wuerzburg")
 
+    def test_personal_confirmation_templates_in_outlook_forwards(self):
+        templates = (
+            ("Ihr Lehrgangstermin wurde bestätigt", "Sie sind für den folgenden Lehrgangstermin angemeldet:"),
+            ("Bestätigung Ihrer Lehrgangsanmeldung", "Sie haben Ihre Teilnahme an folgendem Lehrgangstermin bestätigt:"),
+        )
+        for subject, statement in templates:
+            with self.subTest(subject=subject):
+                body = (
+                    "Weitergeleitet zur Ablage.\n\n"
+                    'Von: "schule@example.invalid" <schule@example.invalid>\n'
+                    "Datum: Montag, 12. April 2027 um 10:15\n"
+                    'An: "alias42@example.invalid" <alias42@example.invalid>\n'
+                    "Cc: Ausbildungsbüro <buero@example.invalid>\n"
+                    f"Betreff: {subject}\n\n"
+                    f"Sehr geehrter Herr Alex Beispiel,\n\n{statement}\n\n{COURSE}"
+                )
+                result = parse_eml(message("Fwd: Lehrgang", body).as_bytes())
+
+                self.assertEqual(result.event_type, "confirmation")
+                self.assertEqual(result.participant_name, "Alex Beispiel")
+                self.assertEqual(result.course_name, "Gruppenführer")
+                self.assertEqual(result.school, "wuerzburg")
+                self.assertEqual(result.warnings, ())
+
+    def test_registration_text_alone_does_not_confirm_a_booking(self):
+        body = (
+            "Sehr geehrter Herr Alex Beispiel,\n\n"
+            "Sie sind für den folgenden Lehrgangstermin angemeldet:\n\n"
+            f"{COURSE}"
+        )
+        self.assertEqual(parse_eml(message("Lehrgangsinformation", body).as_bytes()).event_type, "unknown")
+
+    def test_confirmation_uses_explicit_participant_before_addressee(self):
+        body = "Sehr geehrte Frau Toni Testperson,\n\n" + CONFIRMATION
+
+        result = parse_eml(message("Bestätigung Ihrer Lehrgangsanmeldung", body).as_bytes())
+
+        self.assertEqual(result.participant_name, "Alex Beispiel")
+
     def test_html_body_is_parsed_without_accessing_network_or_keeping_links(self):
         html = """
             <html><head><title>Stornierung</title><style>@import url(https://styles.invalid)</style>

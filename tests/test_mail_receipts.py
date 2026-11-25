@@ -15,6 +15,7 @@ from mailimport.parser import MAX_EML_BYTES, parse_eml
 from tests.test_imap_sync import body_result, mock_mailbox
 from tests.test_participant_email_parser import forwarded_approval_with_repeated_mailto
 from tests.test_participant_identity import PERSONAL, booking_mail
+from tests.test_reconciliation import eml
 
 
 class MailReceiptTests(TestCase):
@@ -81,6 +82,45 @@ class MailReceiptTests(TestCase):
         self.assertEqual(seat.status, BookingStatus.CONFIRMED)
         self.assertEqual(seat.participant_id, original.seat.participant_id)
         self.assertEqual(seat.participant.email, "alex.beispiel@example.invalid")
+
+    def test_redelivery_applies_a_newly_recognized_confirmation_to_its_open_case(self):
+        approval = ingest(eml("Lehrgangsgenehmigung"))
+        raw = eml("Ihr Lehrgangstermin wurde bestätigt")
+        old_parse = replace(parse_eml(raw), event_type="unknown")
+        case = _reconcile(old_parse, occurred_at=None)
+        self.assertEqual(case.review_reason, EmailEvent.ReviewReason.UNRECOGNIZED_TYPE)
+
+        self.sync({1: raw, 2: raw})
+
+        case.refresh_from_db()
+        self.assertEqual(case.kind, EmailEvent.Kind.CONFIRMATION)
+        self.assertEqual(case.state, EmailEvent.State.APPLIED)
+        self.assertEqual(case.review_reason, EmailEvent.ReviewReason.UNKNOWN)
+        self.assertEqual(case.seat_id, approval.seat_id)
+        self.assertEqual(case.seat.status, BookingStatus.CONFIRMED)
+        self.assertEqual(case.seat.history.count(), 2)
+        self.assertEqual(CourseSeat.objects.count(), 1)
+        self.assertEqual(EmailEvent.objects.count(), 2)
+        first, second = MailReceipt.objects.order_by("uid")
+        self.assertEqual((first.event_id, second.event_id), (case.pk, case.pk))
+        self.assertEqual((first.outcome, second.outcome), (MailReceipt.Outcome.APPLIED, MailReceipt.Outcome.DUPLICATE))
+
+    def test_redelivery_does_not_reopen_a_dismissed_unknown_message(self):
+        raw = eml("Bestätigung Ihrer Lehrgangsanmeldung")
+        case = EmailEvent.objects.create(
+            sha256=parse_eml(raw).fingerprint,
+            kind=EmailEvent.Kind.UNKNOWN,
+            state=EmailEvent.State.DISMISSED,
+            review_reason=EmailEvent.ReviewReason.UNRECOGNIZED_TYPE,
+            review_resolution=EmailEvent.ReviewResolution.NOT_RELEVANT,
+        )
+
+        self.sync({1: raw})
+
+        case.refresh_from_db()
+        self.assertEqual(case.state, EmailEvent.State.DISMISSED)
+        self.assertEqual(MailReceipt.objects.get().outcome, MailReceipt.Outcome.DUPLICATE)
+        self.assertFalse(CourseSeat.objects.exists())
 
     def test_resent_headers_are_a_new_delivery_and_report_an_address_added_to_existing_booking(self):
         first = ingest(booking_mail())

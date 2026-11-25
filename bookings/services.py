@@ -80,31 +80,44 @@ def _reconcile(
     mail: ParsedMail, occurred_at: datetime | None, *, receipt: MailReceipt | None = None,
 ) -> EmailEvent:
     _lock_import()
-    event, new = EmailEvent.objects.get_or_create(
+    event, created = EmailEvent.objects.get_or_create(
         sha256=mail.fingerprint,
         defaults={"kind": mail.event_type, "occurred_at": occurred_at},
     )
+    reclassified = (
+        not created
+        and mail.event_type == EmailEvent.Kind.CONFIRMATION
+        and event.kind == EmailEvent.Kind.UNKNOWN
+        and event.state == EmailEvent.State.NEEDS_REVIEW
+        and event.review_reason == EmailEvent.ReviewReason.UNRECOGNIZED_TYPE
+    )
+    if reclassified:
+        event.kind = mail.event_type
+        event.review_reason = EmailEvent.ReviewReason.UNKNOWN
+        event.review_context = {}
+        event.save(update_fields=["kind", "review_reason", "review_context"])
+
+    evaluated = created or reclassified
     address_added = False
     address_note = mail.address_note
-    if new:
-        event = _apply_new_event(event, mail, receipt=receipt)
-    else:
-        if event.state == EmailEvent.State.APPLIED and mail.participant_email:
-            # Share the contact replay checks without reapplying the booking event.
-            from .contact_replay import ContactReplayResult, fill_existing_contact
+    if evaluated:
+        event = _apply_event(event, mail, receipt=receipt)
+    elif event.state == EmailEvent.State.APPLIED and mail.participant_email:
+        # Share the contact replay checks without reapplying the booking event.
+        from .contact_replay import ContactReplayResult, fill_existing_contact
 
-            contact_result = fill_existing_contact(mail)
-            address_added = contact_result == ContactReplayResult.ADDED
-            if not address_added:
-                address_note = contact_result.value
-        elif mail.participant_email:
-            address_note = "Zur früheren Mail gibt es keine anwendbare Buchungszuordnung für einen Adressnachtrag."
+        contact_result = fill_existing_contact(mail)
+        address_added = contact_result == ContactReplayResult.ADDED
+        if not address_added:
+            address_note = contact_result.value
+    elif mail.participant_email:
+        address_note = "Zur früheren Mail gibt es keine anwendbare Buchungszuordnung für einen Adressnachtrag."
     if receipt is not None:
-        _record_receipt(receipt, event, mail, new=new, address_added=address_added, address_note=address_note)
+        _record_receipt(receipt, event, mail, evaluated=evaluated, address_added=address_added, address_note=address_note)
     return event
 
 
-def _apply_new_event(event: EmailEvent, mail: ParsedMail, *, receipt: MailReceipt | None) -> EmailEvent:
+def _apply_event(event: EmailEvent, mail: ParsedMail, *, receipt: MailReceipt | None) -> EmailEvent:
     referenced_seat = _referenced_seat(mail)
     allow_partial = referenced_seat is not None and event.kind in ACTIVATION_EVENTS
     reason = _parsed_review_reason(mail, event.kind, allow_partial=allow_partial)
@@ -125,14 +138,14 @@ def _apply_new_event(event: EmailEvent, mail: ParsedMail, *, receipt: MailReceip
 
 
 def _record_receipt(
-    receipt: MailReceipt, event: EmailEvent, mail: ParsedMail, *, new: bool, address_added: bool,
+    receipt: MailReceipt, event: EmailEvent, mail: ParsedMail, *, evaluated: bool, address_added: bool,
     address_note: str,
 ) -> None:
     outcome = MailReceipt.Outcome
     if address_added:
         receipt.outcome = outcome.ADDRESS_ADDED
         receipt.detail = "Die fehlende Adresse wurde ergänzt. Der Buchungsstatus blieb gleich."
-    elif not new:
+    elif not evaluated:
         receipt.outcome = outcome.DUPLICATE
         receipt.detail = "Die Nachricht ist bytegleich mit einem früheren Eingang. Buchung und Adresse wurden bei diesem Abruf nicht geändert."
     elif event.state == EmailEvent.State.NEEDS_REVIEW:
