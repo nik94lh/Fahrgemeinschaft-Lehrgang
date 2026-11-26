@@ -85,12 +85,11 @@ def rides(request):
     selected_status = params.get("status", "")
     selected_phase = params.get("phase", "")
     combined = RideCase.objects.filter(direction=RideCase.ROUND_TRIP)
-    legacy = RideCase.objects.exclude(direction=RideCase.ROUND_TRIP)
     counts = combined.aggregate(
         active=Count("pk", filter=Q(currently_matches=True)),
         pending=Count("pk", filter=Q(currently_matches=True) & ~Q(status=RideCase.Status.CLOSED)),
     )
-    cases = legacy if archived else combined
+    cases = RideCase.objects.exclude(direction=RideCase.ROUND_TRIP) if archived else combined
     if selected_status:
         cases = cases.filter(status=selected_status)
     now = timezone.now()
@@ -120,7 +119,6 @@ def rides(request):
         "phase_choices": RIDE_PHASE_CHOICES.items(),
         "selected_phase": selected_phase,
         "archived": archived,
-        "has_legacy": not archived and legacy.exists(),
         "querystring": urlencode(params),
         "detail_query": urlencode(detail_params),
         "synced": request.GET.get("abgleich") == "1",

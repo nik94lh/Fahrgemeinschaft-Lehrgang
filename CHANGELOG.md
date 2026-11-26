@@ -4,6 +4,7 @@
 
 - Bearbeitungsberechtigte können eine einzelne Lehrgangsbuchung aus ihrem Verlauf löschen. Die Bestätigung verlangt die konkrete Buchungs-ID. Eindeutig zugeordnete offene Klärungsfälle werden abgeschlossen.
 - Der Reiter Statistik hat ein eigenes Ansichtsrecht und zeigt Auswertungen nach Jahr, Monat und Schule. Buchungsstatus, Monatsverlauf, Lehrgänge, Teilnehmende, Feuerwehren, Fahrgemeinschaften sowie berechtigte Mail- und Klärungszahlen sind getrennt ausgewiesen.
+- Der Archivlink für frühere Einzelstrecken entfällt in der Kachelansicht der Fahrgemeinschaften.
 
 ## 0.16.0
 
