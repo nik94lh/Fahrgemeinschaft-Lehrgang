@@ -1,5 +1,9 @@
 # Änderungen
 
+## 0.22.1
+
+- Das Teilnahmeportal zeigt dasselbe Tab-Symbol wie die BMS-Verwaltung.
+
 ## 0.22.0
 
 - Die Fahrgemeinschaftskachel zeigt eine laufende Abfrage in Blau, freigegebene Kontakte in Grün und eine abgeschlossene Abfrage ohne gültige Kontaktfreigabe in Rot. Vor dem Start bleibt die Kachel neutral.

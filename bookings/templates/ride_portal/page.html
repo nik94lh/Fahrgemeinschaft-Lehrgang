@@ -6,6 +6,7 @@
     {# Same-origin form requests need an Origin or Referer for Django's HTTPS CSRF check. #}
     <meta name="referrer" content="same-origin">
     <title>Teilnahme an einer Fahrgemeinschaft · BMS</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="{{ favicon_url }}">
     <style>{% include "ride_portal/style.css" %}</style>
     <script src="{% url 'ride_portal_script' %}" defer></script>
 </head>
