@@ -1,5 +1,6 @@
 """Django settings for the isolated BMS development and test instances."""
 import os
+import re
 from pathlib import Path
 
 from django.core.exceptions import ImproperlyConfigured
@@ -15,6 +16,15 @@ if not SECRET_KEY:
     SECRET_KEY = "local-insecure-development-only"
 
 ALLOWED_HOSTS = os.environ.get("BMS_ALLOWED_HOSTS", "localhost,127.0.0.1,[::1]").split(",")
+RIDE_PORTAL_HOST = os.environ.get("BMS_RIDE_PORTAL_HOST", "").strip().lower()
+if RIDE_PORTAL_HOST:
+    if (
+        not HTTPS
+        or not re.fullmatch(r"(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}", RIDE_PORTAL_HOST)
+        or RIDE_PORTAL_HOST in ALLOWED_HOSTS
+    ):
+        raise ImproperlyConfigured("BMS_RIDE_PORTAL_HOST requires HTTPS and a separate exact hostname.")
+    ALLOWED_HOSTS.append(RIDE_PORTAL_HOST)
 CSRF_TRUSTED_ORIGINS = [
     origin for origin in os.environ.get("BMS_CSRF_TRUSTED_ORIGINS", "").split(",") if origin
 ]
@@ -25,6 +35,7 @@ TEMPLATES = [
         "OPTIONS": {"context_processors": [
             "django.template.context_processors.request",
             "accounts.access.workspace_permissions",
+            "bookings.ride_inquiry_views.ride_automation_header",
             "config.version.version_context",
         ]},
     },

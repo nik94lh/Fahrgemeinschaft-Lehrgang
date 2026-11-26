@@ -29,10 +29,12 @@ class _Match:
     return_earliest: datetime
     return_latest: datetime
     seat_ids: frozenset[int]
+    is_test: bool
 
     @property
     def key(self) -> str:
-        return f"{self.school}:{RideCase.ROUND_TRIP}:{self.travel_date}:{self.return_date}"
+        prefix = "test:" if self.is_test else ""
+        return f"{prefix}{self.school}:{RideCase.ROUND_TRIP}:{self.travel_date}:{self.return_date}"
 
 
 def _review_booking(kind, context):
@@ -80,7 +82,7 @@ def _open_review_exclusions():
                 bookings.add(booking)
 
     if referenced_bookings:
-        known_references = set(CourseSeat.objects.filter(external_reference__in=referenced_bookings).values_list(
+        known_references = set(CourseSeat.objects.filter(is_test=False, external_reference__in=referenced_bookings).values_list(
             "external_reference", flat=True,
         ))
         # An exact booking reference takes precedence over the recognized details.
@@ -103,13 +105,16 @@ def _round_trip_matches(now: datetime):
     for seat in seats.iterator():
         session = seat.session
         term = (session.course.name.casefold(), session.school, session.starts_at, session.ends_at)
-        identity = (term, seat.participant_id)
+        identity = (seat.is_test, term, seat.participant_id)
         booking_counts[identity] += 1
-        if (
-            seat.status != BookingStatus.CONFIRMED
-            or seat.pk in excluded_seats
+        has_open_review = not seat.is_test and (
+            seat.pk in excluded_seats
             or seat.external_reference in excluded_references
             or (term, _normalized_name(seat.participant.name)) in excluded_bookings
+        )
+        if (
+            seat.status != BookingStatus.CONFIRMED
+            or has_open_review
             or booking_missing_fields(seat, functional_addresses=functional_addresses)
         ):
             continue
@@ -119,16 +124,16 @@ def _round_trip_matches(now: datetime):
     for identity, seat_id in eligible_bookings.items():
         if booking_counts[identity] != 1:
             continue
-        (_, school, start, end), participant = identity
-        key = (school, start.astimezone(BERLIN).date(), end.astimezone(BERLIN).date())
+        is_test, (_, school, start, end), participant = identity
+        key = (is_test, school, start.astimezone(BERLIN).date(), end.astimezone(BERLIN).date())
         groups[key].append((start, end, participant, seat_id))
 
-    for (school, travel_date, return_date), trips in groups.items():
+    for (is_test, school, travel_date, return_date), trips in groups.items():
         starts, ends, participants, seat_ids = zip(*trips)
         if len(set(participants)) >= 2:
             yield _Match(
                 school, travel_date, return_date,
-                min(starts), max(starts), min(ends), max(ends), frozenset(seat_ids),
+                min(starts), max(starts), min(ends), max(ends), frozenset(seat_ids), is_test,
             )
 
 
@@ -157,6 +162,7 @@ def sync_ride_cases(*, now: datetime | None = None) -> int:
                 travel_date=match.travel_date, return_date=match.return_date,
                 earliest=match.earliest, latest=match.latest,
                 return_earliest=match.return_earliest, return_latest=match.return_latest,
+                is_test=match.is_test,
             ))
         elif not case.currently_matches or (case.earliest, case.latest, case.return_earliest, case.return_latest) != times:
             case.currently_matches = True

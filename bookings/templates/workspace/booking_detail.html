@@ -26,6 +26,7 @@
     <section class="panel booking-detail-summary" aria-labelledby="booking-course">
         <h2 id="booking-course">{{ seat.session.course.name }}</h2>
         <dl class="details">
+            {% if seat.is_test %}<div><dt>Art</dt><dd><span class="status-label">Testbuchung</span></dd></div>{% endif %}
             <div><dt>Schulungsort</dt><dd>{{ seat.session.get_venue_display }}</dd></div>
             <div><dt>Zeitraum</dt><dd>{% include "workspace/session_period.html" with session=seat.session only %}</dd></div>
             <div><dt>Teilnehmer</dt><dd>{{ seat.participant.name|default:"Keine Person zugeordnet" }}</dd></div>

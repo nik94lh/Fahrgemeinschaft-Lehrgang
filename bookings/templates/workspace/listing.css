@@ -9,6 +9,7 @@
 .listing-profile-link { font-weight: 650; }
 .listing-profile-link span { padding-inline-start: .15rem; }
 .booking-list-id { display: block; margin-block-start: .12rem; font-size: .8rem; font-weight: 650; }
+.booking-list-actions { display: flex; justify-content: flex-end; margin-block-end: .8rem; }
 .booking-list .booking-venue, .booking-list .status-label { overflow-wrap: normal; }
 .booking-list .session-period { display: flex; flex-wrap: wrap; gap: .05rem .35rem; }
 .booking-list .session-period > * { white-space: nowrap; overflow-wrap: normal; }

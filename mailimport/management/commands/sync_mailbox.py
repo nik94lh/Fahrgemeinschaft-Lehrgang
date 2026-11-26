@@ -3,6 +3,7 @@ from time import sleep
 from django.core.management.base import BaseCommand, CommandError
 from django.db import DatabaseError
 
+from bookings.ride_participation import run_automatic_ride_inquiries
 from bookings.rides_matching import sync_ride_cases
 
 from mailimport.contact_replay import process_contact_replay
@@ -35,6 +36,7 @@ class Command(BaseCommand):
                     return
                 try:
                     sync_ride_cases()
+                    run_automatic_ride_inquiries()
                 except DatabaseError:
                     self.stderr.write("Der Abgleich der Fahrgemeinschaften ist fehlgeschlagen.")
                 try:

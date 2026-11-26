@@ -8,6 +8,7 @@ from django.views.decorators.http import require_safe
 
 from accounts import views as account_views
 from bookings import views
+from bookings.booking_create import booking_create
 from bookings.booking_delete_view import booking_delete
 from bookings.booking_detail import booking_detail
 from bookings.brigades import brigade_edit, brigades
@@ -15,6 +16,8 @@ from bookings.calendar import calendar, calendar_detail
 from bookings.participant_views import booking_participant
 from bookings.people import people
 from bookings.review_actions import review_detail
+from bookings.ride_inquiry_views import ride_automation, ride_inquiry_start
+from bookings.ride_portal import ride_portal, ride_portal_reply, ride_portal_script
 from bookings.ride_settings import rides_settings
 from bookings.ride_simulation import (
     ride_simulation,
@@ -55,6 +58,9 @@ def favicon(request):
 
 
 urlpatterns = [
+    path("teilnahme/", ride_portal, name="ride_portal"),
+    path("teilnahme/antwort/", ride_portal_reply, name="ride_portal_reply"),
+    path("teilnahme/code.js", ride_portal_script, name="ride_portal_script"),
     path("assets/live.js", live_script, name="live_script"),
     path("assets/workspace-chrome.js", workspace_chrome_script, name="workspace_chrome_script"),
     path("assets/ride-simulation.js", ride_simulation_script, name="ride_simulation_script"),
@@ -70,6 +76,7 @@ urlpatterns = [
     path("benutzer/<int:user_id>/passwort/", account_views.account_password_reset, name="account_password_reset"),
     path("", views.overview, name="overview"),
     path("buchungen/", views.bookings, name="bookings"),
+    path("buchungen/neu/", booking_create, name="booking_create"),
     path("buchungen/<int:seat_id>/", booking_detail, name="booking_detail"),
     path("buchungen/<int:seat_id>/loeschen/", booking_delete, name="booking_delete"),
     path("buchungen/<int:seat_id>/teilnehmer/", booking_participant, name="booking_participant"),
@@ -79,6 +86,7 @@ urlpatterns = [
     path("kalender/<int:session_id>/", calendar_detail, name="calendar_detail"),
     path("fahrgemeinschaften/", rides, name="rides"),
     path("fahrgemeinschaften/abgleichen/", rides_sync, name="rides_sync"),
+    path("fahrgemeinschaften/automatik/", ride_automation, name="ride_automation"),
     path("fahrgemeinschaften/einstellungen/", rides_settings, name="rides_settings"),
     path("fahrgemeinschaften/simulation/", ride_simulation, name="ride_simulation"),
     path("fahrgemeinschaften/simulation/antwort/", ride_simulation_open, name="ride_simulation_open"),
@@ -88,6 +96,7 @@ urlpatterns = [
         name="ride_simulation_response",
     ),
     path("fahrgemeinschaften/<int:case_id>/", ride_detail, name="ride_detail"),
+    path("fahrgemeinschaften/<int:case_id>/testabfrage/", ride_inquiry_start, name="ride_inquiry_start"),
     path("feuerwehren/", brigades, name="brigades"),
     path("feuerwehren/neu/", brigade_edit, name="brigade_create"),
     path("feuerwehren/<int:brigade_id>/", brigade_edit, name="brigade_edit"),

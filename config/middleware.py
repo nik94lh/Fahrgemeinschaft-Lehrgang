@@ -1,6 +1,13 @@
 """Security policy for the server-rendered BMS pages."""
 
+from django.conf import settings
+from django.http.request import split_domain_port
 from django.utils.cache import add_never_cache_headers, patch_vary_headers
+
+
+def is_ride_portal_host(request):
+    domain, _ = split_domain_port(request.META.get("HTTP_HOST", ""))
+    return bool(settings.RIDE_PORTAL_HOST and domain == settings.RIDE_PORTAL_HOST)
 
 
 class ContentPolicyMiddleware:
@@ -9,6 +16,10 @@ class ContentPolicyMiddleware:
 
     def __call__(self, request):
         response = self.get_response(request)
+        if is_ride_portal_host(request):
+            response.headers.setdefault("Referrer-Policy", "no-referrer")
+            response.headers.setdefault("X-Robots-Tag", "noindex, nofollow")
+            add_never_cache_headers(response)
         if response.get("Content-Type", "").startswith("text/html"):
             response.headers.setdefault(
                 "Content-Security-Policy",

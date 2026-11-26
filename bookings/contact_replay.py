@@ -117,7 +117,7 @@ def fill_existing_contact(mail: ParsedMail, *, imported_event_id: int | None = N
     if event is None:
         return ContactReplayResult.NO_APPLIED_EVENT
     seat = CourseSeat.objects.select_for_update().filter(
-        pk=event.seat_id, status__in=ACTIVE_STATUSES, participant__isnull=False,
+        pk=event.seat_id, status__in=ACTIVE_STATUSES, participant__isnull=False, is_test=False,
     ).first()
     if seat is None:
         return ContactReplayResult.NO_ACTIVE_BOOKING

@@ -1,9 +1,11 @@
 from django.conf import settings
 from django.contrib.auth import logout
 from django.contrib.auth.views import redirect_to_login
-from django.http import HttpResponse, HttpResponseForbidden
+from django.http import Http404, HttpResponse, HttpResponseForbidden
 from django.shortcuts import render
 from django.utils.cache import add_never_cache_headers, patch_vary_headers
+
+from config.middleware import is_ride_portal_host
 
 from .access import can_edit, can_view, is_active_user, is_workspace_admin
 from .sessions import session_revision_is_current
@@ -12,9 +14,10 @@ from .sessions import session_revision_is_current
 PUBLIC_ROUTES = frozenset({
     "health", "live_script", "workspace_chrome_script", "favicon", "login",
 })
+RIDE_PORTAL_ROUTES = frozenset({"ride_portal", "ride_portal_reply", "ride_portal_script"})
 ACCOUNT_ROUTES = frozenset({"account", "account_password_change", "logout"})
 ADMIN_ROUTES = frozenset({
-    "account_list", "account_create", "account_edit", "account_password_reset", "account_admin_role",
+    "account_list", "account_create", "account_edit", "account_password_reset", "account_admin_role", "ride_automation",
 })
 VIEW_ROUTES = {
     "overview": "overview",
@@ -37,9 +40,11 @@ VIEW_ROUTES = {
     "mail_receipt": "mail_receipts",
 }
 EDIT_ROUTES = {
+    "booking_create": "bookings",
     "booking_delete": "bookings",
     "rides_sync": "rides",
     "rides_settings": "rides",
+    "ride_inquiry_start": "rides",
     "ride_simulation": "rides",
     "ride_simulation_open": "rides",
     "ride_simulation_response": "rides",
@@ -85,6 +90,12 @@ class WorkspaceAccessMiddleware:
 
     def process_view(self, request, view_func, view_args, view_kwargs):
         route = request.resolver_match.view_name
+        if is_ride_portal_host(request):
+            if settings.HTTPS and request.is_secure() and route in RIDE_PORTAL_ROUTES:
+                return None
+            raise Http404
+        if route in RIDE_PORTAL_ROUTES:
+            raise Http404
         if route in PUBLIC_ROUTES and route != "login":
             return None
         if is_active_user(request.user) and not session_revision_is_current(request, request.user):

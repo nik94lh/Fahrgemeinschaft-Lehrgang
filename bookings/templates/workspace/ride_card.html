@@ -25,6 +25,18 @@
             </dd>
         </div>
     </dl>
+    {% if is_test_inquiry %}
+        <p class="ride-card-inquiries">
+            <strong>Testabfrage</strong>
+            {% if item.inquiry_total %}<span>{{ item.inquiry_total }} Einladungen vorbereitet</span><span>{{ item.inquiry_yes }} zugesagt</span><span>{{ item.inquiry_no }} abgesagt</span>{% endif %}
+        </p>
+        {% if can_start_inquiry %}
+            <form class="ride-card-inquiry-form" method="post" action="{% url 'ride_inquiry_start' item.pk %}">
+                {% csrf_token %}
+                <button type="submit">Testabfrage starten</button>
+            </form>
+        {% endif %}
+    {% endif %}
     <footer class="ride-card-footer">
         {% if mediation.state == "closed" %}
             <dl class="ride-card-workflow">
