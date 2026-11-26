@@ -1,0 +1,46 @@
+{% extends "workspace/base.html" %}
+{% block title %}Buchung endgültig löschen{% endblock %}
+{% block live_region %}{% endblock %}
+{% block page_styles %}
+    .booking-delete-summary { margin-block-end: 1rem; }
+    .booking-delete-form { margin-block-start: 1rem; }
+    .booking-delete-form #id_confirm_id { max-inline-size: 16rem; }
+    .booking-delete-form .note { display: block; margin-block-start: .35rem; }
+    .booking-delete-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-block-start: 1rem; }
+    .booking-delete-actions > button { inline-size: auto; max-inline-size: 100%; margin: 0; background: #9a2938; }
+    .booking-delete-actions > button:hover { background: #7b1e2a; }
+{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{{ bookings_url }}">‹ Zurück zu den Buchungen</a></p>
+    <div class="page-heading"><h1>Buchung endgültig löschen</h1></div>
+    <section class="panel booking-delete-summary" aria-labelledby="booking-delete-target">
+        <h2 id="booking-delete-target">Buchungs-ID {{ seat.pk|stringformat:"d" }}</h2>
+        <dl class="details">
+            <div><dt>Lehrgang</dt><dd>{{ seat.session.course.name }}</dd></div>
+            <div><dt>Teilnehmer/in</dt><dd>{{ seat.participant.name|default:"Keine Person zugeordnet" }}</dd></div>
+            <div><dt>Schulungsort</dt><dd>{{ seat.session.get_venue_display }}</dd></div>
+            <div><dt>Zeitraum</dt><dd>{% include "workspace/session_period.html" with session=seat.session only %}</dd></div>
+            <div><dt>Status</dt><dd><span class="status-label status-{{ seat.status }}">{{ seat.get_status_display }}</span></dd></div>
+            {% if seat.external_reference %}<div><dt>Externe Buchungsreferenz</dt><dd>{{ seat.external_reference }}</dd></div>{% endif %}
+        </dl>
+    </section>
+    <section class="panel diagnostic-panel diagnostic-warning" aria-labelledby="booking-delete-confirmation">
+        <h2 id="booking-delete-confirmation">Löschen bestätigen</h2>
+        <p>BMS löscht diese Buchung samt Verlauf endgültig, schließt eindeutig zugeordnete offene Klärungsfälle und markiert betroffene Fahrgemeinschaftsvorschläge als ungültig.</p>
+        {% if error %}<p class="warnings" role="alert">{{ error }}</p>{% endif %}
+        <form class="booking-delete-form" method="post" action="{{ form_url }}" aria-labelledby="booking-delete-confirmation">
+            {% csrf_token %}
+            {{ form.snapshot }}
+            <p>
+                {{ form.confirm_id.label_tag }}
+                {{ form.confirm_id }}
+                <span class="note" id="{{ form.confirm_id.auto_id }}_helptext">{{ form.confirm_id.help_text }}</span>
+            </p>
+            {{ form.confirm_id.errors }}
+            <div class="booking-delete-actions">
+                <a class="button-link" href="{{ detail_url }}">Abbrechen</a>
+                <button type="submit">Buchung endgültig löschen</button>
+            </div>
+        </form>
+    </section>
+{% endblock %}

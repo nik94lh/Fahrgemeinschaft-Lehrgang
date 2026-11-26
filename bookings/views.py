@@ -12,6 +12,7 @@ from django.views.decorators.http import require_safe
 from accounts.access import can_view
 from mailimport.participant_settings import get_functional_addresses
 
+from .booking_delete_view import BOOKING_DELETED_SESSION_KEY
 from .booking_search import booking_filters, booking_id_query
 from .booking_state import booking_missing_fields
 from .booking_status import booking_status_cards, booking_status_prefetches
@@ -78,6 +79,9 @@ def overview(request):
 @never_cache
 @require_safe
 def bookings(request):
+    deleted_booking_id = None
+    if request.method == "GET" and request.headers.get("X-BMS-Live") != "1":
+        deleted_booking_id = request.session.pop(BOOKING_DELETED_SESSION_KEY, None)
     filters = booking_filters(request.GET)
     selected_status = filters.get("status", "")
     selected_school = filters.get("school", "")
@@ -122,6 +126,7 @@ def bookings(request):
     ]
     return render(request, "workspace/bookings.html", {
         "section": "bookings",
+        "deleted_booking_id": deleted_booking_id,
         "imported": imported,
         "page_obj": page_obj,
         "booking_rows": booking_rows,

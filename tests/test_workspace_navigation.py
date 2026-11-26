@@ -77,6 +77,22 @@ class WorkspaceNavigationPermissionsTests(TestCase):
         self.assertNotContains(response, 'href="/buchungen/"')
         self.assertNotContains(response, 'href="/benutzer/"')
 
+    def test_statistics_has_its_own_read_only_workspace_grant(self):
+        self.assertFalse(Permission.objects.filter(content_type__app_label="accounts", codename="edit_statistics").exists())
+        self.sign_in_with("view_statistics")
+
+        response = self.client.get("/statistik/")
+
+        self.assertContains(response, 'href="/statistik/" aria-current="page"', count=2)
+        self.assertContains(response, '<strong class="workspace-nav-current">Statistik</strong>', html=True)
+        self.assertNotContains(response, 'href="/buchungen/"')
+
+    def test_booking_readers_need_a_separate_statistics_grant(self):
+        self.sign_in_with("view_bookings")
+
+        self.assertEqual(self.client.get("/statistik/").status_code, 403)
+        self.assertNotContains(self.client.get("/konto/"), 'href="/statistik/"')
+
     @override_settings(HTTPS=True)
     def test_secure_secondary_links_are_shown_only_for_allowed_https_request(self):
         self.sign_in_with("view_calendar", "view_mailbox")

@@ -7,7 +7,6 @@
     .ride-toolbar button { width: auto; margin: 0; }
     .ride-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
     .ride-time { display: block; font-size: .875rem; color: var(--muted); }
-    .ride-archive-link { margin-block-start: 1rem; }
     .ride-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
     .ride-card { display: flex; flex-direction: column; gap: .85rem; height: 100%; padding: 1.1rem; background: var(--surface); border: 1px solid var(--line); border-radius: .7rem; box-shadow: 0 2px 8px #162b4810; }
     .ride-card-title { margin: 0 0 .4rem; font-size: 1.3rem; line-height: 1.2; overflow-wrap: anywhere; }
@@ -150,6 +149,5 @@
                 {% endif %}
             </div>
         {% endif %}
-        {% if has_legacy %}<p class="ride-archive-link"><a href="?archiv=1">Frühere Einzelstrecken</a></p>{% endif %}
     </section>
 {% endblock %}

@@ -252,7 +252,8 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
         legacy_detail = reverse("ride_detail", args=[legacy.pk])
 
         listing = self.client.get(url)
-        self.assertContains(listing, "Frühere Einzelstrecken")
+        self.assertNotContains(listing, "Frühere Einzelstrecken")
+        self.assertNotContains(listing, 'href="?archiv=1"')
         self.assertContains(listing, current_detail)
         self.assertNotContains(listing, legacy_detail)
         self.assertEqual(listing.context["active_count"], 1)

@@ -8,6 +8,7 @@ SECTIONS = {
     "people": "Personen",
     "calendar": "Kalender",
     "rides": "Fahrgemeinschaften",
+    "statistics": "Statistik",
     "brigades": "Feuerwehren",
     "review": "Klärung",
     "preview": "E-Mail-Vorschau",
@@ -15,8 +16,8 @@ SECTIONS = {
     "mail_receipts": "Mail-Eingang",
 }
 HTTPS_SECTIONS = frozenset({"mailbox", "mail_receipts"})
-READ_ONLY_SECTIONS = frozenset({"people"})
-PRIMARY_NAVIGATION = ("overview", "bookings", "people", "calendar", "rides", "review")
+READ_ONLY_SECTIONS = frozenset({"people", "statistics"})
+PRIMARY_NAVIGATION = ("overview", "bookings", "people", "calendar", "rides", "statistics", "review")
 SECONDARY_NAVIGATION = ("brigades", "mail_receipts", "preview", "mailbox")
 
 

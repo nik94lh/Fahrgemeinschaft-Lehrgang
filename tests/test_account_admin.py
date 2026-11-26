@@ -26,13 +26,7 @@ class AccountAdministrationTests(TestCase):
         cls.member = users.create_user("test-member", password=cls.fixtures_password)
 
     def rights(self, **overrides):
-        rights = {
-            f"access_{section}": "none"
-            for section in (
-                "overview", "bookings", "people", "calendar", "rides", "brigades", "review", "preview", "mailbox",
-                "mail_receipts",
-            )
-        }
+        rights = {f"access_{section}": "none" for section in SECTIONS}
         return rights | {f"access_{section}": value for section, value in overrides.items()}
 
     def password_fields(self):
@@ -146,6 +140,22 @@ class AccountAdministrationTests(TestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("access_people", response.context["form"].errors)
         self.assertFalse(self.member.user_permissions.exists())
+
+    def test_statistics_grant_survives_a_form_opened_before_the_tab_existed(self):
+        permission = Permission.objects.get(content_type__app_label="accounts", codename="view_statistics")
+        self.member.user_permissions.add(permission)
+        self.client.force_login(self.admin)
+        edit_url = f"/benutzer/{self.member.pk}/"
+        legacy_rights = self.rights()
+        del legacy_rights["access_statistics"]
+
+        response = self.client.post(edit_url, legacy_rights | {"is_active": "on"})
+        self.assertRedirects(response, "/benutzer/?gespeichert=1")
+        self.assertTrue(self.member.user_permissions.filter(pk=permission.pk).exists())
+
+        response = self.client.post(edit_url, self.rights(statistics="none") | {"is_active": "on"})
+        self.assertRedirects(response, "/benutzer/?gespeichert=1")
+        self.assertFalse(self.member.user_permissions.filter(pk=permission.pk).exists())
 
     def test_edit_form_displays_and_replaces_direct_workspace_rights(self):
         self.client.force_login(self.admin)

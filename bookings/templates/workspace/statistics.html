@@ -1,0 +1,132 @@
+{% extends "workspace/base.html" %}
+{% block title %}Statistik{% endblock %}
+{% block page_styles %}{% include "workspace/statistics.css" %}{% endblock %}
+{% block content %}
+    <div class="page-heading"><h1>Statistik</h1></div>
+    <form class="panel filters statistics-filters" method="get" aria-label="Statistik filtern">
+        <div>
+            <label for="statistics-year">Jahr</label>
+            <input id="statistics-year" type="number" name="year" min="{{ min_year }}" max="{{ max_year }}" value="{{ year|stringformat:'d' }}" required>
+        </div>
+        <div>
+            <label for="statistics-month">Monat</label>
+            <select id="statistics-month" name="month">
+                <option value="">Ganzes Jahr</option>
+                {% for choice in month_choices %}<option value="{{ choice|date:'n' }}"{% if choice.month == month %} selected{% endif %}>{{ choice|date:"F" }}</option>{% endfor %}
+            </select>
+        </div>
+        <div class="statistics-school-filter">
+            <label for="statistics-school">Schulungsort</label>
+            <select id="statistics-school" name="school">
+                <option value="">Alle Schulungsorte</option>
+                {% for key, name in school_choices %}<option value="{{ key }}"{% if key == school %} selected{% endif %}>{{ name }}</option>{% endfor %}
+            </select>
+        </div>
+        <button type="submit">Auswerten</button>
+    </form>
+
+    <section class="statistics-section" aria-labelledby="statistics-period">
+        <h2 id="statistics-period">{{ period_start|date:"d.m.Y" }} – {{ period_end|date:"d.m.Y" }}</h2>
+        <p class="quiet statistics-note">Lehrgänge und Buchungen nach Lehrgangsbeginn im gewählten Zeitraum.</p>
+        <dl class="statistics-metrics">
+            <div><dt>Buchungen</dt><dd>{{ metrics.bookings }}</dd></div>
+            <div><dt>Lehrgangs<wbr>termine</dt><dd>{{ metrics.sessions }}</dd></div>
+            <div><dt>Teilnehmende</dt><dd>{{ metrics.people }}</dd></div>
+            <div><dt>Mit E-Mail-Adresse</dt><dd>{{ metrics.people_with_email }}</dd></div>
+            <div><dt>Heimat<wbr>feuerwehren</dt><dd>{{ metrics.brigades }}</dd></div>
+            <div><dt>Lehrgangsarten</dt><dd>{{ metrics.courses }}</dd></div>
+            <div><dt>Online-Termine</dt><dd>{{ metrics.online_sessions }}</dd></div>
+        </dl>
+    </section>
+
+    <section class="panel statistics-section" aria-labelledby="statistics-trend">
+        <h2 id="statistics-trend">Monatsverlauf {{ year|stringformat:'d' }}</h2>
+        <p class="quiet statistics-note">Balken zeigen die Buchungen. Wähle einen Monat für die Detailzahlen.</p>
+        <table class="statistics-table statistics-trend-table">
+            <thead><tr><th scope="col">Monat</th><th scope="col" class="statistics-number">Termine</th><th scope="col" colspan="2">Buchungen</th></tr></thead>
+            <tbody>
+                {% for item in trend %}
+                    <tr>
+                        <th scope="row"><a href="?year={{ year|stringformat:'d' }}&amp;month={{ item.month|date:'n' }}{% if school %}&amp;school={{ school|urlencode }}{% endif %}"{% if item.month.month == month %} aria-current="date"{% endif %}>{{ item.month|date:"M" }}</a></th>
+                        <td class="statistics-number">{{ item.sessions }}</td>
+                        <td class="statistics-trend-bar"><div class="statistics-bar" aria-hidden="true"><span style="--bar-width: {% widthratio item.bookings trend_max 100 %}%;"></span></div></td>
+                        <td class="statistics-number">{{ item.bookings }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <div class="statistics-columns statistics-section">
+        <section class="panel" aria-labelledby="statistics-status">
+            <h2 id="statistics-status">Buchungsstatus</h2>
+            <dl class="statistics-tally">
+                {% for row in status_counts %}
+                    <div><dt><span class="status-label status-{{ row.status }}">{{ row.label }}</span></dt><dd>{{ row.count }}</dd></div>
+                {% endfor %}
+            </dl>
+        </section>
+        <section class="panel" aria-labelledby="statistics-school-breakdown">
+            <h2 id="statistics-school-breakdown">Nach Schule</h2>
+            <table class="statistics-table statistics-breakdown">
+                <thead><tr><th scope="col">Schulungsort</th><th scope="col" class="statistics-number">Termine</th><th scope="col" class="statistics-number">Buchungen</th></tr></thead>
+                <tbody>
+                    {% for row in school_rows %}
+                        <tr><th scope="row">{{ row.label }}</th><td class="statistics-number">{{ row.sessions }}</td><td class="statistics-number">{{ row.bookings }}</td></tr>
+                    {% empty %}
+                        <tr><td colspan="3" class="quiet">Keine Termine im gewählten Zeitraum.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </section>
+    </div>
+
+    <section class="panel statistics-section" aria-labelledby="statistics-course-breakdown">
+        <h2 id="statistics-course-breakdown">Nach Lehrgang</h2>
+        <table class="statistics-table statistics-breakdown">
+            <thead><tr><th scope="col">Lehrgang</th><th scope="col" class="statistics-number">Termine</th><th scope="col" class="statistics-number">Buchungen</th></tr></thead>
+            <tbody>
+                {% for row in course_rows %}
+                    <tr><th scope="row">{{ row.label }}</th><td class="statistics-number">{{ row.sessions }}</td><td class="statistics-number">{{ row.bookings }}</td></tr>
+                {% empty %}
+                    <tr><td colspan="3" class="quiet">Keine Termine im gewählten Zeitraum.</td></tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </section>
+
+    <div class="statistics-columns statistics-section">
+        <section class="panel" aria-labelledby="statistics-rides">
+            <h2 id="statistics-rides">Fahrgemeinschafts<wbr>vorschläge</h2>
+            <p class="quiet statistics-note">Nach Datum der Hinfahrt.</p>
+            <dl class="statistics-tally">
+                <div><dt>Vorschläge insgesamt</dt><dd>{{ ride_counts.total }}</dd></div>
+                <div><dt>Aktuelle Vorschläge</dt><dd>{{ ride_counts.active }}</dd></div>
+                <div><dt>Abgeschlossene Vorschläge</dt><dd>{{ ride_counts.closed }}</dd></div>
+            </dl>
+            {% if workspace_view.rides %}<a class="statistics-source" href="{% url 'rides' %}">Fahrgemeinschaften öffnen</a>{% endif %}
+        </section>
+        {% if review_count != None %}
+            <section class="panel" aria-labelledby="statistics-review">
+                <h2 id="statistics-review">Klärung</h2>
+                <p class="quiet statistics-note">Alle Schulen · nach Eingang im gewählten Zeitraum.</p>
+                <dl class="statistics-tally">
+                    <div><dt>Offene Fälle</dt><dd>{{ review_count }}</dd></div>
+                    {% for row in review_reasons %}<div><dt>{{ row.label }}</dt><dd>{{ row.count }}</dd></div>{% endfor %}
+                </dl>
+                <a class="statistics-source" href="{% url 'review' %}">Klärung öffnen</a>
+            </section>
+        {% endif %}
+        {% if mail_counts %}
+            <section class="panel" aria-labelledby="statistics-mail">
+                <h2 id="statistics-mail">Mail-Eingang</h2>
+                <p class="quiet statistics-note">Alle Schulen · nach Abruf im gewählten Zeitraum.</p>
+                <dl class="statistics-tally">
+                    <div><dt>Nachrichten insgesamt</dt><dd>{{ mail_counts.total }}</dd></div>
+                    {% for row in mail_counts.outcomes %}<div><dt>{{ row.label }}</dt><dd>{{ row.count }}</dd></div>{% endfor %}
+                </dl>
+                <a class="statistics-source" href="{% url 'mail_receipts' %}">Mail-Eingang öffnen</a>
+            </section>
+        {% endif %}
+    </div>
+{% endblock %}

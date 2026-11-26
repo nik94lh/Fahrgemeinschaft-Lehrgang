@@ -1,0 +1,39 @@
+.statistics-filters { grid-template-columns: minmax(5rem, .6fr) minmax(8rem, 1fr) minmax(10rem, 1.3fr) auto; }
+.statistics-section { margin-block-start: 1.1rem; }
+.statistics-section h2 { margin-block-end: .45rem; overflow-wrap: anywhere; }
+.statistics-note { margin-block-end: .75rem; font-size: .9rem; }
+.statistics-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 8.25rem), 1fr)); gap: .6rem; margin: 0; }
+.statistics-metrics > div { padding: .7rem .75rem; border: 1px solid var(--line); border-radius: .55rem; background: var(--surface); }
+.statistics-metrics dt { font-size: .86rem; font-weight: 650; overflow-wrap: anywhere; }
+.statistics-metrics dd { margin: .15rem 0 0; color: var(--accent-strong); font-size: 1.9rem; font-weight: 720; line-height: 1.14; }
+.statistics-metrics dd, .statistics-number, .statistics-tally dd { font-variant-numeric: tabular-nums; }
+.statistics-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 21rem), 1fr)); gap: .85rem; align-items: start; }
+.statistics-table { table-layout: auto; }
+.statistics-table th, .statistics-table td { padding: .42rem .18rem; vertical-align: middle; overflow-wrap: anywhere; }
+.statistics-table th { font-size: inherit; }
+.statistics-table th[scope="row"] { color: var(--ink); font-weight: 620; white-space: normal; }
+.statistics-number { text-align: end; }
+.statistics-trend-table th[scope="row"] { white-space: nowrap; }
+.statistics-trend-table a[aria-current="date"] { font-weight: 750; text-decoration-thickness: .16em; }
+.statistics-trend-bar { inline-size: 75%; }
+.statistics-bar { min-inline-size: 2rem; block-size: .45rem; overflow: hidden; border-radius: .25rem; background: #e9eff7; }
+.statistics-bar span { display: block; inline-size: var(--bar-width); block-size: 100%; border-radius: inherit; background: var(--accent); }
+.statistics-tally { margin: 0; }
+.statistics-tally > div { display: flex; justify-content: space-between; align-items: baseline; gap: .75rem; padding-block: .4rem; }
+.statistics-tally > div + div { border-block-start: 1px solid var(--rule); }
+.statistics-tally dd { margin: 0; font-weight: 720; }
+.statistics-source { display: inline-flex; align-items: center; min-block-size: 2.75rem; font-weight: 650; }
+
+@media (max-width: 700px) {
+    .statistics-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .statistics-school-filter, .statistics-filters button { grid-column: 1 / -1; }
+    .statistics-trend-bar { inline-size: 57%; }
+    .statistics-breakdown { table-layout: fixed; font-size: .85rem; }
+    .statistics-breakdown thead th:nth-child(2) { width: 3.6rem; }
+    .statistics-breakdown thead th:nth-child(3) { width: 4.65rem; }
+}
+
+@media (max-width: 375px) {
+    .statistics-table { font-size: .85rem; }
+    .statistics-metrics dt { font-size: .8rem; }
+}
