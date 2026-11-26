@@ -10,7 +10,7 @@ from .sessions import session_revision_is_current
 
 
 PUBLIC_ROUTES = frozenset({
-    "health", "live_script", "workspace_chrome_script", "calendar_timeline_script", "favicon", "login",
+    "health", "live_script", "workspace_chrome_script", "favicon", "login",
 })
 ACCOUNT_ROUTES = frozenset({"account", "account_password_change", "logout"})
 ADMIN_ROUTES = frozenset({

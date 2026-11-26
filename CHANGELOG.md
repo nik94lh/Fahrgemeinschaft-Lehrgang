@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.18.1
+
+- Die Monatsansicht zeigt alle Tage des gewählten Monats in einer festen Zeile. Schraffierte Balkenkanten markieren Lehrgänge, die vor dem Monat beginnen oder darüber hinauslaufen.
+- In der Buchungsliste bleiben Datum und Uhrzeit eines Termins zusammen. Statuskacheln können als ganze Kachel umbrechen.
+
 ## 0.18.0
 
 - Administratoren können aktiven Konten in der Benutzerverwaltung das Admin-Recht geben und es anderen Konten wieder entziehen. Änderungen erfordern eine Bestätigung und eine neue Anmeldung des betroffenen Kontos. Die individuellen Tab-Rechte bleiben gespeichert.

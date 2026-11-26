@@ -2,9 +2,6 @@
 {% block main_layout %} class="workspace-main-wide"{% endblock %}
 {% block title %}Lehrgangskalender{% endblock %}
 {% block page_styles %}{% include "workspace/calendar.css" %}{% endblock %}
-{% block page_scripts %}
-    {% if view == 'month' %}<script src="{% url 'calendar_timeline_script' %}?v={{ bms_version }}" defer></script>{% endif %}
-{% endblock %}
 {% block content %}
     <h1 class="visually-hidden">Lehrgangskalender</h1>
     <form class="panel filters calendar-filters calendar-filters--{{ view }}" method="get">
