@@ -12,10 +12,36 @@ class WorkspaceNavigationTests(WorkspaceTestCase):
         html = response.content.decode()
         desktop = html.split('class="workspace-nav-desktop"', 1)[-1].split('class="workspace-nav-mobile"', 1)[0]
         self.assertRegex(desktop, r"(?s)>Übersicht<.*>Buchungen<.*>Personen<.*>Kalender<.*>Fahrgemeinschaften<.*>Klärung<")
-        self.assertRegex(desktop, r"(?s)<summary[^>]*>Weitere</summary>.*href=\"/feuerwehren/\".*href=\"/benutzer/\"")
+        self.assertRegex(desktop, r'(?s)<summary[^>]*>\s*<span class="workspace-more-label">Weitere</span>\s*</summary>.*href="/feuerwehren/".*href="/benutzer/"')
         self.assertContains(response, '>Navigation</summary>')
         self.assertContains(response, '>Mein Konto</summary>')
         self.assertContains(response, 'href="/konto/passwort/"')
+
+    @override_settings(HTTPS=True)
+    def test_top_level_views_keep_semantic_headings_in_the_wide_layout(self):
+        for path, heading in (
+            ("/", "Übersicht"), ("/buchungen/", "Buchungen"), ("/personen/", "Personen"),
+            ("/kalender/", "Lehrgangskalender"), ("/fahrgemeinschaften/", "Fahrgemeinschaftsvorschläge"),
+            ("/klaerung/", "Klärungsfälle"), ("/statistik/", "Statistik"), ("/feuerwehren/", "Feuerwehren"),
+            ("/vorschau/", "E-Mail-Vorschau"), ("/postfach/", "Postfach"),
+            ("/mail-eingang/", "Mail-Eingang"), ("/benutzer/", "Benutzerverwaltung"),
+        ):
+            with self.subTest(path=path):
+                response = self.client.get(path, secure=True)
+                self.assertContains(response, '<main id="main-content" class="workspace-main-wide"')
+                self.assertRegex(response.content.decode(), rf'<h1(?: id="[^"]+")? class="visually-hidden">{heading}</h1>')
+
+    def test_secondary_tab_name_is_present_in_the_desktop_menu_trigger(self):
+        response = self.client.get("/benutzer/")
+
+        self.assertContains(response, '<span class="workspace-more-current">Benutzer</span>', html=True)
+
+    def test_create_form_and_historical_rides_keep_their_visible_headings(self):
+        for path, heading in (("/benutzer/neu/", "Benutzer anlegen"), ("/fahrgemeinschaften/?archiv=1", "Frühere Einzelstrecken")):
+            with self.subTest(path=path):
+                response = self.client.get(path)
+                self.assertNotContains(response, '<main id="main-content" class="workspace-main-wide"')
+                self.assertRegex(response.content.decode(), rf'<h1(?: id="[^"]+")?>{heading}</h1>')
 
     def test_current_section_is_marked_in_both_responsive_lists(self):
         response = self.client.get("/kalender/")
@@ -73,7 +99,7 @@ class WorkspaceNavigationPermissionsTests(TestCase):
         response = self.client.get("/konto/")
 
         self.assertContains(response, 'href="/kalender/"')
-        self.assertNotContains(response, '>Weitere</summary>')
+        self.assertNotContains(response, 'class="workspace-nav-more"')
         self.assertNotContains(response, 'href="/buchungen/"')
         self.assertNotContains(response, 'href="/benutzer/"')
 

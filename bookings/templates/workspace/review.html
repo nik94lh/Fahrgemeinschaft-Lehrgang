@@ -1,4 +1,5 @@
 {% extends "workspace/base.html" %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
 {% block title %}Klärungsfälle{% endblock %}
 {% block page_styles %}
     .review-filters { grid-template-columns: minmax(0, 1fr) auto; max-width: 42rem; }
@@ -16,7 +17,7 @@
     }
 {% endblock %}
 {% block content %}
-    <div class="page-heading"><h1>Klärungsfälle</h1></div>
+    <h1 class="visually-hidden">Klärungsfälle</h1>
     <form class="panel filters review-filters" method="get">
         <label>Grund
             <select name="grund">

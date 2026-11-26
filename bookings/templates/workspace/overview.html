@@ -1,10 +1,11 @@
 {% extends "workspace/base.html" %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
 {% block page_styles %}{% include "workspace/overview.css" %}{% endblock %}
 {% block content %}
-    <div class="page-heading">
-        <h1>Übersicht</h1>
-        {% if workspace_secure and workspace_view.mail_receipts %}<a class="button-link" href="{% url 'mail_receipts' %}">Mail-Eingang ansehen</a>{% endif %}
-    </div>
+    <h1 class="visually-hidden">Übersicht</h1>
+    {% if workspace_secure and workspace_view.mail_receipts %}
+        <div class="page-heading page-heading--actions"><a class="button-link" href="{% url 'mail_receipts' %}">Mail-Eingang ansehen</a></div>
+    {% endif %}
     <dl class="stats dashboard-stats">
         {% for metric in dashboard_metrics %}
             {% include "workspace/dashboard_metric.html" with metric=metric only %}

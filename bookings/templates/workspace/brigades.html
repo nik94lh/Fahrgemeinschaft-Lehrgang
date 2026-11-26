@@ -1,4 +1,5 @@
 {% extends "workspace/base.html" %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
 {% block title %}Feuerwehren{% endblock %}
 {% block page_styles %}
     {% include "workspace/listing.css" %}
@@ -12,10 +13,10 @@
     }
 {% endblock %}
 {% block content %}
-    <div class="page-heading">
-        <h1>Feuerwehren</h1>
-        {% if workspace_edit.brigades %}<a class="button-link" href="{% url 'brigade_create' %}{% if edit_query %}?{{ edit_query }}{% endif %}">Feuerwehr anlegen</a>{% endif %}
-    </div>
+    <h1 class="visually-hidden">Feuerwehren</h1>
+    {% if workspace_edit.brigades %}
+        <div class="page-heading page-heading--actions"><a class="button-link" href="{% url 'brigade_create' %}{% if edit_query %}?{{ edit_query }}{% endif %}">Feuerwehr anlegen</a></div>
+    {% endif %}
     {% if saved %}<p class="notice" role="status">Die Feuerwehr wurde gespeichert.</p>{% endif %}
     <form class="panel filters listing-filters brigade-filters" method="get" role="search" aria-label="Feuerwehren filtern">
         <label>Name, Gemeinde, Ortsteil oder Adresse<input type="search" name="q" maxlength="100" value="{{ query }}"></label>

@@ -75,6 +75,7 @@ urlpatterns = [
     path("benutzer/", account_views.account_list, name="account_list"),
     path("benutzer/neu/", account_views.account_create, name="account_create"),
     path("benutzer/<int:user_id>/", account_views.account_edit, name="account_edit"),
+    path("benutzer/<int:user_id>/admin-recht/", account_views.account_admin_role, name="account_admin_role"),
     path("benutzer/<int:user_id>/passwort/", account_views.account_password_reset, name="account_password_reset"),
     path("", views.overview, name="overview"),
     path("buchungen/", views.bookings, name="bookings"),

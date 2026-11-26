@@ -1,4 +1,5 @@
 {% extends "workspace/base.html" %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
 
 {% block live_region %}{% endblock %}
 {% block title %}Postfach{% endblock %}
@@ -16,12 +17,10 @@
 {% endblock %}
 
 {% block content %}
-<div class="page-heading">
-  <div>
-    <h1>Postfach</h1>
-  </div>
-  {% if workspace_view.mail_receipts %}<a class="button-link" href="{% url 'mail_receipts' %}">Zum Mail-Eingang</a>{% endif %}
-</div>
+<h1 class="visually-hidden">Postfach</h1>
+{% if workspace_view.mail_receipts %}
+  <div class="page-heading page-heading--actions"><a class="button-link" href="{% url 'mail_receipts' %}">Zum Mail-Eingang</a></div>
+{% endif %}
 <section class="panel" aria-label="Postfachverbindung" style="max-width: 38rem;">
   {% if saved %}
     <p role="status">Postfachkonfiguration gespeichert.</p>

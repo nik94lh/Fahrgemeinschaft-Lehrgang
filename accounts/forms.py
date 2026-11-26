@@ -74,3 +74,11 @@ class AccountEditForm(WorkspaceRightsMixin, forms.ModelForm):
     class Meta:
         model = User
         fields = ("is_active",)
+
+
+class AccountAdminRoleForm(forms.Form):
+    action = forms.ChoiceField(
+        choices=(("grant", "Admin-Recht vergeben"), ("revoke", "Admin-Recht entziehen")),
+        widget=forms.HiddenInput,
+    )
+    confirmation = forms.CharField(max_length=120, widget=forms.HiddenInput)

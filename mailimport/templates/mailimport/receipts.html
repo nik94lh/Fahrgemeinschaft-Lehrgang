@@ -1,12 +1,11 @@
 {% extends "workspace/base.html" %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
 {% block title %}Mail-Eingang{% endblock %}
 {% block content %}
-    <div class="page-heading">
-        <div>
-            <h1>Mail-Eingang</h1>
-        </div>
-        {% if workspace_view.mailbox %}<a class="button-link" href="{% url 'mailbox' %}">Postfachstatus</a>{% endif %}
-    </div>
+    <h1 class="visually-hidden">Mail-Eingang</h1>
+    {% if workspace_view.mailbox %}
+        <div class="page-heading page-heading--actions"><a class="button-link" href="{% url 'mailbox' %}">Postfachstatus</a></div>
+    {% endif %}
     <div class="status-strip{% if cursor and not cursor.last_sync_ok %} status-strip-warning{% endif %}">
         {% if cursor %}
             <strong>Letzter Abruf</strong>

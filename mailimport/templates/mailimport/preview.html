@@ -1,7 +1,8 @@
 {% extends "workspace/base.html" %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
 {% block title %}E-Mail-Vorschau{% endblock %}
 {% block content %}
-        <h1>E-Mail-Vorschau</h1>
+        <h1 class="visually-hidden">E-Mail-Vorschau</h1>
         {% if review_created %}<p class="notice" role="status">Die Testmail wurde ausgewertet und zur Klärung gespeichert.</p>{% endif %}
         <div class="workspace">
             <section class="panel" aria-labelledby="upload-title">
