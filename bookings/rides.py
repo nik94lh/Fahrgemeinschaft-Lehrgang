@@ -11,14 +11,29 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.debug import sensitive_variables
 from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
-from .models import RideCase
+from accounts.access import can_edit
+
+from .models import RideCase, RideParticipation
+from .ride_inquiry_views import get_ride_automation, inquiry_controls_available
+from .ride_participation import notice_preview
 from .ride_settings import get_ride_lead_days
 from .rides_matching import BERLIN, set_ride_case_status, sync_ride_cases
 
 
 RIDE_PHASE_CHOICES = {"ready": "Bereit zur Vermittlung", "standby": "Standby"}
+INQUIRY_MESSAGES = {
+    "vorbereitet": "Testabfrage vorbereitet. Die Einladungen stehen als Vorschau bereit.",
+    "unveraendert": "Für diesen Vorschlag sind bereits Testeinladungen vorbereitet.",
+    "nicht-moeglich": "Die Testabfrage lässt sich für diesen Vorschlag derzeit nicht starten.",
+}
+INQUIRY_ANSWER_LABELS = {
+    RideParticipation.Answer.PENDING: "Einladung vorbereitet",
+    RideParticipation.Answer.YES: "Zugesagt",
+    RideParticipation.Answer.NO: "Abgesagt",
+}
 
 
 class RideCaseStatusForm(forms.Form):
@@ -97,6 +112,14 @@ def rides(request):
     if selected_phase:
         eligible, phases = ride_phase_filters(now=now, lead_days=lead_days)
         cases = cases.filter(eligible, phases[selected_phase])
+    show_inquiries = not archived and inquiry_controls_available(request)
+    manual_inquiries = show_inquiries and can_edit(request.user, "rides") and not get_ride_automation()
+    if show_inquiries:
+        cases = cases.annotate(
+            inquiry_total=Count("participation_requests", distinct=True),
+            inquiry_yes=Count("participation_requests", filter=Q(participation_requests__answer=RideParticipation.Answer.YES), distinct=True),
+            inquiry_no=Count("participation_requests", filter=Q(participation_requests__answer=RideParticipation.Answer.NO), distinct=True),
+        )
     cases = cases.annotate(participant_count=Count("seats__participant_id", distinct=True)).order_by(
         "-currently_matches", "travel_date", "earliest", "pk",
     )
@@ -104,10 +127,17 @@ def rides(request):
     detail_params = params | ({"page": page_obj.number} if page_obj.number > 1 else {})
     ride_cards = []
     if not archived and page_obj:
-        ride_cards = [
-            {"case": case, "mediation": _mediation(case, now=now, lead_days=lead_days)}
-            for case in page_obj
-        ]
+        for case in page_obj:
+            mediation = _mediation(case, now=now, lead_days=lead_days)
+            ride_cards.append({
+                "case": case,
+                "mediation": mediation,
+                "is_test_inquiry": show_inquiries and case.is_test,
+                "can_start_inquiry": (
+                    manual_inquiries and case.is_test and mediation.state in {"ready", "standby"}
+                    and not case.inquiry_total
+                ),
+            })
     return render(request, "workspace/rides.html", {
         "section": "rides",
         "page_obj": page_obj,
@@ -138,6 +168,26 @@ def _status_form(case):
     return RideCaseStatusForm(initial={"status": case.status, "expected_status": case.status})
 
 
+@sensitive_variables("rows", "previews")
+def _inquiry_rows(case):
+    participations = case.participation_requests.select_related("participant").prefetch_related("notices").order_by("pk")
+    rows = []
+    for participation in participations:
+        previews = [
+            notice_preview(notice) | {"id": notice.pk, "kind": notice.kind, "label": notice.get_kind_display()}
+            for notice in participation.notices.all()
+        ]
+        rows.append({
+            "participant_name": participation.participant.name,
+            "answer": participation.answer,
+            "answer_label": INQUIRY_ANSWER_LABELS[participation.answer],
+            "answered_at": participation.answered_at,
+            "previews": previews,
+        })
+    return rows
+
+
+@sensitive_variables("inquiry_rows")
 @never_cache
 @require_http_methods(["GET", "HEAD", "POST"])
 @csrf_protect
@@ -167,6 +217,9 @@ def ride_detail(request, case_id):
         form = _status_form(case)
 
     seats = case.seats.select_related("participant", "session__course").order_by("participant__name", "pk")
+    show_inquiries = round_trip and case.is_test and inquiry_controls_available(request) and can_edit(request.user, "rides")
+    inquiry_rows = _inquiry_rows(case) if show_inquiries else []
+    inquiry_result = request.GET.get("testabfrage") if show_inquiries else None
     return render(request, "workspace/ride_detail.html", {
         "section": "rides",
         "case": case,
@@ -177,4 +230,8 @@ def ride_detail(request, case_id):
         "form": form,
         "conflict": conflict,
         "saved": request.method == "GET" and request.GET.get("gespeichert") == "1",
+        "show_inquiries": show_inquiries,
+        "inquiry_rows": inquiry_rows,
+        "inquiry_message": INQUIRY_MESSAGES.get(inquiry_result),
+        "inquiry_failed": inquiry_result == "nicht-moeglich",
     }, status=status)

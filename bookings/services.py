@@ -63,6 +63,8 @@ def set_participant_email(seat_id: int, email: str, *, expected_participant_id: 
     seat = CourseSeat.objects.select_for_update().filter(pk=seat_id).first()
     if seat is None or seat.participant_id is None or seat.participant_id != expected_participant_id:
         raise ValueError("Die Teilnehmerzuordnung hat sich geändert. Lade die Buchung neu.")
+    if seat.is_test and not email.rpartition("@")[2].endswith(".invalid"):
+        raise ValueError("Gib für eine Testbuchung eine Adresse mit der Endung .invalid ein.")
 
     previous = seat.participant
     participant = _identity_for_seat(seat, previous.name, email, allow_enrichment=True)
@@ -213,7 +215,7 @@ def _referenced_seat(mail: ParsedMail) -> CourseSeat | None:
     if not mail.booking_reference:
         return None
     return CourseSeat.objects.select_related("session__course", "participant").filter(
-        external_reference=mail.booking_reference,
+        external_reference=mail.booking_reference, is_test=False,
     ).first()
 
 
@@ -247,12 +249,20 @@ def _normalized_name(name: str) -> str:
     return normalize("NFC", " ".join(name.split())).casefold()
 
 
-def _participant_with_email(name: str, email: str) -> Participant | None:
+def _uses_other_booking_mode(participant, *, is_test):
+    return CourseSeat.objects.filter(is_test=not is_test).filter(
+        Q(participant=participant) | Q(history__participant=participant) | Q(history__previous_participant=participant),
+    ).exists()
+
+
+def _participant_with_email(name: str, email: str, *, is_test=False) -> Participant | None:
     participant = Participant.objects.alias(email_key=Lower(Trim("email"))).filter(
         email_key=email,
     ).exclude(email="").first()
     if participant and _normalized_name(participant.name) != _normalized_name(name):
         raise _IdentityConflict(EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT)
+    if participant and _uses_other_booking_mode(participant, is_test=is_test):
+        raise _IdentityConflict(EmailEvent.ReviewReason.PARTICIPANT_IDENTITY_UNCLEAR)
     return participant
 
 
@@ -278,7 +288,7 @@ def _identity_for_seat(
     current = seat.participant
     if current and current.email and normalize_contact_email(current.email) != email:
         raise _IdentityConflict(EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT)
-    canonical = _participant_with_email(name, email)
+    canonical = _participant_with_email(name, email, is_test=seat.is_test)
     if not allow_enrichment or current is None or canonical is None or canonical == current:
         return current
     if (
@@ -307,6 +317,7 @@ def _reconcile_by_details(event: EmailEvent, mail: ParsedMail, *, receipt: MailR
         course__name__iexact=mail.course_name,
         starts_at=mail.starts_at,
         ends_at=mail.ends_at,
+        is_test=False,
     )
     eligible = schedule.filter(school=mail.school)
     if mail.is_online and event.kind in ACTIVATION_EVENTS:
@@ -361,7 +372,7 @@ def _reconcile_by_details(event: EmailEvent, mail: ParsedMail, *, receipt: MailR
 
 
 def _seats_with_name(sessions, name: str, *, verified_email: str | None = None) -> list[CourseSeat]:
-    candidates = CourseSeat.objects.filter(session__in=sessions, participant__isnull=False).select_related(
+    candidates = CourseSeat.objects.filter(session__in=sessions, participant__isnull=False, is_test=False).select_related(
         "participant", "session__course",
     ).iterator()
     named = (seat for seat in candidates if _normalized_name(seat.participant.name) == name)

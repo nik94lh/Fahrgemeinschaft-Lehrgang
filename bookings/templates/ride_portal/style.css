@@ -1,0 +1,49 @@
+:root {
+    color-scheme: light;
+    font: 100%/1.55 system-ui, sans-serif;
+    --portal-background: #edf3fa;
+    --portal-ink: #142441;
+    --portal-muted: #46536a;
+    --portal-line: #c6d3e3;
+    --portal-accent: #1458b8;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--portal-background); color: var(--portal-ink); }
+.portal-width { max-width: 42rem; margin-inline: auto; padding-inline: 1rem; }
+header { background: var(--portal-ink); color: white; }
+header > div { display: flex; align-items: baseline; flex-wrap: wrap; gap: .3rem .75rem; padding-block: .8rem; }
+header strong { font-size: 1.25rem; }
+main { padding-block: 1.2rem 2.5rem; }
+h1, h2, h3, p, dl { margin: 0; }
+h1 { font-size: clamp(1.45rem, 5vw, 2rem); line-height: 1.2; }
+h2 { font-size: 1.15rem; line-height: 1.35; margin-block-end: .65rem; }
+h3 { font-size: 1.05rem; }
+.portal-panel { margin-block-start: 1rem; padding: clamp(.9rem, 4vw, 1.35rem); border: 1px solid var(--portal-line); border-radius: .65rem; background: white; overflow-wrap: anywhere; }
+dl > div { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); gap: .55rem; padding-block: .35rem; }
+dt, .portal-note, .helptext { color: var(--portal-muted); }
+dd { margin: 0; }
+form { margin-block-start: .9rem; }
+fieldset { min-width: 0; padding: 0; margin: 0 0 .9rem; border: none; }
+legend { padding: 0; font-weight: 650; }
+fieldset label { display: flex; align-items: baseline; gap: .35rem; padding-block: .25rem; }
+.portal-field { margin-block-end: .9rem; }
+.portal-field > label { display: block; font-weight: 650; }
+input[type="text"] { width: 100%; min-height: 2.6rem; margin-block-start: .25rem; padding: .4rem .55rem; border: 1px solid #8497b0; border-radius: .45rem; color: inherit; font: inherit; }
+input[type="radio"], input[type="checkbox"] { margin: 0 .35rem 0 0; }
+.portal-consent { margin-block-end: .85rem; }
+.helptext { display: block; margin-block-start: .25rem; font-size: .9rem; }
+button { min-height: 2.75rem; padding: .38rem .8rem; border: 1px solid var(--portal-accent); border-radius: .45rem; background: var(--portal-accent); color: white; font: inherit; font-weight: 650; cursor: pointer; }
+button:hover { background: #123f89; }
+.portal-secondary { background: white; color: var(--portal-accent); }
+.portal-secondary:hover { background: #eaf2ff; }
+:focus-visible { outline: 2px solid var(--portal-accent); outline-offset: 3px; }
+.portal-alert, .errorlist { margin: .7rem 0; padding: .65rem .8rem; border: 1px solid #d8a3a6; border-radius: .45rem; background: #faebec; color: #762a32; }
+.errorlist { padding-inline-start: 1.85rem; }
+.portal-records { margin: 0; padding: 0; list-style: none; }
+.portal-records li + li { margin-block-start: .65rem; padding-block-start: .65rem; border-block-start: 1px solid var(--portal-line); }
+.portal-records p { margin-block-start: .2rem; }
+
+@supports selector(:has(*)) {
+    .portal-reply:not(:has(input[name="answer"][value="yes"]:checked)) .portal-contact-fields { display: none; }
+    .portal-reply:not(:has(input[name="channels"][value="call"]:checked, input[name="channels"][value="whatsapp"]:checked)) .portal-phone { display: none; }
+}

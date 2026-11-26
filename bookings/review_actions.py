@@ -21,7 +21,7 @@ from mailimport.email_address import normalize_contact_email
 
 from .booking_search import booking_id_query, positive_integer
 from .models import BookingHistory, BookingStatus, CourseSeat, EmailEvent, ImportLock, Participant, School
-from .services import ACTIVE_STATUSES, CANCELLATION_EVENTS, _cancellation_snapshot, _normalized_name
+from .services import ACTIVE_STATUSES, CANCELLATION_EVENTS, _cancellation_snapshot, _normalized_name, _uses_other_booking_mode
 
 
 RESULT_LIMIT = 20
@@ -159,7 +159,9 @@ def _actions(event, can_keep_address, can_apply_cancellation):
 
 
 def _seats():
-    return CourseSeat.objects.select_related("participant", "session__course").order_by("-session__starts_at", "pk")
+    return CourseSeat.objects.filter(is_test=False).select_related("participant", "session__course").order_by(
+        "-session__starts_at", "pk",
+    )
 
 
 def _review_time(value):
@@ -416,7 +418,7 @@ def _apply_decision(form, event):
     else:
         fixed_seat = action in (ReviewForm.KEEP_ADDRESS, ReviewForm.APPLY_CANCELLATION)
         seat_id = event.seat_id if fixed_seat else data["seat"].pk
-        seat = CourseSeat.objects.select_for_update().filter(pk=seat_id).first()
+        seat = CourseSeat.objects.select_for_update().filter(pk=seat_id, is_test=False).first()
         if seat is None:
             field = None if fixed_seat else "seat"
             form.add_error(field, "Der Lehrgangsplatz ist nicht mehr vorhanden.")
@@ -480,6 +482,9 @@ def _reassign(form, event, seat):
         return False
     if not Participant.objects.select_for_update().filter(pk=replacement.pk).exists():
         form.add_error("replacement", "Die ausgewählte Person ist nicht mehr vorhanden.")
+        return False
+    if _uses_other_booking_mode(replacement, is_test=False):
+        form.add_error("replacement", "Wähle eine Person aus den regulären Buchungen.")
         return False
 
     BookingHistory.objects.create(

@@ -38,6 +38,25 @@
 .workspace-chrome-environment .version, .workspace-account-environment .version { font-variant-numeric: tabular-nums; }
 .workspace-chrome:not(.workspace-chrome-public) .workspace-chrome-environment { padding-inline-end: .75rem; border-inline-end: 1px solid #687c9c; }
 .workspace-live-status:not([hidden]) { padding-block: .25rem .55rem; color: #e6edf9; font-size: .85rem; }
+.workspace-automation button {
+    display: inline-flex;
+    align-items: center;
+    gap: .45rem;
+    min-block-size: 2.45rem;
+    margin: 0;
+    padding: .35rem .55rem;
+    background: transparent;
+    color: white;
+    font: inherit;
+    font-size: .83rem;
+    font-weight: 650;
+}
+.workspace-automation button:hover { background: #2b4063; }
+.workspace-automation button:focus-visible { outline-color: #e7efff; outline-offset: 2px; }
+.workspace-automation-slider { padding: .16rem; inline-size: 1.9rem; border: 1px solid #a0afc7; border-radius: 999px; background: #405575; }
+.workspace-automation-slider::before { content: ""; display: block; inline-size: .65rem; block-size: .65rem; border-radius: 50%; background: white; }
+.workspace-automation button[aria-checked="true"] .workspace-automation-slider { background: #276b4c; }
+.workspace-automation button[aria-checked="true"] .workspace-automation-slider::before { margin-inline-start: auto; }
 
 .workspace-account-menu, .workspace-nav-more { position: relative; }
 .workspace-menu-trigger, .workspace-nav-trigger {
@@ -190,6 +209,8 @@ details[open] > .workspace-menu-trigger::after { margin-block-start: .18rem; tra
     .workspace-chrome-brand { gap: .35rem; }
     .workspace-chrome-brand strong { font-size: 1.25rem; }
     .workspace-chrome-brand span { padding-inline-start: .35rem; font-size: .72rem; }
+    .workspace-chrome-actions { gap: .25rem; }
+    .workspace-automation button { gap: .3rem; padding-inline: .3rem; font-size: .76rem; }
     .workspace-account-menu .workspace-menu-trigger, .workspace-nav-trigger { gap: .4rem; padding-inline: .48rem; font-size: .86rem; }
     .workspace-nav-current { font-size: .89rem; }
 }

@@ -4,6 +4,15 @@
     .ride-case-panel { margin-block-end: 1rem; }
     .ride-case-status { max-width: 24rem; margin-block: 1rem; }
     .ride-case-status select { display: block; width: 100%; margin-block-start: .25rem; padding: .6rem; font: inherit; border: 1px solid var(--line); border-radius: .45rem; background: white; color: var(--ink); }
+    .ride-inquiry-list { display: grid; gap: .9rem; margin: 0; padding: 0; list-style: none; }
+    .ride-inquiry-list > li + li { padding-block-start: .9rem; border-block-start: 1px solid var(--line); }
+    .ride-inquiry-person { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem .7rem; }
+    .ride-notice-preview { margin-block-start: .55rem; }
+    .ride-notice-preview summary { width: fit-content; color: var(--accent); cursor: pointer; }
+    .ride-notice-preview .details { margin-block: .5rem; }
+    .ride-notice-preview label { display: block; margin-block: .55rem .25rem; }
+    .ride-notice-preview textarea, .ride-notice-preview input { display: block; width: min(100%, 40rem); padding: .55rem; border: 1px solid var(--line); border-radius: .35rem; color: var(--ink); background: var(--surface); font: inherit; }
+    .ride-notice-preview .button-link { margin-block-start: .55rem; }
 {% endblock %}
 {% block content %}
     {% if round_trip %}
@@ -17,6 +26,7 @@
     {% endif %}
 
     {% if saved %}<p class="notice" role="status">Bearbeitungsstand gespeichert.</p>{% endif %}
+    {% if inquiry_message %}<p class="{% if inquiry_failed %}errorlist{% else %}notice{% endif %}" role="status">{{ inquiry_message }}</p>{% endif %}
     <section class="panel ride-case-panel" aria-labelledby="ride-status">
         <h2 id="ride-status">Fahrten und Bearbeitung</h2>
         <dl class="details">
@@ -44,6 +54,43 @@
         </form>
         {% endif %}
     </section>
+
+    {% if show_inquiries %}
+        <section class="panel ride-case-panel" aria-labelledby="ride-inquiries">
+            <h2 id="ride-inquiries">Testabfrage</h2>
+            {% if inquiry_rows %}
+                <ul class="ride-inquiry-list" role="list">
+                    {% for row in inquiry_rows %}
+                        <li>
+                            <div class="ride-inquiry-person">
+                                <h3>{{ row.participant_name }}</h3>
+                                <span class="status-label{% if row.answer == 'yes' %} status-confirmed{% elif row.answer == 'no' %} status-cancelled{% endif %}">{{ row.answer_label }}</span>
+                                {% if row.answered_at %}<time class="quiet" datetime="{{ row.answered_at|date:'c' }}">{{ row.answered_at|date:"d.m.Y, H:i" }}</time>{% endif %}
+                            </div>
+                            {% for preview in row.previews %}
+                                <details class="ride-notice-preview" data-live-preserve id="ride-notice-{{ preview.id }}">
+                                    <summary>{{ preview.label }} · Vorschau</summary>
+                                    <dl class="details">
+                                        <div><dt>Empfänger</dt><dd>{{ preview.recipient }}</dd></div>
+                                        <div><dt>Betreff</dt><dd>{{ preview.subject }}</dd></div>
+                                    </dl>
+                                    <label for="ride-preview-{{ preview.id }}">Nachrichtentext zum Kopieren</label>
+                                    <textarea id="ride-preview-{{ preview.id }}" readonly rows="6" spellcheck="false">{{ preview.body }}</textarea>
+                                    {% if preview.kind == 'invitation' and preview.code %}
+                                        <label for="ride-code-{{ preview.id }}">Persönlicher Testcode</label>
+                                        <input id="ride-code-{{ preview.id }}" type="text" value="{{ preview.code }}" readonly spellcheck="false" autocomplete="off">
+                                    {% endif %}
+                                    {% if preview.link %}<a class="button-link" href="{{ preview.link }}" target="_blank" rel="noopener noreferrer">Testfragebogen öffnen</a>{% endif %}
+                                </details>
+                            {% endfor %}
+                        </li>
+                    {% endfor %}
+                </ul>
+            {% else %}
+                <p class="quiet">Noch keine Testeinladungen vorbereitet.</p>
+            {% endif %}
+        </section>
+    {% endif %}
 
     <section class="panel" aria-labelledby="ride-bookings">
         <h2 id="ride-bookings">{% if round_trip and case.currently_matches %}Zugeordnete Buchungen{% else %}Zuletzt zugeordnete Buchungen{% endif %}</h2>

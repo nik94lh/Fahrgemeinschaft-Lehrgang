@@ -1,3 +1,5 @@
+from uuid import uuid4
+
 from django.conf import settings
 from django.core.validators import MaxValueValidator, RegexValidator
 from django.db import models
@@ -104,6 +106,7 @@ class CourseSession(models.Model):
     course = models.ForeignKey(Course, on_delete=models.PROTECT, related_name="sessions")
     school = models.CharField(max_length=16, choices=School.choices)
     is_online = models.BooleanField(default=False, db_default=False)
+    is_test = models.BooleanField(default=False, db_default=False)
     starts_at = models.DateTimeField()
     ends_at = models.DateTimeField()
 
@@ -139,13 +142,14 @@ class CourseSeat(models.Model):
         default=BookingStatus.NEEDS_REVIEW,
     )
     confirmation_deadline = models.DateField(null=True, blank=True)
+    is_test = models.BooleanField(default=False, db_default=False)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["external_reference"],
+                fields=["is_test", "external_reference"],
                 condition=~Q(external_reference=""),
-                name="bookings_seat_unique_external_ref",
+                name="bookings_seat_unique_ref_by_mode",
             ),
         ]
 
@@ -283,6 +287,7 @@ class RideConfiguration(models.Model):
     lead_days = models.PositiveSmallIntegerField(
         default=DEFAULT_RIDE_LEAD_DAYS, validators=[MaxValueValidator(MAX_RIDE_LEAD_DAYS)],
     )
+    automatic_inquiries = models.BooleanField(default=False, db_default=False)
 
     class Meta:
         constraints = [
@@ -313,6 +318,7 @@ class RideCase(models.Model):
     seats = models.ManyToManyField(CourseSeat, related_name="ride_cases")
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.OPEN)
     currently_matches = models.BooleanField(default=True)
+    is_test = models.BooleanField(default=False, db_default=False)
 
     class Meta:
         ordering = ["travel_date", "earliest", "pk"]
@@ -333,6 +339,48 @@ class RideCase(models.Model):
                 name="bookings_ride_return_fields",
             ),
         ]
+
+
+class RideParticipation(models.Model):
+    class Answer(models.TextChoices):
+        PENDING = "pending", "Antwort offen"
+        YES = "yes", "Positiv"
+        NO = "no", "Negativ"
+
+    case = models.ForeignKey(RideCase, on_delete=models.CASCADE, related_name="participation_requests")
+    seat = models.ForeignKey(CourseSeat, on_delete=models.SET_NULL, null=True, blank=True)
+    session = models.ForeignKey(CourseSession, on_delete=models.SET_NULL, null=True, blank=True)
+    participant = models.ForeignKey(Participant, on_delete=models.CASCADE)
+    email = models.EmailField()
+    token_seed = models.UUIDField(default=uuid4, unique=True, editable=False)
+    token_digest = models.CharField(max_length=64, unique=True, editable=False)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+    answer = models.CharField(max_length=7, choices=Answer.choices, default=Answer.PENDING)
+    answered_at = models.DateTimeField(null=True, blank=True)
+    consented_at = models.DateTimeField(null=True, blank=True)
+    brigade = models.CharField(max_length=120, blank=True)
+    phone = models.CharField(max_length=25, blank=True)
+    channels = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["case", "participant"], name="bookings_one_ride_reply_per_person"),
+        ]
+
+
+class RideNotice(models.Model):
+    class Kind(models.TextChoices):
+        INVITATION = "invitation", "Einladung zur Fahrgemeinschaft"
+        CONTACTS = "contacts", "Kontakte zur Fahrgemeinschaft verfügbar"
+        WITHDRAWAL = "withdrawal", "Zusage zur Fahrgemeinschaft zurückgezogen"
+
+    participation = models.ForeignKey(RideParticipation, on_delete=models.CASCADE, related_name="notices")
+    kind = models.CharField(max_length=10, choices=Kind.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["created_at", "pk"]
 
 
 class RideSimulationInvitation(models.Model):

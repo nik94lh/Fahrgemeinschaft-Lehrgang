@@ -1,0 +1,43 @@
+{% extends "workspace/base.html" %}
+{% block title %}Buchung anlegen{% endblock %}
+{% block live_region %}{% endblock %}
+{% block page_styles %}
+    .booking-create { max-inline-size: 51rem; }
+    .booking-create-mode { border-block-end: 1px solid var(--rule); margin-block-end: 1rem; padding-block-end: .9rem; }
+    .booking-create-mode .note { margin-block-start: .25rem; }
+    .booking-create-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .85rem 1.2rem; }
+    .booking-create-grid label { display: block; font-weight: 650; }
+    .booking-create-grid select { width: 100%; margin-block-start: .25rem; padding: .6rem; border: 1px solid var(--line); border-radius: .45rem; background: var(--surface); color: var(--ink); font: inherit; }
+    .booking-create-check { display: inline-flex; align-items: center; gap: .45rem; min-height: 2rem; }
+    .booking-create button { width: auto; margin-block-end: 0; }
+    @media (max-width: 520px) { .booking-create-grid { grid-template-columns: 1fr; } }
+{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'bookings' %}">‹ Zurück zu den Buchungen</a></p>
+    <div class="page-heading"><h1>Buchung anlegen</h1></div>
+    <form class="panel booking-create" method="post">
+        {% csrf_token %}
+        {{ form.non_field_errors }}
+        <div class="booking-create-mode">
+            <label class="booking-create-check">{{ form.is_test }} <strong>{{ form.is_test.label }}</strong></label>
+            <p class="note" id="{{ form.is_test.id_for_label }}_helptext">{{ form.is_test.help_text }}</p>
+            {{ form.is_test.errors }}
+        </div>
+        <div class="booking-create-grid">
+            <div>{{ form.participant_name.as_field_group }}</div>
+            <div>{{ form.participant_email.as_field_group }}</div>
+            <div>{{ form.course_name.as_field_group }}</div>
+            <div>
+                {{ form.school.as_field_group }}
+                <p><label class="booking-create-check">{{ form.is_online }} {{ form.is_online.label }}</label></p>
+                {{ form.is_online.errors }}
+            </div>
+            <div>{{ form.starts_at.as_field_group }}</div>
+            <div>{{ form.ends_at.as_field_group }}</div>
+            <div>{{ form.status.as_field_group }}</div>
+            <div>{{ form.confirmation_deadline.as_field_group }}</div>
+            <div>{{ form.external_reference.as_field_group }}</div>
+        </div>
+        <button type="submit">Buchung speichern</button>
+    </form>
+{% endblock %}

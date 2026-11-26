@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.19.0
+
+- Unter Buchungen können Berechtigte Buchungen manuell anlegen. Testbuchungen haben eigene Adressen und werden für Fahrgemeinschaften getrennt abgeglichen.
+- Die Teilnahmeabfrage lässt sich mit persönlichen, wiederverwendbaren Codes und Direktlinks testen. Ab zwei Zusagen mit Freigabe zeigt das Teilnahmeportal die gewählten Kontaktdaten. Nach einem Widerruf aktualisiert es die Liste und weist die übrigen Zusagenden darauf hin.
+- Der Admin-Schalter steuert, ob Testabfragen manuell auf der Fahrgemeinschaftskachel oder automatisch im festgelegten Vorlauf starten. Einladungen und Benachrichtigungen erscheinen als Mailvorschauen.
+
 ## 0.18.1
 
 - Die Monatsansicht zeigt alle Tage des gewählten Monats in einer festen Zeile. Schraffierte Balkenkanten markieren Lehrgänge, die vor dem Monat beginnen oder darüber hinauslaufen.
