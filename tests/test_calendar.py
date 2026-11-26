@@ -33,9 +33,14 @@ class CalendarTests(WorkspaceTestCase):
 
     @staticmethod
     def add_session(name, school, start, end):
-        return CourseSession.objects.create(
+        session = CourseSession.objects.create(
             course=Course.objects.create(name=name), school=school, starts_at=start, ends_at=end,
         )
+        CourseSeat.objects.create(
+            session=session, participant=Participant.objects.create(name="Synthetische Kalenderperson"),
+            status=BookingStatus.CONFIRMED,
+        )
+        return session
 
     def test_appointment_list_includes_only_sessions_overlapping_the_selected_local_month(self):
         response = self.client.get("/kalender/", {"month": "2031-05"})
@@ -59,13 +64,57 @@ class CalendarTests(WorkspaceTestCase):
         self.assertIn("timeline_groups", response.context)
         self.assertEqual({group["school"] for group in response.context["timeline_groups"]}, {School.WUERZBURG})
 
+    def test_calendar_hides_a_course_when_its_last_participant_is_cancelled_or_deleted(self):
+        session = CourseSession.objects.create(
+            course=Course.objects.create(name="Lehrgang mit stornierbaren Buchungen"), school=School.GERETSRIED,
+            starts_at=datetime(2031, 5, 12, 8, tzinfo=UTC), ends_at=datetime(2031, 5, 12, 12, tzinfo=UTC),
+        )
+        first = CourseSeat.objects.create(
+            session=session, participant=Participant.objects.create(name="Synthetische Testperson"),
+            status=BookingStatus.CONFIRMED,
+        )
+        second = CourseSeat.objects.create(
+            session=session, participant=Participant.objects.create(name="Zweite synthetische Testperson"),
+            status=BookingStatus.APPROVED, is_test=True,
+        )
+        CourseSeat.objects.create(session=session, status=BookingStatus.CONFIRMED)
+        views = (
+            {"month": "2031-05"},
+            {"view": "week", "day": "2031-05-12"},
+            {"view": "day", "day": "2031-05-12"},
+        )
+
+        def set_status(seat, status):
+            seat.status = status
+            seat.save(update_fields=["status"])
+
+        def check_visibility(visible):
+            for params in views:
+                response = self.client.get("/kalender/", params | {"school": School.GERETSRIED})
+                assertion = self.assertContains if visible else self.assertNotContains
+                assertion(response, f'href="/kalender/{session.pk}/?')
+                assertion(response, session.course.name)
+            year = self.client.get("/kalender/", {"view": "year", "year": "2031", "school": School.GERETSRIED})
+            self.assertEqual(year.context["months"][4]["occupied_count"], int(visible))
+
+        check_visibility(True)
+        set_status(first, BookingStatus.CANCELLED)
+        check_visibility(True)
+        set_status(second, BookingStatus.CANCELLED)
+        check_visibility(False)
+        set_status(second, BookingStatus.APPROVED)
+        check_visibility(True)
+        second.delete()
+        check_visibility(False)
+        self.assertContains(self.client.get(f"/kalender/{session.pk}/"), "Storniert")
+
     def test_week_and_month_bars_show_distinct_people_per_appointment(self):
         session = CourseSession.objects.get(course__name="Musterlehrgang Regensburg")
         other_session = CourseSession.objects.create(
             course=session.course, school=session.school,
             starts_at=session.starts_at + timedelta(days=1), ends_at=session.ends_at + timedelta(days=1),
         )
-        first = Participant.objects.create(name="Synthetische Testperson")
+        first = session.seats.get().participant
         same_name = Participant.objects.create(name=first.name)
         cancelled = Participant.objects.create(name="Ausgeschiedene Testperson")
         for participant, status in (

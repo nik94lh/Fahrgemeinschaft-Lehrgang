@@ -233,11 +233,11 @@ def _overlapping_sessions(starts, ends, school):
 
 
 def _calendar_sessions(sessions):
-    return sessions.select_related("course").annotate(
+    return sessions.annotate(
         participant_count=Count(
             "seats__participant_id", filter=~Q(seats__status=BookingStatus.CANCELLED), distinct=True,
         ),
-    ).order_by("starts_at", "course__name", "pk")
+    ).filter(participant_count__gt=0)
 
 
 def _agenda_groups(sessions):
@@ -256,11 +256,13 @@ def calendar(request):
     school = _selected_school(request.GET)
     starts = timezone.make_aware(datetime.combine(period.start, time.min), timezone=zone)
     ends = timezone.make_aware(datetime.combine(period.stop, time.min), timezone=zone)
-    sessions = _overlapping_sessions(starts, ends, school)
+    sessions = _calendar_sessions(_overlapping_sessions(starts, ends, school))
     if period.view == "year":
         sessions = list(sessions.only("starts_at", "ends_at").order_by("starts_at", "pk"))
     else:
-        sessions = list(_calendar_sessions(sessions).annotate(seat_count=Count("seats")))
+        sessions = list(sessions.select_related("course").annotate(seat_count=Count("seats")).order_by(
+            "starts_at", "course__name", "pk",
+        ))
 
     month_anchor = period.start
     week_anchor = period.start

@@ -41,6 +41,7 @@ VIEW_ROUTES = {
 }
 EDIT_ROUTES = {
     "booking_create": "bookings",
+    "booking_edit": "bookings",
     "booking_delete": "bookings",
     "rides_sync": "rides",
     "rides_settings": "rides",

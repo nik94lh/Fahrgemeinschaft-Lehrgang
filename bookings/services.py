@@ -348,6 +348,8 @@ def _reconcile_by_details(event: EmailEvent, mail: ParsedMail, *, receipt: MailR
         ).order_by().values_list("previous_participant__name", flat=True).distinct()
         if any(_normalized_name(previous) == name for previous in previous_names.iterator()):
             return _flag_review(event, mail, EmailEvent.ReviewReason.PREVIOUS_PARTICIPANT)
+        if correction := _review_previous_booking_data(event, mail, (session.pk,)):
+            return correction
     if event.kind not in ACTIVATION_EVENTS:
         return _flag_review(event, mail, EmailEvent.ReviewReason.NO_MATCHING_BOOKING)
 
@@ -389,11 +391,28 @@ def _seats_with_name(sessions, name: str, *, verified_email: str | None = None) 
 
 
 def _apply_matching_seat(
-    event: EmailEvent, seat: CourseSeat, mail: ParsedMail, *, receipt: MailReceipt | None,
+    event: EmailEvent, seat: CourseSeat, mail: ParsedMail, *, receipt: MailReceipt | None, previous_sessions=None,
 ) -> EmailEvent:
     if mail.booking_reference and seat.external_reference:
         return _flag_review(event, mail, EmailEvent.ReviewReason.REFERENCE_MISMATCH, candidate_seat_id=seat.pk)
+    if not mail.participant_email or normalize_contact_email(seat.participant.email) != mail.participant_email:
+        if previous_sessions is None:
+            previous_sessions = (seat.session_id,)
+        if correction := _review_previous_booking_data(event, mail, previous_sessions, exclude_seat_id=seat.pk):
+            return correction
     return _update_booking(event, seat, mail, receipt=receipt)
+
+
+def _review_previous_booking_data(event, mail, session_ids, *, exclude_seat_id=None):
+    name = _normalized_name(mail.participant_name)
+    changes = BookingHistory.objects.filter(previous_session_id__in=session_ids, seat__is_test=False).exclude(
+        seat_id=exclude_seat_id,
+    ).exclude(previous_name="").values_list("seat_id", "previous_name")
+    seat_ids = {seat_id for seat_id, previous in changes.iterator() if _normalized_name(previous) == name}
+    if seat_ids:
+        candidate = next(iter(seat_ids)) if len(seat_ids) == 1 else None
+        return _flag_review(event, mail, EmailEvent.ReviewReason.PREVIOUS_BOOKING_DATA, candidate_seat_id=candidate)
+    return None
 
 
 def _reconcile_online_follow_up(
@@ -402,19 +421,21 @@ def _reconcile_online_follow_up(
     name = _normalized_name(mail.participant_name)
     email = mail.participant_email
     if mail.school == School.ONLINE:
+        previous_sessions = schedule.filter(Q(school=School.ONLINE) | Q(is_online=True))
         seats = _seats_with_name(schedule, name, verified_email=email)
     else:
         # A course can run online and in person at the same time under the same organizer.
+        possible = schedule.filter(Q(school=mail.school) | Q(school=School.ONLINE))
+        previous_sessions = possible
         sessions = schedule.filter(school=mail.school, is_online=True)
         seats = _seats_with_name(sessions, name, verified_email=email)
         if not seats:
-            possible = schedule.filter(Q(school=mail.school) | Q(school=School.ONLINE))
             seats = _seats_with_name(possible, name, verified_email=email)
 
     if len(seats) > 1:
         return _flag_review(event, mail, EmailEvent.ReviewReason.MULTIPLE_SEATS)
     if not seats:
-        return None
+        return _review_previous_booking_data(event, mail, previous_sessions.values_list("pk", flat=True))
 
     seat = seats[0]
     if mail.school == School.ONLINE and seat.session.school != School.ONLINE and not seat.session.is_online:
@@ -422,7 +443,9 @@ def _reconcile_online_follow_up(
             return _flag_review(
                 event, mail, EmailEvent.ReviewReason.PARTICIPANT_IDENTITY_UNCLEAR, candidate_seat_id=seat.pk,
             )
-    return _apply_matching_seat(event, seat, mail, receipt=receipt)
+    return _apply_matching_seat(
+        event, seat, mail, receipt=receipt, previous_sessions=previous_sessions.values_list("pk", flat=True),
+    )
 
 
 def _new_status(event: EmailEvent, seat: CourseSeat, mail: ParsedMail) -> str:

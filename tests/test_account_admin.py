@@ -1,4 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
+from datetime import UTC, datetime
 from threading import Barrier, Event
 from unittest import skipUnless
 from unittest.mock import patch
@@ -8,6 +9,7 @@ from django.contrib.auth.models import Group, Permission
 from django.contrib.sessions.middleware import SessionMiddleware
 from django.db import connection, connections
 from django.test import Client, TestCase, TransactionTestCase, override_settings
+from django.utils import timezone
 
 from accounts.access import SECTIONS
 from accounts.middleware import WorkspaceAccessMiddleware
@@ -89,6 +91,22 @@ class AccountAdministrationTests(TestCase):
 
         self.assertEqual(denied.status_code, 403)
         self.assertFalse(self.member.user_permissions.exists())
+
+    def test_account_list_shows_last_login_in_berlin_time(self):
+        self.client.force_login(self.admin)
+        self.member.last_login = datetime(2030, 7, 11, 22, 42, tzinfo=UTC)
+        self.member.save(update_fields=["last_login"])
+
+        with timezone.override(UTC):
+            response = self.client.get("/benutzer/")
+
+        self.assertContains(response, '<th scope="col">Letzte Anmeldung</th>', html=True)
+        self.assertContains(
+            response,
+            '<td data-label="Letzte Anmeldung"><time datetime="2030-07-12T00:42:00+02:00">'
+            '12.07.2030, 00:42 Uhr</time></td>', html=True,
+        )
+        self.assertContains(response, '<td data-label="Letzte Anmeldung">Noch nie</td>', html=True)
 
     def test_admin_creates_account_with_only_selected_workspace_rights(self):
         self.client.force_login(self.admin)
