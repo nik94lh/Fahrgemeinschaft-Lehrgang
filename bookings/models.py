@@ -200,6 +200,7 @@ class EmailEvent(models.Model):
     class ReviewResolution(models.TextChoices):
         LINKED = "linked", "Einem Lehrgangsplatz zugeordnet"
         ADDRESS_KEPT = "address_kept", "Gespeicherte Adresse beibehalten"
+        BOOKING_DELETED = "booking_deleted", "Zugeordnete Buchung gelöscht"
         CANCELLED = "cancelled", "Stornierung in BMS übernommen"
         REASSIGNED = "reassigned", "Ummeldung in BMS übernommen"
         DUPLICATE = "duplicate", "Doppelter Vorgang"

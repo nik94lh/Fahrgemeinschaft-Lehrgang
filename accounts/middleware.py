@@ -20,6 +20,7 @@ VIEW_ROUTES = {
     "booking_detail": "bookings",
     "booking_participant": "bookings",
     "people": "people",
+    "statistics": "statistics",
     "calendar": "calendar",
     "calendar_detail": "calendar",
     "rides": "rides",
@@ -34,6 +35,7 @@ VIEW_ROUTES = {
     "mail_receipt": "mail_receipts",
 }
 EDIT_ROUTES = {
+    "booking_delete": "bookings",
     "rides_sync": "rides",
     "rides_settings": "rides",
     "ride_simulation": "rides",

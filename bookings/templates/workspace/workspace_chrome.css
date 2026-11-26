@@ -140,7 +140,7 @@ details[open] > .workspace-menu-trigger::after { margin-block-start: .18rem; tra
 .workspace-static-chrome .workspace-nav-mobile:has(details[open]) { align-items: start; }
 .workspace-static-chrome .workspace-nav-desktop { flex-wrap: wrap; }
 
-@media (max-width: 820px) {
+@media (max-width: 900px) {
     .workspace-chrome-brand { gap: .5rem; }
     .workspace-chrome-brand strong { font-size: 1.35rem; }
     .workspace-chrome-brand span { padding-inline-start: .5rem; font-size: .85rem; }

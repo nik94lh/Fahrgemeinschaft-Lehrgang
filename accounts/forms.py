@@ -41,7 +41,7 @@ class WorkspaceRightsMixin:
             ), "none")
             choices = [(value, text) for value, text in ACCESS_CHOICES if value == "none" or value in actions]
             self.fields[f"access_{section}"] = forms.ChoiceField(
-                label=label, choices=choices, initial=initial,
+                label=label, choices=choices, initial=initial, required=section != "statistics",
             )
 
     def access_fields(self):
@@ -51,7 +51,9 @@ class WorkspaceRightsMixin:
         permissions = _workspace_permissions()
         selected = set()
         for section in SECTIONS:
-            choice = self.cleaned_data[f"access_{section}"]
+            field_name = f"access_{section}"
+            # Account forms opened before the statistics tab existed omit its grant.
+            choice = self.cleaned_data[field_name] or self.fields[field_name].initial
             if choice in ("view", "edit"):
                 selected.add(permissions[section_permission(section, "view")])
             if choice == "edit":

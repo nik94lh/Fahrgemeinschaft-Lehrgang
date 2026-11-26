@@ -11,7 +11,7 @@ from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_safe
 
-from accounts.access import can_view
+from accounts.access import can_edit, can_view
 from mailimport.models import MailReceipt
 
 from .booking_search import booking_list_navigation
@@ -66,5 +66,6 @@ def booking_detail(request, seat_id):
         "seat": seat,
         "bookings_url": bookings_url,
         "participant_url": reverse("booking_participant", args=[seat.pk], query=detail_params),
+        "delete_url": reverse("booking_delete", args=[seat.pk], query=detail_params) if can_edit(request.user, "bookings") else "",
         "timeline": _booking_timeline(seat, show_receipts=show_receipts),
     })

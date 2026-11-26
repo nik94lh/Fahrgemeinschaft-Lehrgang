@@ -8,6 +8,7 @@ from django.views.decorators.http import require_safe
 
 from accounts import views as account_views
 from bookings import views
+from bookings.booking_delete_view import booking_delete
 from bookings.booking_detail import booking_detail
 from bookings.brigades import brigade_edit, brigades
 from bookings.calendar import calendar, calendar_detail
@@ -22,6 +23,7 @@ from bookings.ride_simulation import (
     ride_simulation_script,
 )
 from bookings.rides import ride_detail, rides, rides_sync
+from bookings.statistics import statistics
 from mailimport.mailbox_views import mailbox_view
 from mailimport.receipt_views import mail_receipt, mail_receipt_recheck, mail_receipts
 from mailimport.views import manual_import, preview, sample_eml
@@ -77,8 +79,10 @@ urlpatterns = [
     path("", views.overview, name="overview"),
     path("buchungen/", views.bookings, name="bookings"),
     path("buchungen/<int:seat_id>/", booking_detail, name="booking_detail"),
+    path("buchungen/<int:seat_id>/loeschen/", booking_delete, name="booking_delete"),
     path("buchungen/<int:seat_id>/teilnehmer/", booking_participant, name="booking_participant"),
     path("personen/", people, name="people"),
+    path("statistik/", statistics, name="statistics"),
     path("kalender/", calendar, name="calendar"),
     path("kalender/<int:session_id>/", calendar_detail, name="calendar_detail"),
     path("fahrgemeinschaften/", rides, name="rides"),

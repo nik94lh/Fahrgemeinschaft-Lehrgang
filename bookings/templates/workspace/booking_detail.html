@@ -11,6 +11,9 @@
     .booking-timeline-time, .booking-timeline-note { color: var(--muted); font-size: .9rem; }
     .booking-timeline-changes { padding-inline-start: 1.1rem; margin-block: .3rem 0; }
     .booking-timeline-link { display: inline-block; margin-block-start: .25rem; }
+    .booking-detail-actions { margin-block-start: 1rem; }
+    .booking-detail-actions a { border-color: #a97780; color: #812736; }
+    .booking-detail-actions a:hover { background: #f9ecee; }
 {% endblock %}
 {% block content %}
     <p class="back-link"><a href="{{ bookings_url }}">‹ Zurück zu den Buchungen</a></p>
@@ -83,4 +86,5 @@
             <p class="quiet">Noch keine Ereignisse protokolliert.</p>
         {% endif %}
     </section>
+    {% if delete_url %}<p class="booking-detail-actions"><a class="button-link" href="{{ delete_url }}">Buchung löschen</a></p>{% endif %}
 {% endblock %}

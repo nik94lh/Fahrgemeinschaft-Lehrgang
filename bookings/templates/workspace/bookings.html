@@ -3,6 +3,7 @@
 {% block page_styles %}{% include "workspace/listing.css" %}{% endblock %}
 {% block content %}
     <div class="page-heading"><h1>Buchungen</h1></div>
+    {% if deleted_booking_id %}<p class="notice" role="status">Buchung {{ deleted_booking_id|stringformat:"d" }} wurde endgültig gelöscht.</p>{% endif %}
     {% if imported %}<p class="notice" role="status">Die Testmail wurde ausgewertet.{% if workspace_view.review %} Nicht eindeutige Ereignisse findest du unter <a href="{% url 'review' %}">Klärung</a>.{% endif %}</p>{% endif %}
     <form class="panel filters listing-filters booking-filters" method="get" role="search" aria-label="Buchungen filtern">
         <label class="booking-query">Lehrgang, Person, Referenz oder Buchungs-ID<input name="q" type="search" maxlength="100" value="{{ query }}"></label>
