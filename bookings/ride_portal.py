@@ -13,10 +13,10 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
+from .models import RideNotice, RideParticipation
 from .ride_participation import (
     CONTACT_CHANNELS,
     active_participation,
-    notice_message,
     participation_for_code,
     portal_overview,
     record_ride_reply,
@@ -97,6 +97,19 @@ def _grant(request):
     return (grant["participation_id"], grant["token_digest"]) if grant else (None, None)
 
 
+def _latest_contact_note(participation):
+    if participation.answer != RideParticipation.Answer.YES or not participation.consented_at:
+        return ""
+    # A later release or consent supersedes an older withdrawal.
+    kind = participation.notices.filter(
+        created_at__gte=participation.consented_at,
+        kind__in=(RideNotice.Kind.CONTACTS, RideNotice.Kind.NEW_PEER, RideNotice.Kind.WITHDRAWAL),
+    ).order_by("-created_at", "-pk").values_list("kind", flat=True).first()
+    if kind == RideNotice.Kind.WITHDRAWAL:
+        return "Eine Zusage wurde nachträglich zurückgezogen."
+    return ""
+
+
 @sensitive_variables("participation", "form", "context")
 def _render_portal(request, *, participation=None, form=None, access_error="", status=200):
     context = {"code_form": AccessCodeForm(), "access_error": access_error}
@@ -115,7 +128,7 @@ def _render_portal(request, *, participation=None, form=None, access_error="", s
             reply_form=form,
             possible_peer_count=possible_peer_count,
             contacts=contacts,
-            notices=[(notice.get_kind_display(), notice_message(notice)) for notice in participation.notices.all()],
+            contact_note=_latest_contact_note(participation),
         )
     return render(request, "ride_portal/page.html", context, status=status)
 

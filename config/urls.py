@@ -19,7 +19,7 @@ from bookings.people import people
 from bookings.review_actions import review_detail
 from bookings.ride_inquiry_views import ride_automation, ride_inquiry_start
 from bookings.ride_portal import ride_portal, ride_portal_reply, ride_portal_script
-from bookings.ride_settings import rides_settings
+from bookings.ride_settings import rides_settings, workspace_settings
 from bookings.ride_simulation import (
     ride_simulation,
     ride_simulation_open,
@@ -84,6 +84,7 @@ urlpatterns = [
     path("buchungen/<int:seat_id>/teilnehmer/", booking_participant, name="booking_participant"),
     path("personen/", people, name="people"),
     path("statistik/", statistics, name="statistics"),
+    path("einstellungen/", workspace_settings, name="workspace_settings"),
     path("kalender/", calendar, name="calendar"),
     path("kalender/<int:session_id>/", calendar_detail, name="calendar_detail"),
     path("fahrgemeinschaften/", rides, name="rides"),

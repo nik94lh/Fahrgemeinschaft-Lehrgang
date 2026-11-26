@@ -25,6 +25,7 @@ class WorkspaceNavigationTests(WorkspaceTestCase):
             ("/klaerung/", "Klärungsfälle"), ("/statistik/", "Statistik"), ("/feuerwehren/", "Feuerwehren"),
             ("/vorschau/", "E-Mail-Vorschau"), ("/postfach/", "Postfach"),
             ("/mail-eingang/", "Mail-Eingang"), ("/benutzer/", "Benutzerverwaltung"),
+            ("/einstellungen/", "Einstellungen"),
         ):
             with self.subTest(path=path):
                 response = self.client.get(path, secure=True)

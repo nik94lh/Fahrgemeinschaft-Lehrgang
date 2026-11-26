@@ -95,6 +95,7 @@ def _mediation(case: RideCase, *, now: datetime, lead_days: int) -> _Mediation:
 
 @dataclass(frozen=True)
 class _InquirySummary:
+    state: str
     label: str
     total: int
     pending: int
@@ -124,20 +125,20 @@ def _inquiry_summary(participations, active_ids):
     active = [entry for entry in participations if entry.pk in active_ids]
     pending = sum(entry.answer == answers.PENDING for entry in active)
     consents = sum(entry.answer == answers.YES and entry.consented_at is not None for entry in active)
+    released_before = any(entry.had_release for entry in participations)
     if not participations:
-        label = "Noch nicht gestartet"
+        state, label = "not-started", "Noch nicht gestartet"
     elif consents >= 2:
-        label = "Kontakte freigegeben"
-    elif any(entry.had_release for entry in participations):
-        label = "Kontaktfreigabe beendet"
-    elif not active:
-        label = "Beendet"
+        state, label = "contacts-released", "Kontakte freigegeben"
     elif pending:
-        label = "Antworten ausstehend"
+        state = "awaiting-replies"
+        label = "Kontaktfreigabe beendet, weitere Antworten offen" if released_before else "Antworten ausstehend"
     else:
-        label = "Zu wenig Zusagen"
+        state = "no-match"
+        label = "Kontaktfreigabe beendet" if released_before else ("Zu wenig Zusagen" if active else "Beendet")
     return _InquirySummary(
-        label, len(participations), pending, counts[answers.YES], counts[answers.NO], counts[answers.PENDING] - pending,
+        state=state, label=label, total=len(participations), pending=pending, yes=counts[answers.YES],
+        no=counts[answers.NO], unavailable=counts[answers.PENDING] - pending,
     )
 
 

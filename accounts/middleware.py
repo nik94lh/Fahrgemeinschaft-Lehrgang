@@ -45,6 +45,7 @@ EDIT_ROUTES = {
     "booking_delete": "bookings",
     "rides_sync": "rides",
     "rides_settings": "rides",
+    "workspace_settings": "rides",
     "ride_inquiry_start": "rides",
     "ride_simulation": "rides",
     "ride_simulation_open": "rides",

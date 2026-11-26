@@ -9,13 +9,19 @@
     .ride-page-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .5rem; }
     .ride-time { display: block; font-size: .875rem; color: var(--muted); }
     .ride-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr)); gap: 1rem; margin: 0; padding: 0; list-style: none; }
-    .ride-card { display: flex; flex-direction: column; gap: .85rem; height: 100%; padding: 1.1rem; background: var(--surface); border: 1px solid var(--line); border-radius: .7rem; box-shadow: 0 2px 8px #162b4810; }
+    .ride-card { display: flex; flex-direction: column; gap: .85rem; height: 100%; padding: 1.1rem; background: var(--ride-card-surface, var(--surface)); border: 1px solid var(--ride-card-border, var(--line)); border-radius: .7rem; box-shadow: 0 2px 8px #162b4810; }
+    .ride-card--not-started { --ride-card-surface: #f1f3f5; --ride-card-border: #74818f; --ride-trip-surface: #e5e9ee; }
+    .ride-card--awaiting-replies { --ride-card-surface: #e4f0ff; --ride-card-border: #356ca7; --ride-trip-surface: #d8e8fb; }
+    .ride-card--contacts-released { --ride-card-surface: #e4f4e9; --ride-card-border: #408362; --ride-trip-surface: #d6eddf; }
+    .ride-card--no-match { --ride-card-surface: #fce9e8; --ride-card-border: #b54e51; --ride-trip-surface: #f7dad8; }
+    .ride-card:is(.ride-card--not-started, .ride-card--awaiting-replies, .ride-card--contacts-released, .ride-card--no-match) { border-width: 2px; }
+    .ride-card:is(.ride-card--not-started, .ride-card--awaiting-replies, .ride-card--contacts-released, .ride-card--no-match) .ride-phase-ready { background: var(--ride-trip-surface); color: var(--ink); }
     .ride-card-title { margin: 0 0 .4rem; font-size: 1.3rem; line-height: 1.2; overflow-wrap: anywhere; }
     .ride-party { display: flex; flex-wrap: wrap; align-items: baseline; gap: .36rem; color: var(--ink); }
     .ride-party-icon { color: var(--accent); }
     .ride-party-count { font-size: 1.2rem; }
     .ride-trips { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; margin: 0; }
-    .ride-trips div { padding: .55rem .6rem; background: #eef3fa; border-radius: .45rem; }
+    .ride-trips div { padding: .55rem .6rem; background: var(--ride-trip-surface, #eef3fa); border-radius: .45rem; }
     .ride-trips dt { font-size: .8rem; color: var(--muted); }
     .ride-trips dd { margin: 0; }
     .ride-trips time { font-weight: 650; }
@@ -46,7 +52,6 @@
             <div class="page-heading page-heading--actions">
                 <div class="ride-page-actions">
                     <a class="button-link" href="{% url 'ride_simulation' %}">Teilnehmerabfrage testen</a>
-                    <a class="button-link" href="{% url 'rides_settings' %}">Einstellungen</a>
                 </div>
             </div>
         {% endif %}
