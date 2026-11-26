@@ -11,6 +11,7 @@ from bookings import views
 from bookings.booking_create import booking_create
 from bookings.booking_delete_view import booking_delete
 from bookings.booking_detail import booking_detail
+from bookings.booking_edit import booking_edit
 from bookings.brigades import brigade_edit, brigades
 from bookings.calendar import calendar, calendar_detail
 from bookings.participant_views import booking_participant
@@ -78,6 +79,7 @@ urlpatterns = [
     path("buchungen/", views.bookings, name="bookings"),
     path("buchungen/neu/", booking_create, name="booking_create"),
     path("buchungen/<int:seat_id>/", booking_detail, name="booking_detail"),
+    path("buchungen/<int:seat_id>/bearbeiten/", booking_edit, name="booking_edit"),
     path("buchungen/<int:seat_id>/loeschen/", booking_delete, name="booking_delete"),
     path("buchungen/<int:seat_id>/teilnehmer/", booking_participant, name="booking_participant"),
     path("personen/", people, name="people"),

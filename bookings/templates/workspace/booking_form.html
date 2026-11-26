@@ -1,5 +1,5 @@
 {% extends "workspace/base.html" %}
-{% block title %}Buchung anlegen{% endblock %}
+{% block title %}{% if edit_seat %}Buchung bearbeiten{% else %}Buchung anlegen{% endif %}{% endblock %}
 {% block live_region %}{% endblock %}
 {% block page_styles %}
     .booking-create { max-inline-size: 51rem; }
@@ -13,16 +13,26 @@
     @media (max-width: 520px) { .booking-create-grid { grid-template-columns: 1fr; } }
 {% endblock %}
 {% block content %}
-    <p class="back-link"><a href="{% url 'bookings' %}">‹ Zurück zu den Buchungen</a></p>
-    <div class="page-heading"><h1>Buchung anlegen</h1></div>
+    <p class="back-link">
+        {% if edit_seat %}<a href="{{ detail_url }}">‹ Zurück zur Buchung</a>
+        {% else %}<a href="{% url 'bookings' %}">‹ Zurück zu den Buchungen</a>{% endif %}
+    </p>
+    <div class="page-heading"><h1>{% if edit_seat %}Buchungs-ID {{ edit_seat.pk|stringformat:'d' }} bearbeiten{% else %}Buchung anlegen{% endif %}</h1></div>
     <form class="panel booking-create" method="post">
         {% csrf_token %}
         {{ form.non_field_errors }}
+        {% if stale %}<p class="warnings" role="alert">Diese Buchung wurde seit dem Öffnen geändert. Prüfe die aktuellen Angaben vor dem Speichern.</p>{% endif %}
+        {% if edit_seat %}
+            {{ form.snapshot }}
+            {% if form.snapshot.errors %}<p class="warnings" role="alert">Lade das Formular erneut, um die Buchung zu bearbeiten.</p>{% endif %}
+            {% if edit_seat.is_test %}<p class="booking-create-mode"><span class="status-label">Testbuchung</span></p>{% endif %}
+        {% else %}
         <div class="booking-create-mode">
             <label class="booking-create-check">{{ form.is_test }} <strong>{{ form.is_test.label }}</strong></label>
             <p class="note" id="{{ form.is_test.id_for_label }}_helptext">{{ form.is_test.help_text }}</p>
             {{ form.is_test.errors }}
         </div>
+        {% endif %}
         <div class="booking-create-grid">
             <div>{{ form.participant_name.as_field_group }}</div>
             <div>{{ form.participant_email.as_field_group }}</div>

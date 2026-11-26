@@ -22,7 +22,9 @@
         {% if seat.participant_id %}
             <a class="button-link" href="{{ participant_url }}">Teilnehmerprofil ansehen</a>
         {% endif %}
+        {% if edit_url %}<a class="button-link" href="{{ edit_url }}">Buchung bearbeiten</a>{% endif %}
     </div>
+    {% if saved %}<p class="panel diagnostic-panel" role="status">Buchung gespeichert.</p>{% endif %}
     <section class="panel booking-detail-summary" aria-labelledby="booking-course">
         <h2 id="booking-course">{{ seat.session.course.name }}</h2>
         <dl class="details">
@@ -41,7 +43,7 @@
                 {% for entry in timeline %}
                     <li>
                         <div class="booking-timeline-row">
-                            <h3>{% if entry.event %}{{ entry.event.get_kind_display }}{% elif entry.changes.0.profile_linked %}Teilnehmerprofil zugeordnet{% else %}Änderung in der Buchung{% endif %}</h3>
+                            <h3>{% if entry.event %}{{ entry.event.get_kind_display }}{% elif entry.changes.0.edited_fields %}Buchung manuell bearbeitet{% elif entry.changes.0.profile_linked %}Teilnehmerprofil zugeordnet{% else %}Änderung in der Buchung{% endif %}</h3>
                             {% if entry.event %}<span class="status-label status-{{ entry.event.state }}">{{ entry.event.get_state_display }}</span>{% endif %}
                         </div>
                         <p class="booking-timeline-time">
@@ -69,6 +71,7 @@
                                             {% endwith %}
                                         {% endif %}
                                     </li>
+                                    {% if change.edited_fields %}<li>Geändert · {{ change.edited_fields|join:", " }}</li>{% endif %}
                                 {% endfor %}
                             </ul>
                         {% elif entry.event.state == 'applied' or entry.event.state == 'reviewed' %}

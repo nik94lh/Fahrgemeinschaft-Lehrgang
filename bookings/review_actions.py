@@ -63,6 +63,7 @@ REASON_GUIDANCE = {
     EmailEvent.ReviewReason.MULTIPLE_SESSIONS: "Suche die richtige Buchung anhand der Referenz. Mehrere Termine haben denselben Lehrgang, dieselbe Schule und denselben Zeitraum.",
     EmailEvent.ReviewReason.MULTIPLE_COURSES: "In BMS gibt es mehrere Lehrgänge mit dieser Bezeichnung. Prüfe, welcher zur Meldung gehört.",
     EmailEvent.ReviewReason.PREVIOUS_PARTICIPANT: "Prüfe, ob die Nachricht die aktuell zugeordnete Person oder eine frühere Belegung betrifft.",
+    EmailEvent.ReviewReason.PREVIOUS_BOOKING_DATA: "Vergleiche die Nachricht mit der aktuellen Buchung und ihrem Verlauf.",
     EmailEvent.ReviewReason.NO_MATCHING_BOOKING: "Suche die Buchung nach Referenz, Person oder Lehrgang.",
     EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR: "Vergleiche das Datum und den gemeldeten Status mit den bisherigen Buchungsänderungen.",
     EmailEvent.ReviewReason.PROTECTED_STATUS: "Vergleiche den in der Nachricht gemeldeten Status mit dem aktuellen Buchungsstatus.",
@@ -334,7 +335,8 @@ def _receipt_context(request, event, context):
 
 def _current_booking_differences(event, recognized, seat):
     if seat is None or event.review_reason not in (
-        EmailEvent.ReviewReason.REFERENCE_MISMATCH, EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT,
+        EmailEvent.ReviewReason.REFERENCE_MISMATCH, EmailEvent.ReviewReason.PREVIOUS_BOOKING_DATA,
+        EmailEvent.ReviewReason.PARTICIPANT_EMAIL_CONFLICT,
     ):
         return []
     comparisons = (
@@ -479,6 +481,9 @@ def _reassign(form, event, seat):
         return False
     if event.occurred_at and seat.history.filter(source_event__occurred_at__gt=event.occurred_at).exists():
         form.add_error("seat", "Zu diesem Platz liegt bereits eine neuere Buchungsänderung vor.")
+        return False
+    if seat.history.filter(previous_session__isnull=False, recorded_at__gt=event.imported_at).exists():
+        form.add_error("seat", "Teilnehmer oder Lehrgang wurden nach Eingang dieser Meldung manuell geändert.")
         return False
     if not Participant.objects.select_for_update().filter(pk=replacement.pk).exists():
         form.add_error("replacement", "Die ausgewählte Person ist nicht mehr vorhanden.")

@@ -28,8 +28,8 @@ class BookingDeletionResult(StrEnum):
 
 
 @sensitive_variables()
-def deletion_token(seat: CourseSeat) -> str:
-    """Sign the current booking and the related changes relevant to deletion."""
+def booking_snapshot(seat: CourseSeat, *, purpose: str) -> str:
+    """Sign the current booking and its most recent events for a write form."""
     session = seat.session
     participant = seat.participant
     latest_history_id = seat.history.order_by("-pk").values_list("pk", flat=True).first()
@@ -44,7 +44,11 @@ def deletion_token(seat: CourseSeat) -> str:
         session.starts_at.astimezone(UTC), session.ends_at.astimezone(UTC),
         latest_history_id, latest_event, open_review_ids,
     )
-    return salted_hmac("bookings.delete_booking", repr(facts), algorithm="sha256").hexdigest()
+    return salted_hmac(purpose, repr(facts), algorithm="sha256").hexdigest()
+
+
+def deletion_token(seat: CourseSeat) -> str:
+    return booking_snapshot(seat, purpose="bookings.delete_booking")
 
 
 @transaction.atomic

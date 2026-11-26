@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.20.0
+
+- Berechtigte können die Daten einer einzelnen Buchungs-ID bearbeiten. BMS protokolliert die geänderten Felder im Buchungsverlauf und behandelt mehrdeutige Folgemails zu früheren Angaben als Klärungsfälle.
+- Der Kalender zeigt Lehrgänge mit mindestens einer zugeordneten, nicht stornierten Person. Nach der letzten Stornierung oder Löschung verschwindet der Termin aus der Übersicht.
+- Die Benutzerverwaltung zeigt den letzten erfolgreichen Login in Berliner Ortszeit. Bei Konten ohne Anmeldung steht „Noch nie“.
+
 ## 0.19.0
 
 - Unter Buchungen können Berechtigte Buchungen manuell anlegen. Testbuchungen haben eigene Adressen und werden für Fahrgemeinschaften getrennt abgeglichen.

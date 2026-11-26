@@ -1,6 +1,6 @@
 from django.urls import reverse
 
-from bookings.models import BookingStatus, CourseSeat, EmailEvent, Participant
+from bookings.models import BookingStatus, CourseSeat, CourseSession, EmailEvent, Participant, School
 from bookings.services import ingest
 from tests.test_reconciliation import eml
 from tests.workspace_client import WorkspaceTestCase
@@ -130,6 +130,27 @@ class ReviewActionTests(WorkspaceTestCase):
         self.reassignment.refresh_from_db()
         self.assertEqual(self.booking.status, BookingStatus.CONFIRMED)
         self.assertEqual(self.reassignment.state, EmailEvent.State.NEEDS_REVIEW)
+
+    def test_reassign_cannot_apply_old_mail_to_manually_moved_booking(self):
+        session = self.booking.session
+        self.booking.history.create(
+            previous_session=session, previous_name=self.booking.participant.name,
+            previous_participant=self.booking.participant, participant=self.booking.participant,
+            previous_status=self.booking.status, status=self.booking.status, edited_fields=["Schulungsort"],
+        )
+        self.booking.session = CourseSession.objects.create(
+            course=session.course, school=School.GERETSRIED, starts_at=session.starts_at, ends_at=session.ends_at,
+        )
+        self.booking.save(update_fields=["session"])
+
+        response = self.client.post(self.detail_url(), {
+            "action": "reassign", "seat": self.booking.pk, "previous_participant": self.booking.participant_id,
+            "replacement": self.replacement.pk, "confirm": "on",
+        })
+
+        self.assertContains(response, "nach Eingang dieser Meldung manuell geändert")
+        self.booking.refresh_from_db()
+        self.assertEqual(self.booking.status, BookingStatus.CONFIRMED)
 
     def test_detail_distinguishes_recognized_fields_and_current_booking(self):
         response = self.client.get(self.detail_url())

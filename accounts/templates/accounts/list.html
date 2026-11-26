@@ -1,4 +1,5 @@
 {% extends "workspace/base.html" %}
+{% load tz %}
 {% block main_layout %} class="workspace-main-wide"{% endblock %}
 {% block title %}Benutzerverwaltung{% endblock %}
 {% block page_styles %}{% include "accounts/styles.css" %}{% endblock %}
@@ -13,7 +14,15 @@
     <section class="panel" aria-labelledby="accounts-heading">
         <div class="table-scroll" tabindex="0" role="region" aria-labelledby="accounts-heading">
             <table class="mobile-table">
-                <thead><tr><th scope="col">Benutzername</th><th scope="col">Kontotyp</th><th scope="col">Status</th><th scope="col">Aktionen</th></tr></thead>
+                <thead>
+                    <tr>
+                        <th scope="col">Benutzername</th>
+                        <th scope="col">Kontotyp</th>
+                        <th scope="col">Status</th>
+                        <th scope="col">Letzte Anmeldung</th>
+                        <th scope="col">Aktionen</th>
+                    </tr>
+                </thead>
                 <tbody>
                     {% for account in page_obj %}
                         <tr>
@@ -22,6 +31,12 @@
                             <td data-label="Status">
                                 {% if account.is_active %}<span class="status-label status-confirmed">Aktiv</span>
                                 {% else %}<span class="status-label status-cancelled">Deaktiviert</span>{% endif %}
+                            </td>
+                            <td data-label="Letzte Anmeldung">
+                                {% with last_login=account.last_login|timezone:"Europe/Berlin" %}
+                                    {% if last_login %}<time datetime="{{ last_login|date:'c' }}">{{ last_login|date:"d.m.Y, H:i" }} Uhr</time>
+                                    {% else %}Noch nie{% endif %}
+                                {% endwith %}
                             </td>
                             <td data-label="Aktionen">
                                 {% if account.pk == request.user.pk %}

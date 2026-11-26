@@ -186,6 +186,20 @@ def _consenting_entries(case):
     }
 
 
+def expire_booking_participation(seat_id):
+    """Retire access under the import lock when the local booking is corrected."""
+    now = timezone.now()
+    for entry in _entries().filter(seat_id=seat_id, expires_at__gt=now):
+        before = _consenting_entries(entry.case)
+        entry.expires_at = now
+        entry.save(update_fields=["expires_at"])
+        if entry.pk in before and len(before) >= 2:
+            RideNotice.objects.bulk_create([
+                RideNotice(participation_id=entry_id, kind=RideNotice.Kind.WITHDRAWAL)
+                for entry_id in before if entry_id != entry.pk
+            ])
+
+
 def shared_contacts(participation):
     entries = _consenting_entries(participation.case)
     if len(entries) < 2 or participation.pk not in entries:

@@ -23,11 +23,7 @@ DATETIME_LOCAL = {"type": "datetime-local"}
 DATETIME_LOCAL_FORMAT = "%Y-%m-%dT%H:%M"
 
 
-class BookingCreateForm(forms.Form):
-    is_test = forms.BooleanField(
-        label="Testbuchung", required=False, initial=True,
-        help_text="Verwende für eine Testbuchung eine Beispieladresse mit der Endung .invalid.",
-    )
+class BookingDetailsForm(forms.Form):
     participant_name = forms.CharField(label="Teilnehmername", max_length=200)
     participant_email = forms.EmailField(label="Persönliche E-Mail-Adresse", max_length=254)
     course_name = forms.CharField(label="Lehrgang", max_length=200)
@@ -55,10 +51,23 @@ class BookingCreateForm(forms.Form):
         data = super().clean()
         if data.get("starts_at") and data.get("ends_at") and data["ends_at"] <= data["starts_at"]:
             self.add_error("ends_at", "Das Ende muss nach dem Beginn liegen.")
-        if data.get("is_test") and data.get("participant_email"):
-            domain = data["participant_email"].rsplit("@", 1)[1]
-            if not domain.endswith(".invalid"):
-                self.add_error("participant_email", "Gib für eine Testbuchung eine Adresse mit der Endung .invalid ein.")
+        return data
+
+    def validate_test_address(self, is_test):
+        email = self.cleaned_data.get("participant_email")
+        if is_test and email and not email.rpartition("@")[2].endswith(".invalid"):
+            self.add_error("participant_email", "Gib für eine Testbuchung eine Adresse mit der Endung .invalid ein.")
+
+
+class BookingCreateForm(BookingDetailsForm):
+    is_test = forms.BooleanField(
+        label="Testbuchung", required=False, initial=True,
+        help_text="Verwende für eine Testbuchung eine Beispieladresse mit der Endung .invalid.",
+    )
+
+    def clean(self):
+        data = super().clean()
+        self.validate_test_address(data.get("is_test"))
         return data
 
 
@@ -150,4 +159,4 @@ def booking_create(request):
                     form.add_error(None, "Die Buchung überschneidet sich mit einem bereits gespeicherten Eintrag.")
                 else:
                     return redirect("booking_detail", seat_id=seat.pk)
-        return render(request, "workspace/booking_create.html", {"section": "bookings", "form": form}, status=status)
+        return render(request, "workspace/booking_form.html", {"section": "bookings", "form": form}, status=status)

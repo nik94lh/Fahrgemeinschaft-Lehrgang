@@ -24,6 +24,27 @@ class OnlineCourseTests(WorkspaceTestCase):
         self.assertEqual(event.seat.session.school, "online")
         self.assertTrue(event.seat.session.is_online)
 
+    def test_old_generic_online_mail_after_term_edit_does_not_create_another_booking(self):
+        original = ingest(eml("Teilnahmebestätigung", school="Online", reference="ONLINE-1"))
+        enriched = ingest(eml("Teilnahmebestätigung", school="SFS Würzburg", reference="ONLINE-1"))
+        seat = enriched.seat
+        self.assertEqual(seat.pk, original.seat_id)
+        self.assertEqual(seat.session.school, School.WUERZBURG)
+        self.assertTrue(seat.session.is_online)
+
+        url = reverse("booking_edit", args=[seat.pk])
+        form = self.client.get(url).context["form"]
+        data = {field.name: field.value() or "" for field in form}
+        start = timezone.localtime(seat.session.starts_at) + timedelta(hours=2)
+        data["starts_at"] = start.strftime("%Y-%m-%dT%H:%M")
+        data["ends_at"] = timezone.localtime(seat.session.ends_at).strftime("%Y-%m-%dT%H:%M")
+        self.assertRedirects(self.client.post(url, data), reverse("booking_detail", args=[seat.pk]))
+
+        follow_up = ingest(eml("Teilnahmebestätigung", school="Online"))
+
+        self.assertEqual(follow_up.review_reason, EmailEvent.ReviewReason.PREVIOUS_BOOKING_DATA)
+        self.assertEqual(CourseSeat.objects.count(), 1)
+
     def test_bookings_and_calendar_include_online_courses_in_the_online_filter(self):
         start = timezone.localtime() + timedelta(days=2)
         end = start + timedelta(hours=3)
@@ -39,8 +60,9 @@ class OnlineCourseTests(WorkspaceTestCase):
             course=Course.objects.create(name="Musterlehrgang vor Ort"), school=School.WUERZBURG,
             starts_at=start, ends_at=end,
         )
+        participant = Participant.objects.create(name="Synthetische Teilnehmerin")
         for session in (online, online_with_school, onsite):
-            CourseSeat.objects.create(session=session, status=BookingStatus.CONFIRMED)
+            CourseSeat.objects.create(session=session, participant=participant, status=BookingStatus.CONFIRMED)
 
         booking_response = self.client.get(reverse("bookings"), {"school": "online"})
         calendar_response = self.client.get(reverse("calendar"), {

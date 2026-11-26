@@ -14,6 +14,7 @@ from django.views.decorators.http import require_safe
 from accounts.access import can_edit, can_view
 from mailimport.models import MailReceipt
 
+from .booking_edit import BOOKING_SAVED_SESSION_KEY
 from .booking_search import booking_list_navigation
 from .models import BookingHistory, CourseSeat, EmailEvent
 
@@ -36,7 +37,7 @@ def _booking_timeline(seat, *, show_receipts):
     linked_event_ids = {event.pk for event in events}
     changes_by_event = defaultdict(list)
     timeline = []
-    for change in seat.history.only("source_event", "recorded_at", "status", "previous_status", "profile_linked"):
+    for change in seat.history.only("source_event", "recorded_at", "status", "previous_status", "profile_linked", "edited_fields"):
         if change.source_event_id in linked_event_ids:
             changes_by_event[change.source_event_id].append(change)
         else:
@@ -61,11 +62,17 @@ def booking_detail(request, seat_id):
     )
     show_receipts = settings.HTTPS and request.is_secure() and can_view(request.user, "mail_receipts")
     bookings_url, detail_params = booking_list_navigation(request.GET)
+    can_edit_booking = can_edit(request.user, "bookings")
+    saved = request.session.get(BOOKING_SAVED_SESSION_KEY) == seat.pk
+    if saved and request.method == "GET":
+        request.session.pop(BOOKING_SAVED_SESSION_KEY)
     return render(request, "workspace/booking_detail.html", {
         "section": "bookings",
         "seat": seat,
         "bookings_url": bookings_url,
         "participant_url": reverse("booking_participant", args=[seat.pk], query=detail_params),
-        "delete_url": reverse("booking_delete", args=[seat.pk], query=detail_params) if can_edit(request.user, "bookings") else "",
+        "edit_url": reverse("booking_edit", args=[seat.pk], query=detail_params) if can_edit_booking else "",
+        "delete_url": reverse("booking_delete", args=[seat.pk], query=detail_params) if can_edit_booking else "",
+        "saved": saved,
         "timeline": _booking_timeline(seat, show_receipts=show_receipts),
     })

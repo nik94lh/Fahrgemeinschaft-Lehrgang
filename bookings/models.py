@@ -191,6 +191,7 @@ class EmailEvent(models.Model):
         MULTIPLE_SEATS = "multiple_seats", "Mehrere passende Lehrgangsplätze"
         MULTIPLE_COURSES = "multiple_courses", "Mehrere passende Lehrgänge"
         PREVIOUS_PARTICIPANT = "previous_participant", "Teilnehmer steht in der Buchungshistorie"
+        PREVIOUS_BOOKING_DATA = "previous_booking_data", "Die Mail enthält frühere Buchungsangaben"
         NO_MATCHING_BOOKING = "no_matching_booking", "Kein passender Lehrgangsplatz vorhanden"
         EVENT_ORDER_UNCLEAR = "event_order_unclear", "Reihenfolge der Statusmeldungen ist unklar"
         PROTECTED_STATUS = "protected_status", "Vorhandener Buchungsstatus erfordert manuelle Prüfung"
@@ -242,6 +243,9 @@ class EmailEvent(models.Model):
 
 class BookingHistory(models.Model):
     seat = models.ForeignKey(CourseSeat, on_delete=models.CASCADE, related_name="history")
+    previous_session = models.ForeignKey(CourseSession, on_delete=models.SET_NULL, null=True, blank=True)
+    previous_name = models.CharField(max_length=200, blank=True, default="", db_default="")
+    edited_fields = models.JSONField(default=list, db_default=[], blank=True)
     previous_participant = models.ForeignKey(
         Participant,
         on_delete=models.SET_NULL,
