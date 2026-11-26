@@ -10,7 +10,7 @@ from .models import DEFAULT_RIDE_LEAD_DAYS, MAX_RIDE_LEAD_DAYS, RideConfiguratio
 
 class RideSettingsForm(forms.Form):
     lead_days = forms.IntegerField(
-        label="Vorlauf in Kalendertagen",
+        label="Vermittlungsvorlauf in Kalendertagen",
         min_value=0,
         max_value=MAX_RIDE_LEAD_DAYS,
         help_text="Der Vorlauf zählt ab dem Tag der Hinfahrt zurück. Bei 0 Tagen ist der Vorschlag am Tag der Hinfahrt bereit.",
@@ -25,17 +25,25 @@ def get_ride_lead_days() -> int:
 @never_cache
 @require_http_methods(["GET", "HEAD", "POST"])
 @csrf_protect
-def rides_settings(request):
+def workspace_settings(request):
     if request.method == "POST":
         form = RideSettingsForm(request.POST)
         if form.is_valid():
             RideConfiguration.objects.update_or_create(pk=1, defaults={"lead_days": form.cleaned_data["lead_days"]})
-            return redirect(f"{reverse('rides_settings')}?gespeichert=1")
+            return redirect(reverse("workspace_settings", query={"gespeichert": "1"}))
     else:
         form = RideSettingsForm(initial={"lead_days": get_ride_lead_days()})
 
     return render(request, "workspace/ride_settings.html", {
-        "section": "rides",
+        "section": "workspace_settings",
         "form": form,
         "saved": request.method == "GET" and request.GET.get("gespeichert") == "1",
     }, status=400 if form.is_bound else 200)
+
+
+@never_cache
+@require_http_methods(["GET", "HEAD", "POST"])
+def rides_settings(request):
+    if request.method == "POST":
+        return workspace_settings(request)
+    return redirect(reverse("workspace_settings", query=request.GET))

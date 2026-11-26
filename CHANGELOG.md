@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.22.0
+
+- Die Fahrgemeinschaftskachel zeigt eine laufende Abfrage in Blau, freigegebene Kontakte in Grün und eine abgeschlossene Abfrage ohne gültige Kontaktfreigabe in Rot. Vor dem Start bleibt die Kachel neutral.
+- Der Vermittlungsvorlauf steht im globalen Reiter **Einstellungen**. Der direkte Link **Mail-Eingang ansehen** entfällt auf der Übersicht.
+- Das Teilnahmeportal zeigt einen aktuellen Hinweis zur Kontaktfreigabe direkt bei der Rückmeldung. Die Nachrichtenchronik am Seitenende entfällt.
+
 ## 0.21.0
 
 - Nutzende sehen im Teilnahmeportal den Termin, ihre aktuelle Antwort und die freigegebenen Kontakte auf einen Blick. Ja, Nein und die Kontaktwege sind auf Mobilgeräten leichter auszuwählen.

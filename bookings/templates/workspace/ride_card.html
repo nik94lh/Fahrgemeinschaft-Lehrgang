@@ -1,4 +1,4 @@
-<article class="ride-card" aria-labelledby="ride-card-{{ item.pk }}">
+<article class="ride-card{% if inquiry %} ride-card--{{ inquiry.state }}{% endif %}" aria-labelledby="ride-card-{{ item.pk }}">
     <header>
         <h2 class="ride-card-title" id="ride-card-{{ item.pk }}">{{ item.get_school_display }}</h2>
         {% include "workspace/ride_mediation.html" %}

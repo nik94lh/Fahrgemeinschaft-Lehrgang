@@ -175,6 +175,9 @@ details[open] > .workspace-menu-trigger::after { margin-block-start: .18rem; tra
         color: var(--muted);
         font-size: .72rem;
     }
+}
+
+@media (max-width: 1120px) {
     .workspace-nav-desktop { display: none; }
     .workspace-nav-mobile {
         position: relative;

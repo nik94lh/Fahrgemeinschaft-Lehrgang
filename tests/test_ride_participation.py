@@ -208,8 +208,10 @@ class RideParticipationFlowTests(TestCase):
         first, second, third = (Client(enforce_csrf_checks=True) for _ in invitations)
         for client, (_, code) in zip((first, second, third), invitations):
             self.login(client, code)
-        self.assertContains(self.page(first), "2 weitere Personen kommen infrage")
-        self.assertNotContains(self.page(first), self.people[1].name)
+        first_page = self.page(first)
+        self.assertContains(first_page, "2 weitere Personen kommen infrage")
+        self.assertNotContains(first_page, self.people[1].name)
+        self.assertNotContains(first_page, "Nachrichten zur Fahrgemeinschaft")
 
         for client in (first, second):
             self.reply(client, "yes", channels=["email"], consent="on")
@@ -220,7 +222,10 @@ class RideParticipationFlowTests(TestCase):
         self.reply(third, "yes", channels=["email"], consent="on")
         self.reply(third, "yes", channels=["email"], consent="on", brigade="Synthetische Feuerwehr")
 
-        self.assertContains(self.page(first), "Kontakte mit 2 Personen geteilt")
+        first_page = self.page(first)
+        self.assertContains(first_page, "Kontakte mit 2 Personen geteilt")
+        self.assertNotContains(first_page, "Eine weitere Person hat zugesagt")
+        self.assertNotContains(first_page, "Mindestens zwei Personen haben zugesagt.")
         updates = list(RideNotice.objects.filter(kind="new_peer"))
         self.assertCountEqual([notice.participation.participant_id for notice in updates], [p.pk for p in self.people[:2]])
         for notice in updates:
@@ -229,6 +234,17 @@ class RideParticipationFlowTests(TestCase):
             self.assertNotIn(self.people[2].email, preview["body"])
         self.assertEqual(invitations[2][0].notices.filter(kind=RideNotice.Kind.CONTACTS).count(), 1)
         self.assertEqual(mail.outbox, [])
+
+        self.reply(third, "no")
+        first_page = self.page(first)
+        self.assertContains(first_page, "Kontakte mit 1 Person geteilt")
+        self.assertContains(first_page, "Eine Zusage wurde nachträglich zurückgezogen.", count=1)
+
+        self.reply(third, "yes", channels=["email"], consent="on")
+        first_page = self.page(first)
+        self.assertContains(first_page, "Kontakte mit 2 Personen geteilt")
+        self.assertNotContains(first_page, "Eine Zusage wurde nachträglich zurückgezogen")
+        self.assertNotContains(first_page, "Eine weitere Person hat zugesagt")
 
     def test_replies_share_selected_peer_contacts_and_withdraw_them(self):
         (_, first_code), (_, second_code), (_, third_code) = self.start()

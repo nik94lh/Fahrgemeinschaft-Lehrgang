@@ -74,15 +74,18 @@ def _navigation_items(sections, view_permissions, is_secure):
 def workspace_permissions(request):
     user = request.user
     view_permissions = {section: can_view(user, section) for section in SECTIONS}
+    edit_permissions = {section: can_edit(user, section) for section in SECTIONS}
     admin = is_workspace_admin(user)
     secure = settings.HTTPS and request.is_secure()
     primary = _navigation_items(PRIMARY_NAVIGATION, view_permissions, secure)
     secondary = _navigation_items(SECONDARY_NAVIGATION, view_permissions, secure)
+    if edit_permissions["rides"]:
+        primary.append({"section": "workspace_settings", "label": "Einstellungen", "href": reverse("workspace_settings")})
     if admin:
         secondary.append({"section": "accounts", "label": "Benutzer", "href": reverse("account_list")})
     return {
         "workspace_view": view_permissions,
-        "workspace_edit": {section: can_edit(user, section) for section in SECTIONS},
+        "workspace_edit": edit_permissions,
         "workspace_admin": admin,
         "workspace_secure": secure,
         "workspace_home": home_url(user),

@@ -40,12 +40,18 @@ class RideInquiryCardTests(WorkspaceTestCase):
     def reply(self, entry, answer):
         record_ride_reply(entry.pk, entry.token_digest, answer=answer, channels=["email"], consent=True)
 
+    def assert_card_state(self, response, state):
+        self.assertContains(response, f'<article class="ride-card ride-card--{state}"')
+
     def test_card_tracks_open_answers_and_current_contact_sharing(self):
         case = self.make_case()
-        self.assertContains(self.listing(), "Noch nicht gestartet")
+        listing = self.listing()
+        self.assertContains(listing, "Noch nicht gestartet")
+        self.assert_card_state(listing, "not-started")
         first, second, third = self.start(case)
         listing = self.listing()
         self.assertContains(listing, "Antworten ausstehend")
+        self.assert_card_state(listing, "awaiting-replies")
         self.assertContains(listing, "3 Einladungen vorbereitet")
         self.assertContains(listing, "3 offen")
         self.assertContains(listing, "0 zugesagt")
@@ -62,6 +68,7 @@ class RideInquiryCardTests(WorkspaceTestCase):
         self.reply(second, "yes")
         listing = self.listing()
         self.assertContains(listing, "Kontakte freigegeben")
+        self.assert_card_state(listing, "contacts-released")
         self.assertContains(listing, "0 offen")
         self.assertContains(listing, "2 zugesagt")
         self.assertContains(listing, "1 abgesagt")
@@ -73,9 +80,32 @@ class RideInquiryCardTests(WorkspaceTestCase):
         self.reply(second, "no")
         listing = self.listing()
         self.assertContains(listing, "Kontaktfreigabe beendet")
+        self.assert_card_state(listing, "no-match")
         self.assertContains(listing, "1 zugesagt")
         self.assertContains(listing, "2 abgesagt")
         self.assertNotContains(listing, "Kontakte freigegeben")
+
+    def test_coloring_prioritizes_current_contacts_then_unanswered_invites(self):
+        first, second, third = self.start(self.make_case())
+        self.reply(first, "yes")
+        self.reply(second, "yes")
+        listing = self.listing()
+        self.assert_card_state(listing, "contacts-released")
+        self.assertContains(listing, "1 offen")
+
+        self.reply(second, "no")
+        listing = self.listing()
+        self.assert_card_state(listing, "awaiting-replies")
+        self.assertContains(listing, "Kontaktfreigabe beendet, weitere Antworten offen")
+
+        self.reply(first, "no")
+        listing = self.listing()
+        self.assert_card_state(listing, "awaiting-replies")
+        self.assertContains(listing, "1 offen")
+        self.assertContains(listing, "2 abgesagt")
+
+        self.reply(third, "yes")
+        self.assert_card_state(self.listing(), "no-match")
 
     def test_two_old_yes_answers_do_not_show_contacts_as_released(self):
         case = self.make_case()
@@ -96,6 +126,7 @@ class RideInquiryCardTests(WorkspaceTestCase):
                 self.assertContains(listing, "Kontaktfreigabe beendet")
                 self.assertContains(listing, "2 zugesagt")
                 self.assertNotContains(listing, "Kontakte freigegeben")
+                self.assert_card_state(listing, "no-match" if obj == case else "awaiting-replies")
                 transaction.set_rollback(True)
 
     def test_expired_unanswered_invitation_is_no_longer_open(self):
@@ -106,6 +137,7 @@ class RideInquiryCardTests(WorkspaceTestCase):
         type(third).objects.filter(pk=third.pk).update(expires_at=timezone.now())
         listing = self.listing()
         self.assertContains(listing, "Zu wenig Zusagen")
+        self.assert_card_state(listing, "no-match")
         self.assertContains(listing, "0 offen")
         self.assertContains(listing, "1 ohne gültigen Zugang")
         self.assertContains(listing, "1 zugesagt")
@@ -120,6 +152,7 @@ class RideInquiryCardTests(WorkspaceTestCase):
         self.make_case(is_test=False)
         listing = self.listing()
         self.assertContains(listing, "Details")
+        self.assertContains(listing, '<article class="ride-card"')
         self.assertNotContains(listing, "Noch nicht gestartet")
         self.assertNotContains(listing, "Einladungen vorbereitet")
 

@@ -1,5 +1,6 @@
 {% extends "workspace/base.html" %}
-{% block title %}Einstellungen für Fahrgemeinschaften{% endblock %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
+{% block title %}Einstellungen{% endblock %}
 {% block page_styles %}
     .ride-settings-panel { max-width: 32rem; }
     .ride-settings-panel .helptext { display: block; margin-block-start: .45rem; color: var(--muted); }
@@ -7,11 +8,11 @@
 {% endblock %}
 {% block live_region %}{% endblock %}
 {% block content %}
-    <p class="back-link"><a href="{% url 'rides' %}">‹ Zurück zu den Fahrgemeinschaftsvorschlägen</a></p>
-    <div class="page-heading"><h1 id="ride-settings-title">Einstellungen für Fahrgemeinschaften</h1></div>
-    {% if saved %}<p class="notice" role="status">Der Vorlauf wurde gespeichert.</p>{% endif %}
+    <h1 class="visually-hidden">Einstellungen</h1>
+    {% if saved %}<p class="notice" role="status">Der Vermittlungsvorlauf wurde gespeichert.</p>{% endif %}
     <section class="panel ride-settings-panel" aria-labelledby="ride-settings-title">
-        <form method="post">
+        <h2 id="ride-settings-title">Fahrgemeinschaften</h2>
+        <form method="post" action="{% url 'workspace_settings' %}">
             {% csrf_token %}
             {{ form.as_p }}
             <button type="submit">Speichern</button>

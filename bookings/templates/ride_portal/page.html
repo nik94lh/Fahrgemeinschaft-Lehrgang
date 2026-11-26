@@ -62,6 +62,7 @@
                         <p class="portal-state">Antwort offen</p>
                     {% endif %}
                 </div>
+                {% if contact_note %}<p class="portal-contact-note">{{ contact_note }}</p>{% endif %}
                 {% if participation.answer == 'yes' %}
                     <p class="portal-note portal-answer-note">
                         {% if contacts %}Geteilte Kontakte findest du unter dem Formular.{% else %}Kontakte werden angezeigt, sobald mindestens zwei Personen zugestimmt haben.{% endif %}
@@ -103,17 +104,6 @@
                                     <div><dt>Kontaktkanäle</dt><dd>{{ contact.channels|join:", " }}</dd></div>
                                 </dl>
                             </li>
-                        {% endfor %}
-                    </ul>
-                </section>
-            {% endif %}
-
-            {% if notices %}
-                <section class="portal-panel portal-messages" aria-labelledby="portal-notices">
-                    <h2 id="portal-notices">Nachrichten zur Fahrgemeinschaft</h2>
-                    <ul class="portal-records">
-                        {% for label, message in notices %}
-                            <li><strong>{{ label }}</strong><p>{{ message|linebreaksbr }}</p></li>
                         {% endfor %}
                     </ul>
                 </section>

@@ -1,6 +1,7 @@
 from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
+from django.test import override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -58,6 +59,13 @@ class DashboardTests(WorkspaceTestCase):
         self.assertContains(response, "Bestätigt")
         self.assertContains(response, "Klärungsbedarf")
         self.assertEqual(response.context["seats"], {"total": 3, "confirmed": 2, "pending": 0})
+
+    @override_settings(HTTPS=True)
+    def test_secure_overview_keeps_mail_navigation_without_the_dashboard_shortcut(self):
+        response = self.client.get("/", secure=True)
+
+        self.assertContains(response, 'href="/mail-eingang/"')
+        self.assertNotContains(response, "Mail-Eingang ansehen")
 
     def test_booking_list_shows_all_matching_seats(self):
         response = self.client.get("/buchungen/")

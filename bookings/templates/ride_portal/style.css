@@ -84,6 +84,13 @@ dt, .portal-note, .helptext { color: var(--portal-muted); }
     font-weight: 650;
 }
 .portal-state-yes { background: #e8f3ed; color: #20553a; }
+.portal-contact-note {
+    margin-block-start: .65rem;
+    padding: .45rem .65rem;
+    border-inline-start: 3px solid var(--portal-accent);
+    background: #f5f8fc;
+    font-size: .9rem;
+}
 .portal-answer-note { margin-block-start: .55rem; font-size: .9rem; }
 form { margin-block-start: .9rem; }
 fieldset { min-width: 0; padding: 0; margin: 0; border: none; }
@@ -174,7 +181,6 @@ button:hover { background: #123f89; }
 }
 .portal-records p { margin-block-start: .15rem; }
 .portal-shared { border-block-start: 3px solid #397050; }
-.portal-messages .portal-records li { border: 0; border-inline-start: 3px solid var(--portal-line); border-radius: 0; }
 .portal-logout { display: flex; justify-content: flex-end; }
 
 @media (min-width: 32rem) {
