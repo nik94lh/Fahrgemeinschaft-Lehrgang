@@ -358,6 +358,7 @@ class RideParticipation(models.Model):
     email = models.EmailField()
     token_seed = models.UUIDField(default=uuid4, unique=True, editable=False)
     token_digest = models.CharField(max_length=64, unique=True, editable=False)
+    short_token_digest = models.CharField(max_length=64, unique=True, null=True, editable=False)
     expires_at = models.DateTimeField()
     created_at = models.DateTimeField(auto_now_add=True)
     answer = models.CharField(max_length=7, choices=Answer.choices, default=Answer.PENDING)
@@ -377,6 +378,7 @@ class RideNotice(models.Model):
     class Kind(models.TextChoices):
         INVITATION = "invitation", "Einladung zur Fahrgemeinschaft"
         CONTACTS = "contacts", "Kontakte zur Fahrgemeinschaft verfügbar"
+        NEW_PEER = "new_peer", "Weitere Zusage zur Fahrgemeinschaft"
         WITHDRAWAL = "withdrawal", "Zusage zur Fahrgemeinschaft zurückgezogen"
 
     participation = models.ForeignKey(RideParticipation, on_delete=models.CASCADE, related_name="notices")

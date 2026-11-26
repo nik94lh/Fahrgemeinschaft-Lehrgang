@@ -25,11 +25,17 @@
             </dd>
         </div>
     </dl>
-    {% if is_test_inquiry %}
-        <p class="ride-card-inquiries">
-            <strong>Testabfrage</strong>
-            {% if item.inquiry_total %}<span>{{ item.inquiry_total }} Einladungen vorbereitet</span><span>{{ item.inquiry_yes }} zugesagt</span><span>{{ item.inquiry_no }} abgesagt</span>{% endif %}
-        </p>
+    {% if inquiry %}
+        <div class="ride-card-inquiries">
+            <p>Testabfrage · <strong>{{ inquiry.label }}</strong></p>
+            <p class="ride-card-inquiry-counts">
+                <span>{{ inquiry.total }} {{ inquiry.total|pluralize:"Einladung,Einladungen" }} vorbereitet</span>
+                <span>{{ inquiry.pending }} offen</span>
+                <span>{{ inquiry.yes }} zugesagt</span>
+                <span>{{ inquiry.no }} abgesagt</span>
+                {% if inquiry.unavailable %}<span>{{ inquiry.unavailable }} ohne gültigen Zugang</span>{% endif %}
+            </p>
+        </div>
         {% if can_start_inquiry %}
             <form class="ride-card-inquiry-form" method="post" action="{% url 'ride_inquiry_start' item.pk %}">
                 {% csrf_token %}
