@@ -24,8 +24,9 @@
     .ride-card-workflow dt { font-size: .8rem; color: var(--muted); }
     .ride-card-workflow dd { margin: .15rem 0 0; }
     .ride-card-footer .button-link { margin-inline-start: auto; }
-    .ride-card-inquiries { display: flex; flex-wrap: wrap; gap: .3rem .75rem; color: var(--muted); font-size: .87rem; }
+    .ride-card-inquiries { color: var(--muted); font-size: .87rem; }
     .ride-card-inquiries strong { color: var(--ink); }
+    .ride-card-inquiry-counts { display: flex; flex-wrap: wrap; gap: .15rem .75rem; margin-block-start: .3rem; }
     .ride-card-inquiry-form button { width: auto; margin: 0; padding: .47rem .75rem; }
     .ride-empty .quiet { margin-block-start: .35rem; }
     .ride-match-help { margin-block-start: 1rem; }
@@ -128,7 +129,7 @@
         {% elif ride_cards %}
             <ul class="ride-grid" role="list">
                 {% for row in ride_cards %}
-                    <li>{% include "workspace/ride_card.html" with item=row.case mediation=row.mediation detail_query=detail_query is_test_inquiry=row.is_test_inquiry can_start_inquiry=row.can_start_inquiry csrf_token=csrf_token only %}</li>
+                    <li>{% include "workspace/ride_card.html" with item=row.case mediation=row.mediation detail_query=detail_query inquiry=row.inquiry can_start_inquiry=row.can_start_inquiry csrf_token=csrf_token only %}</li>
                 {% endfor %}
             </ul>
             {% include "workspace/pagination.html" %}

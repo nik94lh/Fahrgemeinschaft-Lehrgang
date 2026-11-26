@@ -18,8 +18,8 @@ from .ride_participation import (
     active_participation,
     notice_message,
     participation_for_code,
+    portal_overview,
     record_ride_reply,
-    shared_contacts,
 )
 
 
@@ -31,8 +31,8 @@ TEST_PHONE = RegexValidator(r"\A000(?:[ -]?[0-9]){3,12}\Z", "Verwende eine Testn
 
 
 class AccessCodeForm(forms.Form):
-    code = forms.RegexField(
-        r"\A[A-Za-z0-9_-]{43}\Z", label="Zugangscode", max_length=43,
+    code = forms.CharField(
+        label="Zugangscode", max_length=43,
         widget=forms.TextInput(attrs={"autocomplete": "off", "autocapitalize": "none", "spellcheck": "false"}),
     )
 
@@ -109,10 +109,12 @@ def _render_portal(request, *, participation=None, form=None, access_error="", s
                 "phone": participation.phone,
                 "consent": bool(participation.consented_at),
             })
+        possible_peer_count, contacts = portal_overview(participation)
         context.update(
             participation=participation,
             reply_form=form,
-            contacts=shared_contacts(participation),
+            possible_peer_count=possible_peer_count,
+            contacts=contacts,
             notices=[(notice.get_kind_display(), notice_message(notice)) for notice in participation.notices.all()],
         )
     return render(request, "ride_portal/page.html", context, status=status)

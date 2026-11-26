@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.21.0
+
+- Nutzende sehen im Teilnahmeportal den Termin, ihre aktuelle Antwort und die freigegebenen Kontakte auf einen Blick. Ja, Nein und die Kontaktwege sind auf Mobilgeräten leichter auszuwählen.
+- Die Fahrgemeinschaftskachel zeigt offene Rückmeldungen, Zusagen, Absagen und die aktuelle Kontaktfreigabe.
+- Der Kopf des Teilnahmeportals zeigt die Zahl der möglichen Mitfahrenden und der geteilten Kontakte. Kommt eine weitere Zusage hinzu, erhalten bereits verbundene Personen eine eigene Benachrichtigungsvorschau.
+- Einladungen und Benachrichtigungen zur Kontaktfreigabe haben eigene Mailvorschauen mit Termin und persönlichem Link. Zugangscodes haben vier Gruppen mit je vier Zeichen. Bereits ausgegebene Links und Codes bleiben bis zum Ablauf gültig.
+
 ## 0.20.0
 
 - Berechtigte können die Daten einer einzelnen Buchungs-ID bearbeiten. BMS protokolliert die geänderten Felder im Buchungsverlauf und behandelt mehrdeutige Folgemails zu früheren Angaben als Klärungsfälle.

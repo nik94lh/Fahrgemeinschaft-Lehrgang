@@ -10,7 +10,12 @@
     <script src="{% url 'ride_portal_script' %}" defer></script>
 </head>
 <body>
-    <header><div class="portal-width"><strong>BMS</strong><span>Fahrgemeinschaften</span></div></header>
+    <header class="portal-header">
+        <div class="portal-width">
+            <div class="portal-brand"><strong>BMS</strong><span>Fahrgemeinschaften</span></div>
+            <span class="portal-test">Testbetrieb</span>
+        </div>
+    </header>
     <main class="portal-width">
         <h1>Teilnahme an einer Fahrgemeinschaft</h1>
         {% if access_error %}<p class="portal-alert" role="alert">{{ access_error }}</p>{% endif %}
@@ -20,49 +25,73 @@
                 {% csrf_token %}
                 <input type="hidden" name="code">
             </form>
-            <section class="portal-panel" aria-labelledby="portal-ride">
-                <h2 id="portal-ride">{% if participation.seat %}{{ participation.seat.session.course.name }}{% else %}Deine Fahrgemeinschaft{% endif %}</h2>
-                <dl>
-                    <div><dt>Teilnehmende Person</dt><dd>{{ participation.participant.name }}</dd></div>
+            <section class="portal-panel portal-context" aria-labelledby="portal-ride">
+                <h2 id="portal-ride">{% if participation.seat %}{{ participation.seat.session.course.name }}{% else %}Fahrvorschlag{% endif %}</h2>
+                <dl class="portal-trip">
                     <div><dt>Schulungsort</dt><dd>{{ participation.case.get_school_display }}</dd></div>
-                    <div><dt>Hinfahrt</dt><dd>{{ participation.case.travel_date|date:"d.m.Y" }}</dd></div>
-                    {% if participation.case.return_date %}<div><dt>Rückfahrt</dt><dd>{{ participation.case.return_date|date:"d.m.Y" }}</dd></div>{% endif %}
-                    <div><dt>E-Mail-Adresse</dt><dd>{{ participation.email }}</dd></div>
+                    <div><dt>Hinfahrt</dt><dd><time datetime="{{ participation.case.travel_date|date:'Y-m-d' }}">{{ participation.case.travel_date|date:"d.m.Y" }}</time></dd></div>
+                    {% if participation.case.return_date %}<div><dt>Rückfahrt</dt><dd><time datetime="{{ participation.case.return_date|date:'Y-m-d' }}">{{ participation.case.return_date|date:"d.m.Y" }}</time></dd></div>{% endif %}
                 </dl>
+                <div class="portal-attendee">
+                    <span class="visually-hidden">Teilnehmende Person</span>
+                    <strong>{{ participation.participant.name }}</strong>
+                    <span><span class="visually-hidden">E-Mail-Adresse</span>{{ participation.email }}</span>
+                </div>
+                <ul class="portal-counts" role="list">
+                    <li class="portal-state">
+                        {% if not possible_peer_count %}Keine weitere Person kommt infrage
+                        {% elif possible_peer_count == 1 %}1 weitere Person kommt infrage
+                        {% else %}{{ possible_peer_count }} weitere Personen kommen infrage{% endif %}
+                    </li>
+                    {% if contacts %}
+                        <li class="portal-state portal-state-yes">
+                            Kontakte mit {{ contacts|length }} Person{{ contacts|length|pluralize:',en' }} geteilt
+                        </li>
+                    {% endif %}
+                </ul>
             </section>
 
             <section class="portal-panel" aria-labelledby="portal-reply">
-                <h2 id="portal-reply">Deine Rückmeldung</h2>
-                {% if participation.answer == 'yes' %}<p class="portal-note">Aktuelle Antwort: Ja</p>{% endif %}
-                {% if participation.answer == 'no' %}<p class="portal-note">Aktuelle Antwort: Nein</p>{% endif %}
+                <div class="portal-section-heading">
+                    <h2 id="portal-reply">Deine Rückmeldung</h2>
+                    {% if participation.answer == 'yes' %}
+                        <p class="portal-state portal-state-yes" role="status">Aktuelle Antwort: Ja</p>
+                    {% elif participation.answer == 'no' %}
+                        <p class="portal-state" role="status">Aktuelle Antwort: Nein</p>
+                    {% else %}
+                        <p class="portal-state">Antwort offen</p>
+                    {% endif %}
+                </div>
+                {% if participation.answer == 'yes' %}
+                    <p class="portal-note portal-answer-note">
+                        {% if contacts %}Geteilte Kontakte findest du unter dem Formular.{% else %}Kontakte werden angezeigt, sobald mindestens zwei Personen zugestimmt haben.{% endif %}
+                        Wähle „Nein“ und speichere, um deine Kontaktfreigabe zu widerrufen.
+                    </p>
+                {% elif participation.answer == 'no' %}
+                    <p class="portal-note portal-answer-note">Deine Kontaktdaten sind für diese Abfrage nicht freigegeben.</p>
+                {% endif %}
                 <form class="portal-reply" method="post" action="{% url 'ride_portal_reply' %}">
                     {% csrf_token %}
+                    {% if reply_form.errors %}<p class="portal-alert" role="alert">Prüfe die markierten Angaben.</p>{% endif %}
                     {{ reply_form.non_field_errors }}
-                    {{ reply_form.answer.as_field_group }}
+                    <div class="portal-choices">{{ reply_form.answer.as_field_group }}</div>
                     <div class="portal-contact-fields">
-                        <div class="portal-field">{{ reply_form.brigade.as_field_group }}</div>
-                        {{ reply_form.channels.as_field_group }}
+                        <div class="portal-choices">{{ reply_form.channels.as_field_group }}</div>
                         <div class="portal-field portal-phone">{{ reply_form.phone.as_field_group }}</div>
-                        <div class="portal-consent">{{ reply_form.consent.as_field_group }}</div>
+                        <div class="portal-field">{{ reply_form.brigade.as_field_group }}</div>
+                        <div class="portal-consent">
+                            <label for="{{ reply_form.consent.id_for_label }}">{{ reply_form.consent }} <span>{{ reply_form.consent.label }}</span></label>
+                            {{ reply_form.consent.errors }}
+                        </div>
                     </div>
                     <button type="submit">Rückmeldung speichern</button>
                 </form>
             </section>
 
-            {% if notices %}
-                <section class="portal-panel" aria-labelledby="portal-notices">
-                    <h2 id="portal-notices">Nachrichten zur Fahrgemeinschaft</h2>
-                    <ul class="portal-records">
-                        {% for label, message in notices %}
-                            <li><strong>{{ label }}</strong><p>{{ message|linebreaksbr }}</p></li>
-                        {% endfor %}
-                    </ul>
-                </section>
-            {% endif %}
-
             {% if contacts %}
-                <section class="portal-panel" aria-labelledby="portal-contacts">
+                <section class="portal-panel portal-shared" aria-labelledby="portal-contacts">
                     <h2 id="portal-contacts">Geteilte Kontakte</h2>
+                    <p class="portal-note">Stimmt euch direkt ab, wenn ihr gemeinsam fahren möchtet.</p>
                     <ul class="portal-records">
                         {% for contact in contacts %}
                             <li>
@@ -79,14 +108,25 @@
                 </section>
             {% endif %}
 
-            <form method="post" action="{% url 'ride_portal' %}">
+            {% if notices %}
+                <section class="portal-panel portal-messages" aria-labelledby="portal-notices">
+                    <h2 id="portal-notices">Nachrichten zur Fahrgemeinschaft</h2>
+                    <ul class="portal-records">
+                        {% for label, message in notices %}
+                            <li><strong>{{ label }}</strong><p>{{ message|linebreaksbr }}</p></li>
+                        {% endfor %}
+                    </ul>
+                </section>
+            {% endif %}
+
+            <form class="portal-logout" method="post" action="{% url 'ride_portal' %}">
                 {% csrf_token %}
                 <button class="portal-secondary" type="submit" name="action" value="logout">Abmelden</button>
             </form>
         {% else %}
             <section class="portal-panel" aria-labelledby="portal-access">
                 <h2 id="portal-access">Zugang öffnen</h2>
-                <p>Gib den Zugangscode aus deiner Einladung ein.</p>
+                <p class="portal-note">Gib den Zugangscode aus deiner Einladung ein. Neue Codes bestehen aus vier Gruppen mit je vier Zeichen.</p>
                 <form id="ride-portal-code" method="post" action="{% url 'ride_portal' %}">
                     {% csrf_token %}
                     <div class="portal-field">{{ code_form.code.as_field_group }}</div>

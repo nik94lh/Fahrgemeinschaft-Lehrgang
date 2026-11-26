@@ -1,15 +1,23 @@
+import re
+from base64 import urlsafe_b64encode
 from datetime import timedelta
+from hashlib import sha256
 from urllib.parse import urlsplit
 
 from django.contrib.auth import get_user_model
 from django.core import mail
-from django.test import Client, TestCase, override_settings
+from django.db import connection
+from django.db.migrations.executor import MigrationExecutor
+from django.test import Client, TestCase, TransactionTestCase, override_settings
 from django.utils import timezone
+from django.utils.crypto import salted_hmac
 
 from bookings.models import (
     BookingStatus, Course, CourseSeat, CourseSession, Participant, RideCase, RideNotice, RideParticipation, School,
 )
-from bookings.ride_participation import invite_code, notice_preview, start_ride_inquiry
+from bookings.ride_participation import (
+    active_participation, invite_code, notice_preview, participation_for_code, portal_overview, start_ride_inquiry,
+)
 from bookings.rides_matching import sync_ride_cases
 
 
@@ -18,6 +26,52 @@ REPLY = f"{PORTAL}antwort/"
 PORTAL_HOST = "mitfahren.example.test"
 WORKSPACE_HOST = "verwaltung.example.test"
 PORTAL_REQUEST = {"secure": True, "HTTP_HOST": PORTAL_HOST}
+
+
+@override_settings(HTTPS=True, RIDE_PORTAL_HOST=PORTAL_HOST)
+class RideCodeMigrationTests(TransactionTestCase):
+    def test_existing_link_and_session_remain_valid_alongside_short_code(self):
+        executor = MigrationExecutor(connection)
+        self.addCleanup(lambda: MigrationExecutor(connection).migrate(executor.loader.graph.leaf_nodes()))
+        apps = executor.migrate([("bookings", "0018_previous_booking_data")]).apps
+        course = apps.get_model("bookings", "Course").objects.create(name="Synthetischer Termin")
+        participant = apps.get_model("bookings", "Participant").objects.create(
+            name="Testperson", email="zugang@example.invalid",
+        )
+        start = timezone.now() + timedelta(days=6)
+        end = start + timedelta(days=1)
+        session = apps.get_model("bookings", "CourseSession").objects.create(
+            course=course, school=School.WUERZBURG, starts_at=start, ends_at=end, is_test=True,
+        )
+        seat = apps.get_model("bookings", "CourseSeat").objects.create(
+            session=session, participant=participant, status=BookingStatus.CONFIRMED, is_test=True,
+        )
+        case = apps.get_model("bookings", "RideCase").objects.create(
+            direction=RideCase.ROUND_TRIP, school=School.WUERZBURG, is_test=True,
+            travel_date=timezone.localdate(start), return_date=timezone.localdate(end),
+            earliest=start, latest=start, return_earliest=end, return_latest=end,
+        )
+        entry = apps.get_model("bookings", "RideParticipation")(
+            case=case, seat=seat, session=session, participant=participant, email=participant.email,
+            expires_at=end + timedelta(days=1),
+        )
+        key = salted_hmac("bookings.ride_participation.code", str(entry.token_seed), algorithm="sha256").digest()
+        previous_code = urlsafe_b64encode(key).decode("ascii").rstrip("=")
+        previous_digest = sha256(previous_code.encode("ascii")).hexdigest()
+        entry.token_digest = previous_digest
+        entry.save()
+
+        MigrationExecutor(connection).migrate([("bookings", "0019_short_ride_codes")])
+
+        migrated = RideParticipation.objects.get(pk=entry.pk)
+        self.assertEqual(len(invite_code(migrated)), 19)
+        self.assertEqual(participation_for_code(invite_code(migrated)), migrated)
+        self.assertEqual(participation_for_code(previous_code), migrated)
+        self.assertEqual(active_participation(migrated.pk, previous_digest), migrated)
+
+        notice = RideNotice.objects.create(participation=migrated, kind=RideNotice.Kind.NEW_PEER)
+        reverted = MigrationExecutor(connection).migrate([("bookings", "0018_previous_booking_data")]).apps
+        self.assertEqual(reverted.get_model("bookings", "RideNotice").objects.get(pk=notice.pk).kind, "contacts")
 
 
 @override_settings(HTTPS=True, RIDE_PORTAL_HOST=PORTAL_HOST, ALLOWED_HOSTS=[PORTAL_HOST, WORKSPACE_HOST])
@@ -118,6 +172,7 @@ class RideParticipationFlowTests(TestCase):
         self.assertEqual(len({code for _, code in invitations}), 3)
         self.assertEqual(len({row.token_digest for row, _ in invitations}), 3)
         for row, code in invitations:
+            self.assertTrue(re.fullmatch(r"[0-9A-HJKMNP-TV-Z]{4}(?:-[0-9A-HJKMNP-TV-Z]{4}){3}", code))
             self.assertFalse(row.token_digest == code, "The access code must not be stored in clear text.")
             preview = notice_preview(row.notices.get(kind=RideNotice.Kind.INVITATION))
             link = urlsplit(preview["link"])
@@ -125,6 +180,10 @@ class RideParticipationFlowTests(TestCase):
             self.assertTrue(link.path == PORTAL and not link.query, "Use the portal path without any query string.")
             self.assertTrue(link.fragment == code, "The access code belongs in the URL fragment.")
             self.assertEqual(preview["recipient"], row.participant.email)
+            self.assertIn("Mögliche Fahrgemeinschaft", preview["subject"])
+            self.assertIn("Synthetischer Pilotlehrgang", preview["body"])
+            self.assertIn("SFS Würzburg", preview["body"])
+            self.assertIn("Gib bitte an", preview["body"])
         self.assertEqual(RideNotice.objects.filter(kind=RideNotice.Kind.INVITATION).count(), 3)
 
         with self.captureOnCommitCallbacks(execute=True):
@@ -134,6 +193,41 @@ class RideParticipationFlowTests(TestCase):
         self.assertEqual(self.test_case.participation_requests.count(), 3)
         self.assertEqual(RideNotice.objects.filter(kind=RideNotice.Kind.INVITATION).count(), 3)
         self.assertFalse(self.ordinary_case.participation_requests.exists())
+        self.assertEqual(mail.outbox, [])
+
+    def test_short_access_codes_accept_lowercase_spaces_and_copy_without_separators(self):
+        (_, code), *_ = self.start()
+        for value in (code.lower().replace("-", " "), code.replace("-", "")):
+            with self.subTest(presentation=len(value)):
+                client = Client(enforce_csrf_checks=True)
+                self.login(client, value)
+                self.assertContains(self.page(client), self.people[0].name)
+
+    def test_later_consent_updates_shared_count_and_notifies_each_existing_peer_once(self):
+        invitations = self.start()
+        first, second, third = (Client(enforce_csrf_checks=True) for _ in invitations)
+        for client, (_, code) in zip((first, second, third), invitations):
+            self.login(client, code)
+        self.assertContains(self.page(first), "2 weitere Personen kommen infrage")
+        self.assertNotContains(self.page(first), self.people[1].name)
+
+        for client in (first, second):
+            self.reply(client, "yes", channels=["email"], consent="on")
+        self.assertContains(self.page(first), "Kontakte mit 1 Person geteilt")
+        self.assertFalse(RideNotice.objects.filter(kind="new_peer").exists())
+
+        self.reply(third, "yes", channels=["email"], consent="on")
+        self.reply(third, "yes", channels=["email"], consent="on")
+        self.reply(third, "yes", channels=["email"], consent="on", brigade="Synthetische Feuerwehr")
+
+        self.assertContains(self.page(first), "Kontakte mit 2 Personen geteilt")
+        updates = list(RideNotice.objects.filter(kind="new_peer"))
+        self.assertCountEqual([notice.participation.participant_id for notice in updates], [p.pk for p in self.people[:2]])
+        for notice in updates:
+            preview = notice_preview(notice)
+            self.assertIn("Weitere Zusage", preview["subject"])
+            self.assertNotIn(self.people[2].email, preview["body"])
+        self.assertEqual(invitations[2][0].notices.filter(kind=RideNotice.Kind.CONTACTS).count(), 1)
         self.assertEqual(mail.outbox, [])
 
     def test_replies_share_selected_peer_contacts_and_withdraw_them(self):
@@ -163,6 +257,14 @@ class RideParticipationFlowTests(TestCase):
         self.reply(third, "no")
         self.assert_answers("yes", "yes", "no")
         self.assertEqual(RideNotice.objects.filter(kind=RideNotice.Kind.CONTACTS).count(), 2)
+        for recipient, peer in ((first_person, second_person), (second_person, first_person)):
+            notice = RideNotice.objects.get(kind=RideNotice.Kind.CONTACTS, participation__participant=recipient)
+            preview = notice_preview(notice)
+            self.assertIn("Kontakte freigegeben", preview["subject"])
+            self.assertIn("Teilnahmeportal", preview["body"])
+            self.assertNotIn(peer.email, preview["body"])
+            self.assertNotIn(peer.name, preview["body"])
+            self.assertNotIn(second_fields["phone"], preview["body"])
 
         first_page = self.page(first)
         self.assertContains(first_page, second_person.name)
@@ -207,6 +309,19 @@ class RideParticipationFlowTests(TestCase):
         self.assertEqual(denied_login.status_code, 400)
         self.assertFalse(code.encode() in denied_login.content, "The invalid access code must not be echoed.")
         self.assert_answers("pending", "pending", "pending")
+
+    def test_portal_overview_rechecks_a_concurrent_withdrawal(self):
+        (entry, first_code), (_, second_code), _ = self.start()
+        first, second = (Client(enforce_csrf_checks=True) for _ in range(2))
+        for client, code in ((first, first_code), (second, second_code)):
+            self.login(client, code)
+            self.reply(client, "yes", channels=["email"], consent="on")
+        before_withdrawal = active_participation(entry.pk, entry.token_digest)
+        self.assertEqual(len(portal_overview(before_withdrawal)[1]), 1)
+
+        self.reply(first, "no")
+
+        self.assertEqual(portal_overview(before_withdrawal)[1], [])
 
     def test_cancelling_a_booking_removes_contacts_and_invalidates_its_grant(self):
         (_, first_code), (second_entry, second_code), _ = self.start()

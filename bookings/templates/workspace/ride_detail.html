@@ -59,12 +59,14 @@
         <section class="panel ride-case-panel" aria-labelledby="ride-inquiries">
             <h2 id="ride-inquiries">Testabfrage</h2>
             {% if inquiry_rows %}
+                <p><strong>{{ inquiry_summary.label }}</strong></p>
                 <ul class="ride-inquiry-list" role="list">
                     {% for row in inquiry_rows %}
                         <li>
                             <div class="ride-inquiry-person">
                                 <h3>{{ row.participant_name }}</h3>
-                                <span class="status-label{% if row.answer == 'yes' %} status-confirmed{% elif row.answer == 'no' %} status-cancelled{% endif %}">{{ row.answer_label }}</span>
+                                {% if row.access_active or row.answer != 'pending' %}<span class="status-label{% if row.answer == 'yes' %} status-confirmed{% elif row.answer == 'no' %} status-cancelled{% endif %}">{{ row.answer_label }}</span>{% endif %}
+                                {% if not row.access_active %}<span class="quiet">Testzugang beendet</span>{% endif %}
                                 {% if row.answered_at %}<time class="quiet" datetime="{{ row.answered_at|date:'c' }}">{{ row.answered_at|date:"d.m.Y, H:i" }}</time>{% endif %}
                             </div>
                             {% for preview in row.previews %}
@@ -76,11 +78,11 @@
                                     </dl>
                                     <label for="ride-preview-{{ preview.id }}">Nachrichtentext zum Kopieren</label>
                                     <textarea id="ride-preview-{{ preview.id }}" readonly rows="6" spellcheck="false">{{ preview.body }}</textarea>
-                                    {% if preview.kind == 'invitation' and preview.code %}
+                                    {% if row.access_active and preview.kind == 'invitation' and preview.code %}
                                         <label for="ride-code-{{ preview.id }}">Persönlicher Testcode</label>
                                         <input id="ride-code-{{ preview.id }}" type="text" value="{{ preview.code }}" readonly spellcheck="false" autocomplete="off">
                                     {% endif %}
-                                    {% if preview.link %}<a class="button-link" href="{{ preview.link }}" target="_blank" rel="noopener noreferrer">Testfragebogen öffnen</a>{% endif %}
+                                    {% if row.access_active and preview.link %}<a class="button-link" href="{{ preview.link }}" target="_blank" rel="noopener noreferrer">Testfragebogen öffnen</a>{% endif %}
                                 </details>
                             {% endfor %}
                         </li>

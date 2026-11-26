@@ -34,8 +34,11 @@ sudo docker exec proxy-caddy-1 caddy reload --config /etc/caddy/Caddyfile --adap
 
 1. Unter **Buchungen → Buchung anlegen** drei fiktive Personen als bestätigte Testbuchungen für denselben zukünftigen Präsenztermin erfassen. Verwende je Person eine eigene Adresse, etwa `person-eins@example.invalid`.
 2. Auf der Testkachel unter **Fahrgemeinschaften** die Testabfrage starten. Administratoren steuern mit **Automatik** im Kopfbereich alternativ den Start innerhalb des eingestellten Vorlaufs.
-3. Die Links aus den Mailvorschauen in getrennten Browserprofilen öffnen. Die Wiederanmeldung funktioniert auch mit dem kopierten Code auf der Startseite des Teilnahmeportals.
+3. Die Links aus den Einladungsvorschauen in getrennten Browserprofilen öffnen oder zwischen den Personen im Teilnahmeportal abmelden. Für die Wiederanmeldung lässt sich der persönliche Code mit vier Gruppen zu je vier Zeichen eingeben. Bereits ausgegebene Codes funktionieren bis zum Ablauf weiter.
 4. Eine Zusage mit Freigabe der E-Mail-Adresse und eine Zusage mit einem telefonischen Kontaktweg erfassen. Die beiden Personen können die freigegebenen Angaben der jeweils anderen abrufen. Die dritte Person sieht die Kontakte erst nach eigener Zusage und Freigabe.
-5. Eine Zusage über denselben Zugang zurückziehen. Bei den übrigen Zusagenden erscheint ein Hinweis zum Widerruf. Wenn nur noch eine Zusage vorliegt, blendet das Portal die Kontaktliste aus.
+5. Auf der Fahrgemeinschaftskachel die offenen Antworten, Zusagen, Absagen und den Status der Kontaktfreigabe prüfen. Sobald mindestens zwei Personen ihre Kontakte freigegeben haben, erscheint für beide eine eigene Mailvorschau mit dem persönlichen Link zum Portal.
+6. Eine Zusage über denselben Zugang zurückziehen. Bei den übrigen Zusagenden erscheint ein Hinweis zum Widerruf. Wenn nur noch eine Zusage vorliegt, blendet das Portal die Kontaktliste aus.
+
+Der Kopf des Teilnahmeportals zeigt die Zahl der möglichen Mitfahrenden und die Zahl der aktuell geteilten Kontakte. Gibt eine weitere eingeladene Person ihre Kontakte frei, erhalten die bereits verbundenen Personen eine eigene Update-Vorschau.
 
 Der Zugang gilt bis 24 Stunden nach dem Ende der jeweiligen Buchung. Das Teilnahmeportal prüft bei jedem Zugriff die Zuordnung zur ursprünglichen Buchung. Bei Stornierung oder Wechsel des Kontakts erlischt der Zugriff.

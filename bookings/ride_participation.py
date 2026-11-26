@@ -1,15 +1,13 @@
 """Test invitations, replies and contact sharing for a single ride proposal."""
 
 import re
-from base64 import urlsafe_b64encode
 from datetime import timedelta
-from hashlib import sha256
 
 from django.conf import settings
 from django.db import transaction
 from django.urls import reverse
 from django.utils import timezone
-from django.utils.crypto import salted_hmac
+from django.views.decorators.debug import sensitive_variables
 
 from .models import (
     DEFAULT_RIDE_LEAD_DAYS,
@@ -19,6 +17,7 @@ from .models import (
     RideNotice,
     RideParticipation,
 )
+from .ride_codes import code_digest, compact_code_v1, display_code, legacy_code, normalize_code
 from .rides_matching import BERLIN
 from .services import _lock_import
 
@@ -27,7 +26,6 @@ CONTACT_CHANNELS = (("email", "E-Mail"), ("whatsapp", "WhatsApp"), ("call", "Anr
 _CHANNEL_LABELS = dict(CONTACT_CHANNELS)
 _PHONE_CHANNELS = {"whatsapp", "call"}
 _TEST_PHONE = re.compile(r"000(?:[ -]?[0-9]){3,12}")
-_ACCESS_CODE = re.compile(r"[A-Za-z0-9_-]{43}")
 
 
 def portal_enabled():
@@ -39,15 +37,7 @@ def _test_email(email):
 
 
 def invite_code(participation):
-    # An operator can reopen the preview without storing a usable code in the database.
-    key = salted_hmac(
-        "bookings.ride_participation.code", str(participation.token_seed), algorithm="sha256",
-    ).digest()
-    return urlsafe_b64encode(key).decode("ascii").rstrip("=")
-
-
-def _digest(code):
-    return sha256(code.encode("ascii")).hexdigest()
+    return display_code(participation)
 
 
 def _matching_test_seat(seat, case):
@@ -68,7 +58,7 @@ def _open_test_case(case):
 
 
 def _entries():
-    return RideParticipation.objects.select_related("case", "seat", "participant", "seat__session__course")
+    return RideParticipation.objects.select_related("case", "participant", "seat__participant", "seat__session__course")
 
 
 def _has_access(entry, now):
@@ -90,9 +80,11 @@ def _check_access(entry):
 
 
 def participation_for_code(code):
-    if not portal_enabled() or not _ACCESS_CODE.fullmatch(code):
+    code = normalize_code(code)
+    if not portal_enabled() or code is None:
         return None
-    return _check_access(_entries().filter(token_digest=_digest(code)).first())
+    field = "short_token_digest" if len(code) == 16 else "token_digest"
+    return _check_access(_entries().filter(**{field: code_digest(code)}).first())
 
 
 def active_participation(participation_id, token_digest):
@@ -140,7 +132,8 @@ def start_ride_inquiry(case_id, *, automatic=False, now=None):
             case=case, seat=seat, session=seat.session, participant=seat.participant,
             email=seat.participant.email, expires_at=seat.session.ends_at + timedelta(days=1),
         )
-        entry.token_digest = _digest(invite_code(entry))
+        entry.token_digest = code_digest(legacy_code(entry.token_seed))
+        entry.short_token_digest = code_digest(compact_code_v1(entry.token_seed))
         entries.append(entry)
     RideParticipation.objects.bulk_create(entries)
     RideNotice.objects.bulk_create([
@@ -200,11 +193,17 @@ def expire_booking_participation(seat_id):
             ])
 
 
-def shared_contacts(participation):
-    entries = _consenting_entries(participation.case)
-    if len(entries) < 2 or participation.pk not in entries:
-        return []
-    return [
+def portal_overview(participation):
+    now = timezone.now()
+    entries = _entries().filter(case_id=participation.case_id, expires_at__gt=now).order_by("participant__name", "pk")
+    current = {entry.pk: entry for entry in entries if _has_access(entry, now)}
+    own = current.pop(participation.pk, None)
+    if own is None or not _open_test_case(own.case):
+        return 0, []
+    available = [entry for entry in current.values() if entry.answer != RideParticipation.Answer.NO]
+    if own.answer != RideParticipation.Answer.YES or not own.consented_at:
+        return len(available), []
+    contacts = [
         {
             "name": entry.participant.name,
             "brigade": entry.brigade,
@@ -212,8 +211,9 @@ def shared_contacts(participation):
             "phone": entry.phone if _PHONE_CHANNELS.intersection(entry.channels) else "",
             "channels": [_CHANNEL_LABELS[channel] for channel in entry.channels],
         }
-        for entry in entries.values() if entry.pk != participation.pk
+        for entry in available if entry.answer == RideParticipation.Answer.YES and entry.consented_at
     ]
+    return len(available), contacts
 
 
 def _reply_data(answer, brigade, phone, channels, consent):
@@ -256,10 +256,16 @@ def record_ride_reply(participation_id, token_digest, *, answer, brigade="", pho
     after = _consenting_entries(case)
     shared_before = set(before) if len(before) >= 2 else set()
     shared_after = set(after) if len(after) >= 2 else set()
+    newly_sharing = shared_after - shared_before
     notices = [
         RideNotice(participation_id=entry_id, kind=RideNotice.Kind.CONTACTS)
-        for entry_id in sorted(shared_after - shared_before)
+        for entry_id in sorted(newly_sharing)
     ]
+    if newly_sharing:
+        notices.extend(
+            RideNotice(participation_id=entry_id, kind=RideNotice.Kind.NEW_PEER)
+            for entry_id in sorted(shared_before & shared_after)
+        )
     if entry.pk in shared_before and answer == RideParticipation.Answer.NO:
         notices.extend(
             RideNotice(participation_id=entry_id, kind=RideNotice.Kind.WITHDRAWAL)
@@ -271,20 +277,53 @@ def record_ride_reply(participation_id, token_digest, *, answer, brigade="", pho
 
 def notice_message(notice):
     return {
-        RideNotice.Kind.INVITATION: "Du bist zur Testabfrage für die Fahrgemeinschaft eingeladen.",
+        RideNotice.Kind.INVITATION: "Für deinen Lehrgang kommt eine Fahrgemeinschaft infrage.",
         RideNotice.Kind.CONTACTS: "Mindestens zwei Personen haben zugesagt. Die Kontaktdaten sind im Portal verfügbar.",
+        RideNotice.Kind.NEW_PEER: "Eine weitere Person hat zugesagt und ihre Kontaktdaten freigegeben.",
         RideNotice.Kind.WITHDRAWAL: "Eine Zusage wurde nachträglich zurückgezogen. Die Kontaktliste wurde aktualisiert.",
     }[notice.kind]
 
 
+@sensitive_variables()
 def notice_preview(notice):
-    code = invite_code(notice.participation)
+    participation = notice.participation
+    case = participation.case
+    school = case.get_school_display()
+    start = case.travel_date.strftime("%d.%m.%Y")
+    period = start if case.return_date == case.travel_date else f"{start} bis {case.return_date:%d.%m.%Y}"
+    course = participation.session.course.name if participation.session else "Lehrgang"
+    label, action = {
+        RideNotice.Kind.INVITATION: (
+            "Mögliche Fahrgemeinschaft",
+            "Gib bitte an, ob du Interesse an der Fahrgemeinschaft hast. "
+            "Bei einer Zusage wählst du die Kontaktwege, die du freigeben willst.",
+        ),
+        RideNotice.Kind.CONTACTS: (
+            "Kontakte freigegeben",
+            "Melde dich im Teilnahmeportal an, um die freigegebenen Kontaktdaten zu sehen und euch abzusprechen.",
+        ),
+        RideNotice.Kind.NEW_PEER: (
+            "Weitere Zusage",
+            "Die aktualisierte Kontaktliste findest du im Teilnahmeportal.",
+        ),
+        RideNotice.Kind.WITHDRAWAL: (
+            "Rückmeldung zur Fahrgemeinschaft geändert",
+            "Den aktuellen Stand findest du im Teilnahmeportal.",
+        ),
+    }[notice.kind]
+    code = invite_code(participation)
     portal = f"https://{settings.RIDE_PORTAL_HOST}{reverse('ride_portal')}"
     link = f"{portal}#{code}"
     return {
-        "recipient": notice.participation.email,
-        "subject": f"Testvorschau · {notice.get_kind_display()}",
-        "body": f"{notice_message(notice)}\n\nSeite: {portal}\nCode: {code}\nDirektlink: {link}",
+        "recipient": participation.email,
+        "subject": f"Testvorschau · {label} · {school} · {period}",
+        "body": (
+            f"Hallo {participation.participant.name},\n\n"
+            f"{course} · {school} · {period}\n\n"
+            f"{notice_message(notice)} {action}\n\n"
+            f"Direkt zum Teilnahmeportal: {link}\n"
+            f"Alternativ öffne {portal} und gib deinen persönlichen Zugangscode ein: {code}"
+        ),
         "link": link,
         "code": code,
     }
