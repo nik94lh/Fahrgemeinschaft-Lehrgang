@@ -36,7 +36,7 @@
                                 <strong>{{ seat.session.course.name }}</strong>
                                 <small class="booking-list-id"><a href="{% url 'booking_detail' seat.pk %}{% if detail_querystring %}?{{ detail_querystring }}{% endif %}">Buchungs-ID {{ seat.pk|stringformat:"d" }}</a></small>
                             </td>
-                            <td role="cell" class="listing-meta" data-label="Schulungsort">{{ seat.session.get_venue_display }}</td>
+                            <td role="cell" class="listing-meta booking-venue" data-label="Schulungsort">{{ seat.session.get_venue_display }}</td>
                             <td role="cell" class="listing-meta" data-label="Zeitraum">{% include "workspace/session_period.html" with session=seat.session only %}</td>
                             <td role="cell" class="booking-person" data-label="Teilnehmer/in">{% if seat.participant %}{{ seat.participant.name }}{% else %}<span class="quiet">Teilnehmer nicht zugeordnet</span>{% endif %}</td>
                             <td role="cell" data-label="Status" class="booking-status-cell">

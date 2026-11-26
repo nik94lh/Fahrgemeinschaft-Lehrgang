@@ -1,3 +1,3 @@
 {% load tz %}{% timezone "Europe/Berlin" %}
-<span><time datetime="{{ session.starts_at|date:'c' }}">{{ session.starts_at|date:"d.m.Y, H:i" }} Uhr</time> – <time datetime="{{ session.ends_at|date:'c' }}">{{ session.ends_at|date:"d.m.Y, H:i" }} Uhr</time></span>
+<span class="session-period"><time datetime="{{ session.starts_at|date:'c' }}">{{ session.starts_at|date:"d.m.Y, H:i" }} Uhr</time> <span class="session-period-end">– <time datetime="{{ session.ends_at|date:'c' }}">{{ session.ends_at|date:"d.m.Y, H:i" }} Uhr</time></span></span>
 {% endtimezone %}

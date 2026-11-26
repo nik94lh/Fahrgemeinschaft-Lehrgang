@@ -19,9 +19,6 @@ from .models import BookingStatus, CourseSession, School
 DAY = timedelta(days=1)
 WEEK = timedelta(days=7)
 BERLIN = ZoneInfo("Europe/Berlin")
-TIMELINE_SIDE_MONTHS = 2
-FIRST_TIMELINE_DAY = date(2, 1, 1)
-TIMELINE_STOP = date(9999, 1, 1)
 MONTH_CHOICES = tuple(date(2000, month, 1) for month in range(1, 13))
 MONTH_OCCUPANCY_RANGES = (
     (0, "0"), (1, "1"), (5, "2–5"), (10, "6–10"), (20, "11–20"), (31, "21–31"),
@@ -58,11 +55,6 @@ def _week_start(day):
 
 def _next_month(month):
     return (month.replace(day=28) + timedelta(days=4)).replace(day=1)
-
-
-def _shift_month(month, months):
-    year, month_index = divmod(month.year * 12 + month.month - 1 + months, 12)
-    return date(year, month_index + 1, 1)
 
 
 def _selected_month(value, default):
@@ -118,7 +110,6 @@ def _ticks(start, stop, today):
             "number": day.day,
             "is_today": day == today,
             "is_weekend": day.weekday() >= 5,
-            "is_month_start": day.day == 1,
         })
     return ticks
 
@@ -178,18 +169,18 @@ def _month_overview(sessions, period, today, school):
     return months
 
 
-def _month_groups(sessions, start, stop, selected, school_filter):
+def _month_groups(sessions, period):
     bars = defaultdict(list)
     lane_ends = defaultdict(list)
     for session in sessions:
         starts_on, last_day = _session_dates(session, zone=BERLIN)
-        visible_start = max(starts_on, start)
-        visible_end = min(last_day, stop - DAY)
+        visible_start = max(starts_on, period.start)
+        visible_end = min(last_day, period.last_day)
         if visible_start > visible_end:
             continue
 
-        start_column = (visible_start - start).days + 1
-        end_column = (visible_end - start).days + 2
+        start_column = (visible_start - period.start).days + 1
+        end_column = (visible_end - period.start).days + 2
         school_lanes = lane_ends[session.school]
         lane = next(
             (index for index, free_at in enumerate(school_lanes) if free_at <= start_column),
@@ -199,7 +190,6 @@ def _month_groups(sessions, start, stop, selected, school_filter):
             school_lanes.append(end_column)
         else:
             school_lanes[lane] = end_column
-        detail_month = selected.start if starts_on < selected.stop and last_day >= selected.start else visible_start
         bars[session.school].append({
             "session": session,
             "start_column": start_column,
@@ -207,35 +197,11 @@ def _month_groups(sessions, start, stop, selected, school_filter):
             "lane": lane + 1,
             "starts_before": starts_on < visible_start,
             "ends_after": last_day > visible_end,
-            "detail_query": _query_string("month", detail_month, school_filter),
         })
     return [
         {"school": school, "bars": bars[school], "lane_count": len(lane_ends[school])}
         for school in School if bars[school]
     ]
-
-
-def _month_timeline(selected, center, today, school):
-    start = max(FIRST_TIMELINE_DAY, _shift_month(center, -TIMELINE_SIDE_MONTHS))
-    stop = min(TIMELINE_STOP, _shift_month(center, TIMELINE_SIDE_MONTHS + 1))
-    sessions = _calendar_sessions(_overlapping_sessions(
-        datetime.combine(start, time.min, tzinfo=BERLIN), datetime.combine(stop, time.min, tzinfo=BERLIN), school,
-    ))
-    days = _ticks(start, stop, today)
-    months = [
-        {"start": day["date"], "start_column": column, "end_column": (_next_month(day["date"]) - start).days + 1}
-        for column, day in enumerate(days, 1) if day["is_month_start"]
-    ]
-    return {
-        "timeline_days": days,
-        "timeline_months": months,
-        "timeline_groups": _month_groups(sessions, start, stop, selected, school),
-        "timeline_anchor": selected.start if start <= selected.start < stop else center,
-        "timeline_can_extend_before": start > FIRST_TIMELINE_DAY,
-        "timeline_can_extend_after": stop < TIMELINE_STOP,
-        "timeline_center": center.isoformat()[:7],
-        "timeline_day_count": len(days),
-    }
 
 
 def _timeline_rows(sessions, period, starts, ends):
@@ -337,9 +303,17 @@ def calendar(request):
         context["months"] = _month_overview(sessions, period, today, school)
         context["occupancy_legend"] = tuple(enumerate(label for _, label in MONTH_OCCUPANCY_RANGES))
     elif period.view == "month":
-        center = _selected_month(request.GET.get("range", ""), period.start)
-        context.update(_month_timeline(period, center, today, school))
-        context["sessions"] = sessions
+        days = _ticks(period.start, period.stop, today)
+        groups = _month_groups(sessions, period)
+        context.update({
+            "timeline_days": days,
+            "timeline_day_count": len(days),
+            "timeline_groups": groups,
+            "timeline_has_continuations": any(
+                bar["starts_before"] or bar["ends_after"] for group in groups for bar in group["bars"]
+            ),
+            "sessions": sessions,
+        })
     elif period.view == "day":
         context["agenda_groups"] = _agenda_groups(sessions)
     else:
