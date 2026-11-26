@@ -32,6 +32,8 @@ from mailimport.mailbox_views import mailbox_view
 from mailimport.receipt_views import mail_receipt, mail_receipt_recheck, mail_receipts
 from mailimport.views import manual_import, preview, sample_eml
 
+from .branding import FAVICON_PATH
+
 
 @require_safe
 def health(request):
@@ -55,7 +57,7 @@ def workspace_chrome_script(request):
 @require_safe
 @cache_control(public=True, max_age=3600)
 def favicon(request):
-    return FileResponse(Path(__file__).with_name("favicon.png").open("rb"), content_type="image/png")
+    return FileResponse(FAVICON_PATH.open("rb"), content_type="image/png")
 
 
 urlpatterns = [

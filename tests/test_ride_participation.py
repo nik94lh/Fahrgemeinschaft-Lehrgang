@@ -1,7 +1,8 @@
 import re
-from base64 import urlsafe_b64encode
+from base64 import b64encode, urlsafe_b64encode
 from datetime import timedelta
 from hashlib import sha256
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from django.contrib.auth import get_user_model
@@ -76,6 +77,16 @@ class RideCodeMigrationTests(TransactionTestCase):
 
 @override_settings(HTTPS=True, RIDE_PORTAL_HOST=PORTAL_HOST, ALLOWED_HOSTS=[PORTAL_HOST, WORKSPACE_HOST])
 class RideParticipationHostTests(TestCase):
+    def test_participant_page_embeds_the_shared_favicon_without_a_new_route(self):
+        icon = Path(__file__).resolve().parents[1] / "config" / "favicon.png"
+        encoded = b64encode(icon.read_bytes()).decode("ascii")
+
+        response = self.client.get(PORTAL, **PORTAL_REQUEST)
+
+        self.assertContains(response, f'<link rel="icon" type="image/png" sizes="32x32" href="data:image/png;base64,{encoded}">')
+        self.assertIn("img-src data:", response.headers["Content-Security-Policy"].split("; "))
+        self.assertEqual(self.client.get("/favicon.png", **PORTAL_REQUEST).status_code, 404)
+
     def test_participant_host_serves_form_without_serving_workspace_routes(self):
         response = self.client.get(PORTAL, **PORTAL_REQUEST)
         self.assertContains(response, 'name="code"')

@@ -13,6 +13,8 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.debug import sensitive_post_parameters, sensitive_variables
 from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
+from config.branding import favicon_data_url
+
 from .models import RideNotice, RideParticipation
 from .ride_participation import (
     CONTACT_CHANNELS,
@@ -84,7 +86,7 @@ def _private_response(view):
         response.headers["Referrer-Policy"] = "no-referrer"
         if response.headers.get("Content-Type", "").startswith("text/html"):
             response.headers["Content-Security-Policy"] = (
-                "default-src 'none'; script-src 'self'; style-src 'unsafe-inline'; "
+                "default-src 'none'; img-src data:; script-src 'self'; style-src 'unsafe-inline'; "
                 "form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
             )
         return response
@@ -112,7 +114,7 @@ def _latest_contact_note(participation):
 
 @sensitive_variables("participation", "form", "context")
 def _render_portal(request, *, participation=None, form=None, access_error="", status=200):
-    context = {"code_form": AccessCodeForm(), "access_error": access_error}
+    context = {"code_form": AccessCodeForm(), "access_error": access_error, "favicon_url": favicon_data_url()}
     if participation is not None:
         if form is None:
             form = RideReplyForm(initial={
