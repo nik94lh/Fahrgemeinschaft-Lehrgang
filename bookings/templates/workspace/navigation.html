@@ -5,7 +5,12 @@
             {% include "workspace/navigation_links.html" with links=workspace_primary_navigation %}
             {% if workspace_secondary_navigation %}
                 <details class="workspace-nav-more" name="workspace-menu">
-                    <summary class="workspace-menu-trigger">Weitere</summary>
+                    <summary class="workspace-menu-trigger">
+                        <span class="workspace-more-label">Weitere</span>
+                        {% for link in workspace_secondary_navigation %}
+                            {% if link.section == section %}<span class="workspace-more-current">{{ link.label }}</span>{% endif %}
+                        {% endfor %}
+                    </summary>
                     <div class="workspace-menu-panel">
                         {% include "workspace/navigation_links.html" with links=workspace_secondary_navigation %}
                     </div>

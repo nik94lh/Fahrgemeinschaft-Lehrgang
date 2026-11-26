@@ -13,7 +13,9 @@ PUBLIC_ROUTES = frozenset({
     "health", "live_script", "workspace_chrome_script", "calendar_timeline_script", "favicon", "login",
 })
 ACCOUNT_ROUTES = frozenset({"account", "account_password_change", "logout"})
-ADMIN_ROUTES = frozenset({"account_list", "account_create", "account_edit", "account_password_reset"})
+ADMIN_ROUTES = frozenset({
+    "account_list", "account_create", "account_edit", "account_password_reset", "account_admin_role",
+})
 VIEW_ROUTES = {
     "overview": "overview",
     "bookings": "bookings",

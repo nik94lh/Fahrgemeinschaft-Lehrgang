@@ -1,8 +1,9 @@
 {% extends "workspace/base.html" %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
 {% block title %}Personen{% endblock %}
 {% block page_styles %}{% include "workspace/listing.css" %}{% include "workspace/people.css" %}{% endblock %}
 {% block content %}
-    <div class="page-heading"><h1>Personen</h1></div>
+    <h1 class="visually-hidden">Personen</h1>
     <form class="panel filters listing-filters people-search" method="get" role="search" aria-label="Personen suchen">
         <label>Name oder E-Mail-Adresse<input name="q" type="search" maxlength="100" value="{{ query }}"></label>
         <div class="list-actions">

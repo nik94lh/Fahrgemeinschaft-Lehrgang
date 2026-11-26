@@ -1,8 +1,9 @@
 {% extends "workspace/base.html" %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
 {% block title %}Statistik{% endblock %}
 {% block page_styles %}{% include "workspace/statistics.css" %}{% endblock %}
 {% block content %}
-    <div class="page-heading"><h1>Statistik</h1></div>
+    <h1 class="visually-hidden">Statistik</h1>
     <form class="panel filters statistics-filters" method="get" aria-label="Statistik filtern">
         <div>
             <label for="statistics-year">Jahr</label>

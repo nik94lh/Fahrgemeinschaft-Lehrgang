@@ -1,7 +1,10 @@
 .skip-link { position: absolute; inset: .65rem auto auto 1rem; z-index: 30; transform: translateY(-180%); padding: .45rem .75rem; color: var(--navy); background: white; border-radius: .35rem; }
 .skip-link:focus { transform: none; }
 a { color: var(--accent); text-underline-offset: .16em; }
+body:has(.workspace-main-wide) { --workspace-max: none; }
+.workspace-main-wide { max-width: none; font-size: 1.0625rem; }
 .page-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-block-end: 1.3rem; }
+.page-heading--actions { justify-content: flex-end; }
 .page-heading .intro { margin-block-end: 0; max-width: 52rem; }
 .button-link { display: inline-flex; align-items: center; min-height: 2.75rem; padding: .4rem .85rem; border: 1px solid #8497b0; border-radius: .45rem; background: var(--surface); color: var(--navy); font-weight: 650; text-decoration: none; }
 .button-link:hover { background: #eaf2ff; }

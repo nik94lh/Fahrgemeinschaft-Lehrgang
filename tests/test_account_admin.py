@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from threading import Event
+from threading import Barrier, Event
 from unittest import skipUnless
 from unittest.mock import patch
 
@@ -10,6 +10,7 @@ from django.db import connection, connections
 from django.test import Client, TestCase, TransactionTestCase, override_settings
 
 from accounts.access import SECTIONS
+from accounts.middleware import WorkspaceAccessMiddleware
 from accounts.views import AccountPasswordChangeView
 
 
@@ -265,6 +266,111 @@ class AccountAdministrationTests(TestCase):
         self.assertTrue(self.other_admin.is_active)
         self.assertTrue(self.other_admin.check_password(self.fixtures_password))
 
+    def test_admin_can_grant_admin_role_from_user_list(self):
+        self.client.force_login(self.admin)
+        role_url = f"/benutzer/{self.member.pk}/admin-recht/"
+        member_browser = Client()
+        member_browser.force_login(self.member)
+        self.assertContains(self.client.get("/benutzer/"), f'href="{role_url}"')
+        confirmation_page = self.client.get(role_url)
+        self.assertContains(confirmation_page, "Admin-Recht vergeben")
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.is_superuser)
+
+        response = self.client.post(role_url, confirmation_page.context["form"].initial)
+
+        self.assertRedirects(response, "/benutzer/?rolle=1")
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.is_superuser)
+        self.assertFalse(self.member.is_staff)
+        self.assertRedirects(
+            member_browser.get("/benutzer/"), "/anmelden/?next=/benutzer/", fetch_redirect_response=False,
+        )
+        self.assertRedirects(member_browser.post("/anmelden/", {
+            "username": self.member.username, "password": self.fixtures_password, "next": "/benutzer/",
+        }), "/benutzer/")
+        self.assertContains(self.client.get(role_url), "Admin-Recht entziehen")
+
+    def test_admin_role_removal_keeps_tab_rights_and_revokes_sessions(self):
+        self.client.force_login(self.admin)
+        permission = Permission.objects.get(content_type__app_label="accounts", codename="view_bookings")
+        self.other_admin.user_permissions.add(permission)
+        previous_session = Client()
+        previous_session.force_login(self.other_admin)
+        role_url = f"/benutzer/{self.other_admin.pk}/admin-recht/"
+        confirmation = self.client.get(role_url).context["form"].initial
+
+        self.assertRedirects(self.client.post(role_url, confirmation), "/benutzer/?rolle=1")
+        self.assertRedirects(self.client.post(role_url, confirmation), "/benutzer/?rolle=1")
+        self.other_admin.refresh_from_db()
+        self.assertFalse(self.other_admin.is_superuser)
+        self.assertTrue(self.other_admin.is_staff)
+        self.assertTrue(self.other_admin.user_permissions.filter(pk=permission.pk).exists())
+        self.assertRedirects(
+            previous_session.get("/konto/"), "/anmelden/?next=/konto/", fetch_redirect_response=False,
+        )
+        self.assertRedirects(previous_session.post("/anmelden/", {
+            "username": self.other_admin.username, "password": self.fixtures_password,
+        }), "/buchungen/")
+        self.assertEqual(previous_session.get("/benutzer/").status_code, 403)
+
+    def test_ordinary_user_cannot_grant_admin_role(self):
+        self.client.force_login(self.member)
+        role_url = f"/benutzer/{self.member.pk}/admin-recht/"
+
+        self.assertEqual(self.client.get(role_url).status_code, 403)
+        self.assertEqual(self.client.post(role_url, {"action": "grant"}).status_code, 403)
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.is_superuser)
+
+    def test_admin_cannot_remove_own_admin_role(self):
+        self.client.force_login(self.admin)
+        role_url = f"/benutzer/{self.admin.pk}/admin-recht/"
+        self.assertNotContains(self.client.get("/benutzer/"), role_url)
+
+        self.assertEqual(self.client.post(role_url, {"action": "revoke"}).status_code, 404)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_superuser)
+
+    def test_admin_role_change_requires_valid_action_and_csrf(self):
+        role_url = f"/benutzer/{self.member.pk}/admin-recht/"
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.admin)
+        confirmation_page = client.get(role_url)
+        self.assertEqual(confirmation_page.status_code, 200)
+        confirmation = confirmation_page.context["form"].initial
+        self.assertEqual(client.post(role_url, confirmation).status_code, 403)
+        self.client.force_login(self.admin)
+        self.assertEqual(self.client.post(role_url, confirmation | {"action": "toggle"}).status_code, 400)
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.is_superuser)
+
+    def test_admin_role_cannot_be_granted_to_an_inactive_account(self):
+        self.member.is_active = False
+        self.member.save(update_fields=["is_active"])
+        self.client.force_login(self.admin)
+
+        role_url = f"/benutzer/{self.member.pk}/admin-recht/"
+        response = self.client.post(role_url, self.client.get(role_url).context["form"].initial)
+
+        self.assertContains(response, "Aktiviere das Konto", status_code=400)
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.is_superuser)
+
+    def test_old_confirmation_cannot_override_intervening_admin_role_changes(self):
+        self.client.force_login(self.admin)
+        role_url = f"/benutzer/{self.member.pk}/admin-recht/"
+        old_confirmation = self.client.get(role_url).context["form"].initial
+        self.assertEqual(self.client.post(role_url, old_confirmation).status_code, 302)
+        current_confirmation = self.client.get(role_url).context["form"].initial
+        self.assertEqual(self.client.post(role_url, current_confirmation).status_code, 302)
+
+        response = self.client.post(role_url, old_confirmation)
+
+        self.assertContains(response, "Das Konto wurde zwischenzeitlich geändert", status_code=409)
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.is_superuser)
+
     def test_post_without_csrf_does_not_disable_account(self):
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.admin)
@@ -279,6 +385,38 @@ class AccountAdministrationTests(TestCase):
 @skipUnless(connection.vendor == "postgresql", "Concurrent account sessions require PostgreSQL.")
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
 class ConcurrentAccountRevocationTests(TransactionTestCase):
+    def test_admins_cannot_remove_each_others_admin_role_concurrently(self):
+        users = get_user_model().objects
+        first, second = (users.create_superuser(username) for username in ("first-admin", "second-admin"))
+        ready = Barrier(2, timeout=8)
+        original = WorkspaceAccessMiddleware.process_view
+
+        def synchronize_authorized_requests(middleware, request, view, view_args, view_kwargs):
+            response = original(middleware, request, view, view_args, view_kwargs)
+            if response is None and request.method == "POST" and request.resolver_match.url_name == "account_admin_role":
+                ready.wait()
+            return response
+
+        def revoke(client, role_url, confirmation):
+            try:
+                return client.post(role_url, confirmation).status_code
+            finally:
+                connections.close_all()
+
+        # The test client's template context is captured through a global signal.
+        changes = []
+        for actor, target in ((first, second), (second, first)):
+            client = Client()
+            client.force_login(actor)
+            role_url = f"/benutzer/{target.pk}/admin-recht/"
+            changes.append((client, role_url, client.get(role_url).context["form"].initial))
+
+        with patch.object(WorkspaceAccessMiddleware, "process_view", synchronize_authorized_requests):
+            with ThreadPoolExecutor(max_workers=2) as executor:
+                votes = [executor.submit(revoke, *change) for change in changes]
+                self.assertEqual(sorted(vote.result(timeout=12) for vote in votes), [302, 403])
+        self.assertEqual(users.filter(is_active=True, is_superuser=True).count(), 1)
+
     def test_session_written_after_revocation_stays_invalid_if_login_was_already_complete(self):
         users = get_user_model().objects
         admin = users.create_superuser("test-admin")

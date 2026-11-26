@@ -1,12 +1,14 @@
 {% extends "workspace/base.html" %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
 {% block title %}Benutzerverwaltung{% endblock %}
 {% block page_styles %}{% include "accounts/styles.css" %}{% endblock %}
 {% block content %}
-    <div class="page-heading">
-        <h1 id="accounts-heading">Benutzerverwaltung</h1>
+    <h1 id="accounts-heading" class="visually-hidden">Benutzerverwaltung</h1>
+    <div class="page-heading page-heading--actions">
         <a class="button-link" href="{% url 'account_create' %}">Benutzer anlegen</a>
     </div>
     {% if saved %}<p class="notice" role="status">Das Konto wurde gespeichert.</p>{% endif %}
+    {% if role_saved %}<p class="notice" role="status">Das Admin-Recht wurde aktualisiert.</p>{% endif %}
     {% if password_reset %}<p class="notice" role="status">Das Passwort wurde zurückgesetzt.</p>{% endif %}
     <section class="panel" aria-labelledby="accounts-heading">
         <div class="table-scroll" tabindex="0" role="region" aria-labelledby="accounts-heading">
@@ -16,18 +18,25 @@
                     {% for account in page_obj %}
                         <tr>
                             <td data-label="Benutzername" class="account-identity">{{ account.get_username }}</td>
-                            <td data-label="Kontotyp">{% if account.is_superuser %}Administration{% else %}Benutzer{% endif %}</td>
+                            <td data-label="Kontotyp">{% if account.is_superuser %}Administrator{% else %}Benutzer{% endif %}</td>
                             <td data-label="Status">
                                 {% if account.is_active %}<span class="status-label status-confirmed">Aktiv</span>
                                 {% else %}<span class="status-label status-cancelled">Deaktiviert</span>{% endif %}
                             </td>
                             <td data-label="Aktionen">
-                                {% if account.is_superuser %}
-                                    {% if account.pk == request.user.pk %}<a href="{% url 'account' %}">Mein Konto</a>{% endif %}
+                                {% if account.pk == request.user.pk %}
+                                    <a href="{% url 'account' %}">Mein Konto</a>
                                 {% else %}
                                     <div class="account-list-actions">
-                                        <a href="{% url 'account_edit' account.pk %}" aria-label="Konto {{ account.get_username }} bearbeiten">Bearbeiten</a>
-                                        <a href="{% url 'account_password_reset' account.pk %}" aria-label="Passwort für {{ account.get_username }} zurücksetzen">Passwort zurücksetzen</a>
+                                        {% if not account.is_superuser %}
+                                            <a href="{% url 'account_edit' account.pk %}" aria-label="Konto {{ account.get_username }} bearbeiten">Bearbeiten</a>
+                                            <a href="{% url 'account_password_reset' account.pk %}" aria-label="Passwort für {{ account.get_username }} zurücksetzen">Passwort zurücksetzen</a>
+                                        {% endif %}
+                                        {% if account.is_superuser %}
+                                            <a href="{% url 'account_admin_role' account.pk %}" aria-label="Admin-Recht für {{ account.get_username }} entziehen">Admin-Recht entziehen</a>
+                                        {% elif account.is_active %}
+                                            <a href="{% url 'account_admin_role' account.pk %}" aria-label="Admin-Recht an {{ account.get_username }} vergeben">Admin-Recht vergeben</a>
+                                        {% endif %}
                                     </div>
                                 {% endif %}
                             </td>

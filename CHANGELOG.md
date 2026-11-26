@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.18.0
+
+- Administratoren können aktiven Konten in der Benutzerverwaltung das Admin-Recht geben und es anderen Konten wieder entziehen. Änderungen erfordern eine Bestätigung und eine neue Anmeldung des betroffenen Kontos. Die individuellen Tab-Rechte bleiben gespeichert.
+- Die Reiteransichten nutzen die verfügbare Breite mit etwas größerer Grundschrift. Der Reitername steht in der Navigation, und Detailseiten behalten ihre Überschrift.
+
 ## 0.17.0
 
 - Bearbeitungsberechtigte können eine einzelne Lehrgangsbuchung aus ihrem Verlauf löschen. Die Bestätigung verlangt die konkrete Buchungs-ID. Eindeutig zugeordnete offene Klärungsfälle werden abgeschlossen.

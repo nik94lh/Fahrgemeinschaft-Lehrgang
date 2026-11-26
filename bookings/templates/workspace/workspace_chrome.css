@@ -131,6 +131,7 @@ details[open] > .workspace-menu-trigger::after { margin-block-start: .18rem; tra
 }
 .workspace-nav-desktop > a[aria-current] { background: var(--accent); color: white; }
 .workspace-nav-more:has(a[aria-current]) > summary { background: #e5efff; color: var(--accent); }
+.workspace-more-label:has(+ .workspace-more-current) { display: none; }
 .workspace-nav-more:nth-child(-n+2) > .workspace-menu-panel { inset-inline-start: 0; inset-inline-end: auto; }
 .workspace-nav-mobile { display: none; }
 
@@ -140,7 +141,7 @@ details[open] > .workspace-menu-trigger::after { margin-block-start: .18rem; tra
 .workspace-static-chrome .workspace-nav-mobile:has(details[open]) { align-items: start; }
 .workspace-static-chrome .workspace-nav-desktop { flex-wrap: wrap; }
 
-@media (max-width: 900px) {
+@media (max-width: 960px) {
     .workspace-chrome-brand { gap: .5rem; }
     .workspace-chrome-brand strong { font-size: 1.35rem; }
     .workspace-chrome-brand span { padding-inline-start: .5rem; font-size: .85rem; }

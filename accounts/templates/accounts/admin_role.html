@@ -1,0 +1,29 @@
+{% extends "workspace/base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_styles %}{% include "accounts/styles.css" %}{% endblock %}
+{% block live_region %}{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'account_list' %}">‹ Zurück zur Benutzerverwaltung</a></p>
+    <div class="page-heading"><h1 id="role-heading">{{ title }}</h1></div>
+    <section class="panel account-narrow" aria-labelledby="role-heading">
+        <dl class="details"><div><dt>Benutzername</dt><dd>{{ managed_user.get_username }}</dd></div></dl>
+        <form method="post" class="account-form-fields">
+            {% csrf_token %}
+            {% if role_conflict %}
+                <p class="warnings" role="alert">Das Konto wurde zwischenzeitlich geändert. Prüfe den aktuellen Stand und bestätige erneut.</p>
+            {% endif %}
+            {% if managed_user.is_superuser %}
+                <p>Danach gelten für dieses Konto die individuell vergebenen Tab-Rechte.</p>
+            {% elif managed_user.is_active %}
+                <p>Administratoren haben alle BMS-Rechte und können Admin-Rechte vergeben und entziehen.</p>
+            {% else %}
+                <p>Aktiviere dieses Konto in der Benutzerverwaltung, um das Admin-Recht zu vergeben.</p>
+            {% endif %}
+            {{ form.as_p }}
+            {% if managed_user.is_superuser or managed_user.is_active %}
+                <p>Nach der Änderung muss sich die Person erneut anmelden.</p>
+                <div class="account-controls"><button type="submit">{{ title }}</button></div>
+            {% endif %}
+        </form>
+    </section>
+{% endblock %}
