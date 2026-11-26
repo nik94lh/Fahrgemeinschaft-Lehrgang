@@ -10,7 +10,7 @@ from django.contrib.auth import get_user_model
 from django.core.validators import RegexValidator
 from django.db import transaction
 from django.db.models import Count, Q
-from django.http import FileResponse
+from django.http import FileResponse, HttpResponseBadRequest
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -65,20 +65,27 @@ def _digest(token: str) -> str:
 
 @sensitive_variables("token", "previews")
 @transaction.atomic
-def _start_simulation(user):
+def _issue_test_links(user, *, renew):
     get_user_model().objects.select_for_update().get(pk=user.pk)
-    RideSimulationInvitation.objects.filter(owner=user).delete()
+    owned = RideSimulationInvitation.objects.filter(owner=user)
+    if renew:
+        invitations = list(owned.select_for_update().filter(answered_at__isnull=True).order_by("respondent"))
+    else:
+        owned.delete()
+        invitations = [RideSimulationInvitation(owner=user, respondent=respondent) for respondent in RESPONDENTS]
     expires_at = timezone.now() + timedelta(hours=2)
-    invitations = []
     previews = []
     open_url = reverse("ride_simulation_open")
-    for respondent, (name, email) in RESPONDENTS.items():
+    for invitation in invitations:
         token = token_urlsafe(32)
-        invitations.append(RideSimulationInvitation(
-            owner=user, respondent=respondent, token_digest=_digest(token), expires_at=expires_at,
-        ))
+        invitation.token_digest = _digest(token)
+        invitation.expires_at = expires_at
+        name, email = RESPONDENTS[invitation.respondent]
         previews.append({"name": name, "email": email, "link": f"{open_url}#{token}"})
-    RideSimulationInvitation.objects.bulk_create(invitations)
+    if renew:
+        owned.bulk_update(invitations, ["token_digest", "expires_at"])
+    else:
+        owned.bulk_create(invitations)
     return previews
 
 
@@ -89,8 +96,12 @@ def _start_simulation(user):
 def ride_simulation(request):
     previews = []
     if request.method == "POST":
-        previews = _start_simulation(request.user)
-        request.session.pop(SESSION_GRANTS, None)
+        action = request.POST.get("action", "start")
+        if action not in {"start", "renew"}:
+            return HttpResponseBadRequest("Unbekannte Simulationsaktion.")
+        previews = _issue_test_links(request.user, renew=action == "renew")
+        if previews:
+            request.session.pop(SESSION_GRANTS, None)
     now = timezone.now()
     counts = RideSimulationInvitation.objects.filter(owner=request.user).aggregate(
         yes=Count("pk", filter=Q(interest=True)),
@@ -99,7 +110,10 @@ def ride_simulation(request):
         expired=Count("pk", filter=Q(interest__isnull=True, expires_at__lte=now)),
     )
     return render(request, "workspace/ride_simulation.html", {
-        "section": "rides", "counts": counts if any(counts.values()) else None, "previews": previews,
+        "section": "rides",
+        "counts": counts if any(counts.values()) else None,
+        "previews": previews,
+        "can_renew": not previews and bool(counts["open"] or counts["expired"]),
     })
 
 

@@ -1,5 +1,15 @@
 # Änderungen
 
+## 0.16.0
+
+- Die Tagesansicht zeigt Lehrgänge mit Uhrzeiten und Schulgruppen. Ein Wochentag öffnet direkt die passende Tagesansicht.
+- Beim Öffnen einer Buchung oder eines Teilnehmerprofils bleiben die Filter und die Seite der Buchungsliste erhalten. Offene Klärungsfälle sind aus dem Buchungsverlauf erreichbar.
+- Eine undatierte Stornierung einer bestätigten Buchung geht zur Klärung. Berechtigte können sie nach Prüfung der Originalmail für die zugeordnete Buchung übernehmen.
+- Fahrgemeinschaften erklären den leeren Abgleich und zeigen verstrichene Terminbeginne an. Offene Testlinks lassen sich erneuern, während vorhandene Antworten erhalten bleiben.
+- Das Importpostfach zeigt seinen Status auch bei Einrichtung über die Serverumgebung. Mail-Ereignisse und Postfachnavigation werden nur im dafür vorgesehenen HTTPS-Bereich angezeigt.
+- Die Navigation lässt sich mit Escape schließen und verdeckt beim Weitergehen per Tab keine Bedienelemente. Bei einer Anmeldesperre bleibt das Formular mit der verbleibenden Wartezeit sichtbar. Eine Seite ohne Zugriff führt zurück zum verfügbaren Arbeitsbereich. Nach der Reaktivierung eines Kontos ist eine neue Anmeldung erforderlich.
+- Feuerwehren lassen sich nach Anschrift und Status filtern. Beim Bearbeiten bleiben die Listenfilter erhalten. Koordinaten akzeptieren ein Dezimalkomma.
+
 ## 0.15.2
 
 - In der Wochen- und Monatsansicht zeigt ein Lehrgangsbalken ab zwei zugeordneten Personen die Anzahl vor dem Lehrgangsnamen, zum Beispiel „2x Gruppenführer“.

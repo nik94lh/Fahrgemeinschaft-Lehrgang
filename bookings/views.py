@@ -12,7 +12,7 @@ from django.views.decorators.http import require_safe
 from accounts.access import can_view
 from mailimport.participant_settings import get_functional_addresses
 
-from .booking_search import booking_id_query
+from .booking_search import booking_filters, booking_id_query
 from .booking_state import booking_missing_fields
 from .booking_status import booking_status_cards, booking_status_prefetches
 from .models import BookingStatus, CourseSeat, CourseSession, EmailEvent, RideCase, School
@@ -78,17 +78,18 @@ def overview(request):
 @never_cache
 @require_safe
 def bookings(request):
-    selected_status = request.GET.get("status", "")
-    selected_school = request.GET.get("school", "")
-    query = request.GET.get("q", "").strip()[:100]
+    filters = booking_filters(request.GET)
+    selected_status = filters.get("status", "")
+    selected_school = filters.get("school", "")
+    query = filters.get("q", "")
     seats = _seats()
     if selected_status == "pending":
         seats = seats.filter(status__in=PENDING_BOOKING_STATUSES)
-    elif selected_status in BookingStatus.values:
+    elif selected_status:
         seats = seats.filter(status=selected_status)
     if selected_school == School.ONLINE:
         seats = seats.filter(Q(session__school=School.ONLINE) | Q(session__is_online=True))
-    elif selected_school in School.values:
+    elif selected_school:
         seats = seats.filter(session__school=selected_school)
     if query:
         explicit_id, booking_id = booking_id_query(query)
@@ -103,10 +104,13 @@ def bookings(request):
             if booking_id is not None:
                 matches |= Q(pk=booking_id)
             seats = seats.filter(matches)
-    params = request.GET.copy()
-    params.pop("page", None)
     seats = seats.prefetch_related(*booking_status_prefetches())
     page_obj = Paginator(seats, 25).get_page(request.GET.get("page"))
+    detail_params = filters.copy()
+    if page_obj.number > 1:
+        detail_params["list_page"] = page_obj.number
+    imported = request.GET.get("importiert") == "1"
+    pagination_params = filters | {"importiert": "1"} if imported else filters
     functional_addresses = set(get_functional_addresses()) if page_obj else set()
     booking_rows = [
         {
@@ -118,7 +122,7 @@ def bookings(request):
     ]
     return render(request, "workspace/bookings.html", {
         "section": "bookings",
-        "imported": request.GET.get("importiert") == "1",
+        "imported": imported,
         "page_obj": page_obj,
         "booking_rows": booking_rows,
         "status_choices": [("pending", "Bestätigung offen"), *BookingStatus.choices],
@@ -126,7 +130,8 @@ def bookings(request):
         "selected_status": selected_status,
         "selected_school": selected_school,
         "query": query,
-        "querystring": params.urlencode(),
+        "querystring": urlencode(pagination_params),
+        "detail_querystring": urlencode(detail_params),
     })
 
 

@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from html import escape
 
 from django.db import connection
 from django.test import override_settings
@@ -68,6 +69,46 @@ class ParticipantContactTests(WorkspaceTestCase):
         bookings = self.client.get(reverse("bookings"))
         self.assertContains(bookings, "Buchungsdaten vollständig")
         self.assertNotContains(bookings, "alex.beispiel@example.invalid")
+
+    def test_address_save_preserves_list_filters_when_the_booking_gets_a_new_profile(self):
+        CourseSeat.objects.bulk_create([
+            CourseSeat(session=self.seat.session, participant=self.person) for _ in range(25)
+        ])
+        navigation = {"q": self.person.name, "school": "wuerzburg", "status": "pending", "list_page": 3}
+        profile_url = reverse("booking_participant", args=[self.seat.pk], query=navigation)
+
+        response = self.client.post(profile_url + "&page=2&next=https://example.invalid/", {
+            "email": OPAQUE_ADDRESS, "participant_id": self.person.pk,
+        })
+
+        self.assertRedirects(response, profile_url)
+        profile = self.client.get(profile_url)
+        self.assertEqual(profile.context["profile_bookings"].number, 1)
+        self.assertEqual(profile.context["booking_count"], 1)
+        self.assertNotEqual(profile.context["seat"].participant_id, self.person.pk)
+        list_url = reverse("bookings", query={"q": self.person.name, "school": "wuerzburg", "status": "pending", "page": 3})
+        self.assertContains(profile, f'href="{escape(list_url)}"')
+
+    @override_settings(HTTPS=True)
+    def test_profile_pagination_keeps_the_explicit_authorized_receipt(self):
+        receipt = self.make_address_receipt()
+        newer = MailReceipt.objects.create(
+            source_id=receipt.source_id, uid_validity=receipt.uid_validity, uid=3,
+            event=receipt.event, outcome=MailReceipt.Outcome.DUPLICATE, fields=receipt.fields,
+        )
+        CourseSeat.objects.bulk_create([
+            CourseSeat(session=self.seat.session, participant=self.person) for _ in range(25)
+        ])
+        navigation = {"q": "Alex Beispiel", "list_page": 3, "mail": receipt.pk}
+        profile = self.client.get(self.url, navigation, secure=True)
+        next_url = reverse("booking_participant", args=[self.seat.pk], query={**navigation, "page": 2})
+
+        self.assertEqual(profile.context["address_receipt_id"], receipt.pk)
+        self.assertContains(profile, f'href="?{escape(next_url.split("?", 1)[1])}"')
+        second = self.client.get(next_url, secure=True)
+        self.assertEqual(second.context["profile_bookings"].number, 2)
+        self.assertEqual(second.context["address_receipt_id"], receipt.pk)
+        self.assertNotContains(second, reverse("mail_receipt", args=[newer.pk]))
 
     def test_stale_assignment_and_unverified_post_cannot_store_email(self):
         old_participant = self.person

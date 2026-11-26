@@ -71,6 +71,9 @@
 .calendar-tick strong { display: block; font-weight: 650; }
 .calendar-tick.is-weekend, .calendar-day.is-weekend { background: #eff3fa; }
 .calendar-tick.is-today { color: #12306e; background: #d9e5fc; }
+.calendar-tick-link { color: var(--accent); text-decoration: none; }
+.calendar-tick-link:hover { text-decoration: underline; }
+.calendar-tick-link:focus-visible { outline-offset: -3px; }
 .calendar-day.is-today { box-shadow: inset 1px 0 #4969a4, inset -1px 0 #4969a4; }
 
 .school-timeline, .calendar-month-school { --school-ink: #214080; --school-bg: #dce8ff; }
@@ -100,6 +103,14 @@
 .calendar-list summary { width: fit-content; cursor: pointer; color: var(--accent); font-weight: 650; padding-block: .45rem; }
 .calendar-list[open] .table-scroll { margin-block-start: .4rem; }
 
+.calendar-agenda-group { margin-block-start: .75rem; border: 1px solid var(--line); border-radius: .55rem; }
+.calendar-agenda-group h3 { padding: .5rem .75rem; border-start-start-radius: .55rem; border-start-end-radius: .55rem; background: var(--school-bg); color: var(--school-ink); font-size: .9rem; }
+.calendar-agenda-list { margin: 0; padding: 0 .6rem; list-style: none; }
+.calendar-agenda-list li + li { border-block-start: 1px solid var(--rule); }
+.calendar-agenda-list a { display: block; padding: .58rem .2rem; overflow-wrap: anywhere; text-decoration: none; }
+.calendar-agenda-list a:hover strong { text-decoration: underline; }
+.calendar-agenda-time { display: block; color: var(--muted); font-size: .85rem; }
+
 .calendar-panel [data-occupancy] { --occupancy-tone: #46536a; --occupancy-tint: #fff; }
 .calendar-panel [data-occupancy="1"] { --occupancy-tone: #295ca7; --occupancy-tint: #edf4ff; }
 .calendar-panel [data-occupancy="2"] { --occupancy-tone: #4e47a5; --occupancy-tint: #f0efff; }
@@ -126,6 +137,8 @@
 .calendar-mini-day.is-today { outline: 1px solid var(--accent); outline-offset: -1px; }
 
 @media (max-width: 680px) {
+    .calendar-modes { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); width: 100%; }
+    .calendar-modes .button-link { padding-inline: .25rem; }
     .calendar-dates { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: stretch; gap: .35rem; }
     .calendar-dates .button-link { padding-inline: .25rem; font-size: .78rem; line-height: 1.25; }
     .calendar-filters { grid-template-columns: repeat(2, minmax(0, 1fr)); }

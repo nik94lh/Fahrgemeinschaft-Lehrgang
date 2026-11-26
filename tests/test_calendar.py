@@ -308,6 +308,42 @@ class CalendarTests(WorkspaceTestCase):
         self.assertEqual(response.context["previous_query"], "view=week&day=2031-05-05&school=regensburg")
         self.assertEqual(response.context["current_query"], "view=week&day=2031-05-12&school=regensburg")
 
+    def test_day_agenda_has_local_boundaries_school_filter_and_detail_return(self):
+        selected = CourseSession.objects.get(course__name="Musterlehrgang Regensburg")
+        ongoing = self.add_session(
+            "Lehrgang läuft seit gestern", School.REGENSBURG,
+            datetime(2031, 5, 11, 20, tzinfo=UTC), datetime(2031, 5, 12, 8, tzinfo=UTC),
+        )
+        self.add_session(
+            "Ende zur Mitternacht", School.REGENSBURG,
+            datetime(2031, 5, 11, 20, tzinfo=UTC), datetime(2031, 5, 11, 22, tzinfo=UTC),
+        )
+        self.add_session("Andere Schule", School.WUERZBURG, selected.starts_at, selected.ends_at)
+
+        url = "/kalender/?view=day&day=2031-05-12&school=regensburg"
+        response = self.client.get(url)
+
+        self.assertEqual(response.context["view"], "day")
+        self.assertContains(response, "Montag, 12.05.2031")
+        self.assertContains(response, "SFS Regensburg")
+        self.assertContains(response, "Lehrgang läuft seit gestern")
+        self.assertContains(response, "Musterlehrgang Regensburg")
+        self.assertNotContains(response, "Ende zur Mitternacht")
+        self.assertNotContains(response, "Andere Schule")
+        self.assertContains(response, "?view=day&amp;day=2031-05-13&amp;school=regensburg")
+        self.assertContains(response, "?view=day&amp;day=2031-05-11&amp;school=regensburg")
+        self.assertContains(response, f'href="/kalender/{ongoing.pk}/?view=day&amp;day=2031-05-12&amp;school=regensburg"')
+        detail = self.client.get(f"/kalender/{ongoing.pk}/?view=day&day=2031-05-12&school=regensburg")
+        self.assertEqual(detail.context["back_href"], url)
+
+    def test_week_has_direct_daily_links_and_empty_day_keeps_navigation(self):
+        week = self.client.get("/kalender/", {"view": "week", "day": "2031-05-12", "school": School.GERETSRIED})
+        self.assertContains(week, '?view=day&amp;day=2031-05-12&amp;school=geretsried')
+
+        empty = self.client.get("/kalender/", {"view": "day", "day": "2031-05-12", "school": School.GERETSRIED})
+        self.assertContains(empty, "Für diesen Tag sind keine Lehrgänge eingetragen.")
+        self.assertContains(empty, '?view=day&amp;day=2031-05-13&amp;school=geretsried')
+
     def test_course_detail_shows_booking_seats_and_preserves_calendar_view(self):
         session = CourseSession.objects.get(course__name="Musterlehrgang Regensburg")
         seat = CourseSeat.objects.create(

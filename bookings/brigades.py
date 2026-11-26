@@ -5,16 +5,25 @@ from django import forms
 from django.core.paginator import Paginator
 from django.db.models import Q
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods, require_safe
 
 from .models import FireBrigade
 
 
+BRIGADE_STATUSES = {"active": "Aktiv", "inactive": "Inaktiv"}
+
+
 class BrigadeForm(forms.ModelForm):
     class Meta:
         model = FireBrigade
         fields = ("name", "municipality", "district", "address", "latitude", "longitude", "is_active")
+        localized_fields = ("latitude", "longitude")
+        widgets = {
+            "latitude": forms.TextInput(attrs={"inputmode": "decimal"}),
+            "longitude": forms.TextInput(attrs={"inputmode": "decimal"}),
+        }
         labels = {
             "name": "Name",
             "municipality": "Gemeinde",
@@ -25,7 +34,7 @@ class BrigadeForm(forms.ModelForm):
             "is_active": "Aktiv",
         }
         help_texts = {
-            "latitude": "Optional, −90 bis 90. Koordinaten immer paarweise angeben.",
+            "latitude": "Optional, −90 bis 90. Punkt oder Komma verwenden. Koordinaten paarweise angeben.",
             "longitude": "Optional, −180 bis 180.",
         }
 
@@ -47,20 +56,42 @@ class BrigadeForm(forms.ModelForm):
         return cleaned_data
 
 
+def _filter_params(parameters):
+    filters = {}
+    if query := parameters.get("q", "").strip()[:100]:
+        filters["q"] = query
+    if parameters.get("status") in BRIGADE_STATUSES:
+        filters["status"] = parameters["status"]
+    return filters
+
+
 @never_cache
 @require_safe
 def brigades(request):
-    query = request.GET.get("q", "").strip()[:100]
+    filters = _filter_params(request.GET)
+    query = filters.get("q", "")
+    selected_status = filters.get("status", "")
     results = FireBrigade.objects.order_by("name", "municipality", "pk")
     if query:
         results = results.filter(
-            Q(name__icontains=query) | Q(municipality__icontains=query) | Q(district__icontains=query)
+            Q(name__icontains=query) | Q(municipality__icontains=query)
+            | Q(district__icontains=query) | Q(address__icontains=query)
         )
+    if selected_status:
+        results = results.filter(is_active=selected_status == "active")
+    page_obj = Paginator(results, 25).get_page(request.GET.get("page"))
+    edit_params = dict(filters)
+    if page_obj.number > 1:
+        edit_params["page"] = page_obj.number
     return render(request, "workspace/brigades.html", {
         "section": "brigades",
         "query": query,
-        "querystring": urlencode({"q": query}) if query else "",
-        "page_obj": Paginator(results, 25).get_page(request.GET.get("page")),
+        "selected_status": selected_status,
+        "status_choices": BRIGADE_STATUSES.items(),
+        "querystring": urlencode(filters),
+        "edit_query": urlencode(edit_params),
+        "page_obj": page_obj,
+        "saved": request.GET.get("gespeichert") == "1",
     })
 
 
@@ -68,11 +99,15 @@ def brigades(request):
 @require_http_methods(["GET", "HEAD", "POST"])
 def brigade_edit(request, brigade_id=None):
     brigade = get_object_or_404(FireBrigade, pk=brigade_id) if brigade_id is not None else None
+    list_path = reverse("brigades")
+    list_params = _filter_params(request.GET)
+    if page := request.GET.get("page", "")[:20]:
+        list_params["page"] = page
     if request.method == "POST":
         form = BrigadeForm(request.POST, instance=brigade)
         if form.is_valid():
             form.save()
-            return redirect("brigades")
+            return redirect(f"{list_path}?{urlencode({**list_params, 'gespeichert': '1'})}")
         status = 400
     else:
         form = BrigadeForm(instance=brigade)
@@ -82,4 +117,5 @@ def brigade_edit(request, brigade_id=None):
         "section": "brigades",
         "title": "Feuerwehr bearbeiten" if brigade else "Feuerwehr anlegen",
         "form": form,
+        "back_href": f"{list_path}?{urlencode(list_params)}" if list_params else list_path,
     }, status=status)

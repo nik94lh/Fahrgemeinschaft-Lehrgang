@@ -27,8 +27,14 @@
     <p role="status">Postfachkonfiguration gespeichert.</p>
   {% endif %}
   <div data-live-region="mailbox-status">
-  {% if configured %}
-    <p class="note">Abruf {% if enabled %}aktiviert{% else %}deaktiviert{% endif %}. {% if password_saved %}Ein Passwort ist hinterlegt.{% endif %}</p>
+  {% if server_configuration_error %}
+    <p class="note">Die Importkonfiguration des Servers ist unvollständig oder konnte nicht geladen werden.</p>
+  {% elif configured or server_configured %}
+    {% if server_configured %}
+      <p class="note">Lesender Abruf über die Serverkonfiguration aktiviert.</p>
+    {% else %}
+      <p class="note">Abruf {% if enabled %}aktiviert{% else %}deaktiviert{% endif %}. {% if password_saved %}Ein Passwort ist hinterlegt.{% endif %}</p>
+    {% endif %}
     {% if last_sync_at %}
       <p class="note">
         {% if last_sync_ok %}Letzter Abruf erfolgreich.{% else %}Letzter Abruf fehlgeschlagen.{% endif %}
@@ -42,6 +48,7 @@
   {% endif %}
   </div>
   {% if workspace_edit.mailbox and workspace_edit.bookings %}
+  {% if server_configured or server_configuration_error %}<p class="note">Eine hier gespeicherte Postfachkonfiguration ersetzt die Servereinstellungen.</p>{% endif %}
   <form method="post">
     {% csrf_token %}
     {{ form.as_p }}

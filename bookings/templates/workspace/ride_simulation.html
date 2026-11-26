@@ -2,7 +2,9 @@
 {% block title %}Vermittlung simulieren{% endblock %}
 {% block page_styles %}
     .simulation-scenario { max-width: 39rem; }
-    .simulation-scenario form button { width: auto; margin-block-end: 0; }
+    .simulation-actions { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin-block-start: 1.2rem; }
+    .simulation-scenario form button { width: auto; margin: 0; }
+    .simulation-action-hint { margin-block-start: .65rem; }
     .simulation-status { margin-block-end: 1rem; }
     .simulation-counts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .75rem; margin: 0; }
     .simulation-counts dd { font-size: 1.45rem; font-weight: 750; }
@@ -36,10 +38,18 @@
                 <div><dt>Abgelaufen</dt><dd>{{ counts.expired }}</dd></div>
             </dl>
         {% endif %}
-        <form method="post" action="{% url 'ride_simulation' %}">
+        <form class="simulation-actions" method="post" action="{% url 'ride_simulation' %}">
             {% csrf_token %}
-            <button type="submit">{% if counts %}Simulation neu starten{% else %}Simulation starten{% endif %}</button>
+            {% if can_renew %}
+                <button type="submit" name="action" value="renew">Testlinks neu erzeugen</button>
+                <button class="secondary-button" type="submit" name="action" value="start">Simulation neu starten</button>
+            {% else %}
+                <button type="submit" name="action" value="start">{% if counts %}Simulation neu starten{% else %}Simulation starten{% endif %}</button>
+            {% endif %}
         </form>
+        {% if can_renew %}
+            <p class="quiet simulation-action-hint">Neue Links ersetzen die bisherigen Links für unbeantwortete Einladungen. Gespeicherte Antworten bleiben erhalten.</p>
+        {% endif %}
     </section>
     {% if previews %}
         <section class="simulation-invitations" aria-labelledby="simulation-invitations">

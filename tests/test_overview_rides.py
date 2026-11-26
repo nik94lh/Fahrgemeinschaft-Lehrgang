@@ -72,7 +72,7 @@ class DashboardTests(WorkspaceTestCase):
         response = self.client.get(reverse("overview"))
 
         self.assertIsNone(response.context["ride_overview"])
-        self.assertNotContains(response, "Fahrgemeinschaftsvorschläge")
+        self.assertNotContains(response, 'id="dashboard-rides-title"')
         self.assertNotContains(response, f'href="{reverse("bookings")}?status=pending"')
         self.assertNotContains(response, f'href="{reverse("review")}"')
 

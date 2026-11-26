@@ -1,6 +1,16 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Event
+from unittest import skipUnless
+from unittest.mock import patch
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group, Permission
-from django.test import Client, TestCase, override_settings
+from django.contrib.sessions.middleware import SessionMiddleware
+from django.db import connection, connections
+from django.test import Client, TestCase, TransactionTestCase, override_settings
+
+from accounts.access import SECTIONS
+from accounts.views import AccountPasswordChangeView
 
 
 @override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
@@ -166,6 +176,61 @@ class AccountAdministrationTests(TestCase):
         self.member.refresh_from_db()
         self.assertTrue(self.member.is_active)
 
+    def test_reactivation_requires_new_login_but_preserves_the_existing_password(self):
+        stale_worker = Client()
+        stale_browser = Client()
+        stale_worker.force_login(self.member)
+        stale_browser.force_login(self.member)
+        self.client.force_login(self.admin)
+        edit_url = f"/benutzer/{self.member.pk}/"
+        self.assertEqual(stale_browser.get("/konto/").status_code, 200)
+
+        self.assertEqual(self.client.post(edit_url, self.rights()).status_code, 302)
+        self.assertEqual(self.client.post(edit_url, self.rights() | {"is_active": "on"}).status_code, 302)
+
+        self.assertEqual(stale_worker.get("/konto/", headers={"X-BMS-Live": "1"}).status_code, 401)
+        self.assertNotContains(stale_browser.get("/anmelden/"), '>Mein Konto</summary>')
+        self.assertRedirects(stale_browser.get("/konto/"), "/anmelden/?next=/konto/", fetch_redirect_response=False)
+        self.assertEqual(self.client.get("/benutzer/").status_code, 200)
+        new_login = stale_browser.post("/anmelden/", {
+            "username": self.member.username, "password": self.fixtures_password,
+        })
+        self.assertRedirects(new_login, "/konto/")
+        self.assertEqual(self.client.post(edit_url, self.rights()).status_code, 302)
+        self.assertEqual(self.client.post(edit_url, self.rights() | {"is_active": "on"}).status_code, 302)
+        self.assertRedirects(stale_browser.get("/konto/"), "/anmelden/?next=/konto/", fetch_redirect_response=False)
+
+    def test_in_flight_password_change_cannot_reactivate_disabled_account(self):
+        member_client = Client()
+        member_client.force_login(self.member)
+        self.client.force_login(self.admin)
+        original = AccountPasswordChangeView.form_valid
+
+        def deactivate_then_finish(view, form):
+            self.assertEqual(self.client.post(f"/benutzer/{self.member.pk}/", self.rights()).status_code, 302)
+            return original(view, form)
+
+        with patch.object(AccountPasswordChangeView, "form_valid", deactivate_then_finish):
+            response = member_client.post("/konto/passwort/", {
+                "old_password": self.fixtures_password, **self.password_fields(),
+            })
+
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.is_active)
+        self.assertTrue(self.member.check_password(self.fixtures_password))
+        self.assertRedirects(response, "/anmelden/?next=/konto/passwort/", fetch_redirect_response=False)
+
+    def test_reactivating_an_account_disabled_before_update_revokes_legacy_cookie(self):
+        stale_browser = Client()
+        stale_browser.force_login(self.member)
+        get_user_model().objects.filter(pk=self.member.pk).update(is_active=False)
+        self.client.force_login(self.admin)
+
+        self.assertEqual(self.client.post(
+            f"/benutzer/{self.member.pk}/", self.rights() | {"is_active": "on"},
+        ).status_code, 302)
+        self.assertRedirects(stale_browser.get("/konto/"), "/anmelden/?next=/konto/", fetch_redirect_response=False)
+
     def test_admin_password_reset_invalidates_sessions_for_normal_account(self):
         self.client.force_login(self.admin)
         member_session = Client()
@@ -199,3 +264,48 @@ class AccountAdministrationTests(TestCase):
         self.assertEqual(response.status_code, 403)
         self.member.refresh_from_db()
         self.assertTrue(self.member.is_active)
+
+
+@skipUnless(connection.vendor == "postgresql", "Concurrent account sessions require PostgreSQL.")
+@override_settings(PASSWORD_HASHERS=["django.contrib.auth.hashers.MD5PasswordHasher"])
+class ConcurrentAccountRevocationTests(TransactionTestCase):
+    def test_session_written_after_revocation_stays_invalid_if_login_was_already_complete(self):
+        users = get_user_model().objects
+        admin = users.create_superuser("test-admin")
+        member = users.create_user("test-member", password="synthetic-login-race-password-12")
+        self.client.force_login(admin)
+        ready_to_write, allow_write = Event(), Event()
+        original = SessionMiddleware.process_response
+
+        def pause_session_write(middleware, request, response):
+            if request.path == "/anmelden/" and response.status_code == 302:
+                ready_to_write.set()
+                if not allow_write.wait(8):
+                    raise TimeoutError("Timed out waiting for account revocation.")
+            return original(middleware, request, response)
+
+        def sign_in():
+            client = Client()
+            try:
+                response = client.post("/anmelden/", {
+                    "username": member.username, "password": "synthetic-login-race-password-12",
+                })
+                return client, response
+            finally:
+                connections.close_all()
+
+        rights = {f"access_{section}": "none" for section in SECTIONS}
+        edit_url = f"/benutzer/{member.pk}/"
+        with patch.object(SessionMiddleware, "process_response", pause_session_write):
+            with ThreadPoolExecutor(max_workers=1) as executor:
+                login = executor.submit(sign_in)
+                try:
+                    self.assertTrue(ready_to_write.wait(8))
+                    self.assertEqual(self.client.post(edit_url, rights).status_code, 302)
+                    self.assertEqual(self.client.post(edit_url, rights | {"is_active": "on"}).status_code, 302)
+                finally:
+                    allow_write.set()
+                stale_browser, response = login.result(timeout=8)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertRedirects(stale_browser.get("/konto/"), "/anmelden/?next=/konto/", fetch_redirect_response=False)

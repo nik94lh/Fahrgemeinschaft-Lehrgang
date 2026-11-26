@@ -13,11 +13,11 @@
     .booking-timeline-link { display: inline-block; margin-block-start: .25rem; }
 {% endblock %}
 {% block content %}
-    <p class="back-link"><a href="{% url 'bookings' %}">‹ Zurück zu den Buchungen</a></p>
+    <p class="back-link"><a href="{{ bookings_url }}">‹ Zurück zu den Buchungen</a></p>
     <div class="page-heading">
         <h1>Buchungs-ID {{ seat.pk|stringformat:'d' }}</h1>
         {% if seat.participant_id %}
-            <a class="button-link" href="{% url 'booking_participant' seat.pk %}">Teilnehmerprofil ansehen</a>
+            <a class="button-link" href="{{ participant_url }}">Teilnehmerprofil ansehen</a>
         {% endif %}
     </div>
     <section class="panel booking-detail-summary" aria-labelledby="booking-course">
@@ -69,6 +69,9 @@
                             </ul>
                         {% elif entry.event.state == 'applied' or entry.event.state == 'reviewed' %}
                             <p class="booking-timeline-note">Kein Statuswechsel protokolliert.</p>
+                        {% endif %}
+                        {% if entry.event.state == 'needs_review' and workspace_view.review %}
+                            <a class="booking-timeline-link" href="{% url 'review_detail' entry.event.pk %}">Klärungsfall öffnen</a>
                         {% endif %}
                         {% if entry.event.receipt_id %}
                             <a class="booking-timeline-link" href="{% url 'mail_receipt' entry.event.receipt_id %}">Im Mail-Eingang ansehen</a>

@@ -4,6 +4,7 @@
 {% block live_region %}{% endblock %}
 {% block content %}
     <div class="page-heading"><h1>Anmelden</h1></div>
+    {% if retry_after %}<p class="status-strip status-strip-warning account-narrow" role="status">Zu viele Anmeldeversuche. Versuche es in {{ retry_after }} Sekunde{{ retry_after|pluralize:"n" }} erneut.</p>{% endif %}
     <section class="panel account-narrow" aria-label="Anmeldung">
         <form method="post" class="account-form-fields">
             {% csrf_token %}

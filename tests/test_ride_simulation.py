@@ -134,3 +134,28 @@ class RideSimulationTests(TestCase):
 
         self.assertContains(result, "Zu wenig Zusagen")
         self.assertEqual(result.context["counts"], {"yes": 1, "no": 1, "open": 0, "expired": 1})
+
+    def test_return_to_simulation_can_reissue_unanswered_links_without_losing_a_reply(self):
+        self.client.force_login(self.editor)
+        originals = self.start().context["previews"]
+        answered_form = self.open_invitation(originals[0]["link"]).url
+        self.assertRedirects(self.client.post(answered_form, {"interest": "yes", "driver": "yes"}), INDEX)
+        prior_grant = self.open_invitation(originals[1]["link"]).url
+        pending = self.client.get(INDEX)
+        self.assertContains(pending, "Testlinks neu erzeugen")
+        self.assertEqual(pending.context["previews"], [])
+        RideSimulationInvitation.objects.filter(owner=self.editor, respondent=3).update(
+            expires_at=timezone.now() - timedelta(seconds=1),
+        )
+
+        response = self.client.post(INDEX, {"action": "renew"})
+
+        self.assertEqual(response.status_code, 200)
+        previews = response.context["previews"]
+        self.assertEqual([item["name"] for item in previews], [item["name"] for item in originals[1:]])
+        self.assertEqual(response.context["counts"], {"yes": 1, "no": 0, "open": 2, "expired": 0})
+        self.assertEqual(self.client.get(prior_grant).status_code, 404)
+        self.assertEqual(self.open_invitation(originals[1]["link"]).status_code, 404)
+        new_form = self.open_invitation(previews[0]["link"]).url
+        self.assertRedirects(self.client.post(new_form, {"interest": "yes", "driver": "no"}), INDEX)
+        self.assertContains(self.client.get(INDEX), "Genügend Interesse")

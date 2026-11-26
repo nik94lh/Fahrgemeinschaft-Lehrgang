@@ -34,6 +34,20 @@ class LoginThrottleTests(TestCase):
         with patch("django.utils.timezone.now", return_value=self.instant + timedelta(seconds=36)):
             self.assertEqual(self.post().status_code, 200)
 
+    def test_throttled_login_keeps_form_and_safe_destination_without_echoing_credentials(self):
+        with patch("django.utils.timezone.now", return_value=self.instant):
+            for _ in range(10):
+                self.post()
+            response = self.client.post(
+                "/anmelden/", self.login_data | {"next": "/feuerwehren/"}, REMOTE_ADDR="192.0.2.12",
+            )
+
+        self.assertContains(response, "Versuche es in 36 Sekunden erneut.", status_code=429)
+        self.assertContains(response, 'name="password"', status_code=429)
+        self.assertContains(response, 'name="next" value="/feuerwehren/"', status_code=429)
+        self.assertNotContains(response, self.login_data["password"], status_code=429)
+        self.assertFalse(response.context["form"].is_bound)
+
     @override_settings(HTTPS=False)
     def test_local_mode_ignores_untrusted_forwarding_headers(self):
         with patch("django.utils.timezone.now", return_value=self.instant):

@@ -87,6 +87,24 @@ class WorkspaceAccessTests(TestCase):
         self.assertEqual(self.client.get("/testmail.eml").status_code, 403)
         self.assertEqual(self.client.get("/buchungen/", headers={"X-BMS-Live": "1"}).status_code, 403)
 
+    def test_browser_denial_offers_authorized_home_but_live_denial_stays_plain(self):
+        self.grant(self.user, "view_calendar")
+        self.client.force_login(self.user)
+
+        response = self.client.get("/buchungen/")
+
+        self.assertContains(response, "Kein Zugriff auf diese Seite", status_code=403)
+        self.assertContains(
+            response, '<a class="button-link" href="/kalender/">Zum Arbeitsbereich</a>', status_code=403, html=True,
+        )
+        self.assertNotContains(response, 'href="/buchungen/"', status_code=403)
+        self.assertIn("no-store", response.headers["Cache-Control"])
+
+        live = self.client.get("/buchungen/", headers={"X-BMS-Live": "1"})
+        self.assertEqual(live.status_code, 403)
+        self.assertTrue(live.headers["Content-Type"].startswith("text/plain"))
+        self.assertNotContains(live, "Zum Arbeitsbereich", status_code=403)
+
     def test_group_membership_does_not_grant_workspace_access(self):
         legacy_group = Group.objects.create(name="Frühere Buchungsrechte")
         legacy_group.permissions.add(Permission.objects.get(

@@ -2,6 +2,8 @@ from datetime import UTC, datetime, time, timedelta
 from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
+from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Permission
 from django.urls import reverse
 from django.utils import timezone
 
@@ -189,6 +191,32 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
         self.assertContains(closed, "Abgeschlossen")
         self.assertContains(closed, '<span class="status-label">Passend</span>', html=True)
         self.assertNotContains(closed, 'class="status-label ride-phase-ready"')
+
+    def test_past_proposal_keeps_a_distinct_time_state_after_reconciliation(self):
+        case = self.sync()
+        with patch("django.utils.timezone.now", return_value=case.earliest):
+            self.client.post(reverse("rides_sync"))
+            listing = self.client.get(reverse("rides"))
+        self.assertContains(listing, "Terminbeginn verstrichen")
+        self.assertNotContains(listing, 'class="status-label ride-phase-ready"')
+
+    def test_empty_after_sync_shows_match_requirements_and_permitted_next_actions(self):
+        self.first_seat.status = BookingStatus.AWAITING_CONFIRMATION
+        self.first_seat.save(update_fields=["status"])
+        response = self.client.post(reverse("rides_sync"), follow=True)
+
+        self.assertContains(response, "Keine aktuell passenden Vorschläge.")
+        self.assertContains(response, "mögliche Doppelbuchungen")
+        self.assertContains(response, f'href="{reverse("bookings")}?status=confirmed"')
+        self.assertContains(response, "Offene Klärungsfälle ansehen")
+
+        reader = get_user_model().objects.create_user("ride-reader")
+        reader.user_permissions.add(Permission.objects.get(content_type__app_label="accounts", codename="view_rides"))
+        self.client.force_login(reader)
+        listing = self.client.get(reverse("rides"))
+        self.assertContains(listing, "mögliche Doppelbuchungen")
+        self.assertNotContains(listing, "Bestätigte Buchungen ansehen")
+        self.assertNotContains(listing, "Offene Klärungsfälle ansehen")
 
     def test_detail_lists_linked_bookings_without_contact_addresses(self):
         case = self.sync()

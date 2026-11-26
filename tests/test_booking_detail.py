@@ -1,4 +1,5 @@
 from datetime import timedelta
+from html import escape
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Permission
@@ -53,6 +54,37 @@ class BookingDetailTests(WorkspaceTestCase):
         self.assertNotContains(response, self.seat.participant.email)
         self.assertIn("no-store", response.headers["Cache-Control"])
         self.assertEqual(self.client.post(self.detail_url()).status_code, 405)
+
+    def test_booking_and_profile_links_keep_the_filtered_second_list_page(self):
+        extra_bookings = CourseSeat.objects.bulk_create([
+            CourseSeat(session=self.seat.session, participant=self.seat.participant, status=BookingStatus.CONFIRMED)
+            for _ in range(25)
+        ])
+        seat = extra_bookings[-1]
+        filters = {"q": "Übungslehrgang Brandwache", "school": "geretsried", "status": "confirmed"}
+        list_url = reverse("bookings", query={**filters, "page": 2})
+        navigation = {**filters, "list_page": 2}
+        detail_url = reverse("booking_detail", args=[seat.pk], query=navigation)
+        profile_url = reverse("booking_participant", args=[seat.pk], query=navigation)
+
+        listing = self.client.get(list_url)
+        detail = self.client.get(detail_url)
+        profile = self.client.get(profile_url)
+
+        self.assertContains(listing, f'href="{escape(detail_url)}"')
+        self.assertContains(detail, f'href="{escape(list_url)}"')
+        self.assertContains(detail, f'href="{escape(profile_url)}"')
+        self.assertContains(profile, f'href="{escape(detail_url)}"')
+        self.assertContains(profile, f'href="{escape(list_url)}"')
+
+    def test_history_accepts_only_known_booking_list_filters_for_return(self):
+        response = self.client.get(self.detail_url(), {
+            "status": "unknown", "school": "unknown", "list_page": "-2", "next": "https://example.invalid/",
+        })
+
+        self.assertContains(response, f'href="{reverse("bookings")}"')
+        self.assertContains(response, f'href="{reverse("booking_participant", args=[self.seat.pk])}"')
+        self.assertNotContains(response, "example.invalid")
 
     def test_same_participant_or_name_on_other_bookings_does_not_merge_status_or_events(self):
         homonym = Participant.objects.create(name=self.seat.participant.name, email="namensgleich@example.invalid")
@@ -119,6 +151,29 @@ class BookingDetailTests(WorkspaceTestCase):
         self.assertNotContains(response, "Andere geheime Person")
         self.assertNotContains(response, self.other_seat.session.course.name)
         self.assertNotContains(response, reverse("mail_receipt", args=[other_receipt.pk]))
+
+    def test_open_review_link_requires_permission_and_belongs_to_this_booking(self):
+        local, other = [
+            EmailEvent.objects.create(
+                seat=seat, sha256=digit * 64, kind=EmailEvent.Kind.CANCELLATION,
+                state=EmailEvent.State.NEEDS_REVIEW, review_reason=EmailEvent.ReviewReason.REFERENCE_MISMATCH,
+            )
+            for seat, digit in ((self.seat, "8"), (self.other_seat, "9"))
+        ]
+        BookingHistory.objects.create(seat=self.seat, source_event=other, status=BookingStatus.CONFIRMED)
+        local_url = reverse("review_detail", args=[local.pk])
+        foreign_url = reverse("review_detail", args=[other.pk])
+
+        response = self.client.get(self.detail_url())
+        self.assertContains(response, f'href="{local_url}">Klärungsfall öffnen</a>')
+        self.assertNotContains(response, foreign_url)
+
+        user = get_user_model().objects.create_user("booking-without-review")
+        user.user_permissions.add(Permission.objects.get(content_type__app_label="accounts", codename="view_bookings"))
+        self.client.force_login(user)
+        restricted = self.client.get(self.detail_url())
+        self.assertContains(restricted, local.get_review_reason_display())
+        self.assertNotContains(restricted, local_url)
 
     def test_receipt_links_require_secure_connection_and_mail_permission(self):
         receipt_url = reverse("mail_receipt", args=[self.receipt.pk])

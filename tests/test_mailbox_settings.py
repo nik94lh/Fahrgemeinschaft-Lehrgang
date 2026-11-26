@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from django.test import TestCase, override_settings
 from django.utils import timezone
 
@@ -35,6 +37,16 @@ class MailboxSettingsViewTests(WorkspaceTestCase):
             "enabled": "on",
         }
         return settings | overrides
+
+    def server_configuration(self, **overrides):
+        return {
+            "BMS_IMAP_ENABLED": "1",
+            "BMS_IMAP_HOST": "imap.server.example.invalid",
+            "BMS_IMAP_PORT": "993",
+            "BMS_IMAP_USERNAME": "server-import@example.invalid",
+            "BMS_IMAP_PASSWORD": "test-server-only-password",
+            "BMS_IMAP_MAILBOX": "IMPORT",
+        } | overrides
 
     def test_insecure_request_cannot_change_configuration(self):
         plain = self.client.post("/postfach/", self.config())
@@ -113,3 +125,35 @@ class MailboxSettingsViewTests(WorkspaceTestCase):
         response = self.client.get("/postfach/", secure=True)
         self.assertNotContains(response, "Letzter Abruf fehlgeschlagen.")
         self.assertContains(response, "Für dieses Postfach liegt noch kein Abrufstatus vor.")
+
+    def test_server_configured_mailbox_shows_its_status_without_connection_details(self):
+        env = self.server_configuration()
+        source_id = mailbox_source_id(env["BMS_IMAP_HOST"], 993, env["BMS_IMAP_USERNAME"], env["BMS_IMAP_MAILBOX"])
+        MailboxCursor.objects.create(source_id=source_id, last_sync_at=timezone.now(), last_sync_ok=True)
+
+        with patch.dict("os.environ", env), patch("mailimport.imap_sync._open_mailbox") as open_mailbox:
+            response = self.client.get("/postfach/", secure=True)
+
+        open_mailbox.assert_not_called()
+        self.assertContains(response, "Lesender Abruf über die Serverkonfiguration aktiviert.")
+        self.assertContains(response, "Letzter Abruf erfolgreich.")
+        self.assertNotContains(response, source_id)
+        for key in ("BMS_IMAP_HOST", "BMS_IMAP_USERNAME", "BMS_IMAP_PASSWORD", "BMS_IMAP_MAILBOX"):
+            self.assertNotContains(response, env[key])
+
+    def test_invalid_server_configuration_is_reported(self):
+        env = self.server_configuration(BMS_IMAP_PORT="invalid")
+        with patch.dict("os.environ", env):
+            response = self.client.get("/postfach/", secure=True)
+
+        self.assertContains(response, "Die Importkonfiguration des Servers ist unvollständig oder konnte nicht geladen werden.")
+        self.assertNotContains(response, env["BMS_IMAP_PASSWORD"])
+
+    def test_browser_pause_still_overrides_server_configuration(self):
+        with patch.dict("os.environ", self.server_configuration()):
+            saved = self.client.post("/postfach/", self.config(enabled=""), secure=True)
+            self.assertEqual(saved.status_code, 302)
+            response = self.client.get(saved.url, secure=True)
+
+        self.assertContains(response, "Abruf deaktiviert.")
+        self.assertNotContains(response, "über die Serverkonfiguration aktiviert")

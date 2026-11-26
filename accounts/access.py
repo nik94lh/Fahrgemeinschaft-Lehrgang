@@ -74,7 +74,7 @@ def workspace_permissions(request):
     user = request.user
     view_permissions = {section: can_view(user, section) for section in SECTIONS}
     admin = is_workspace_admin(user)
-    secure = request.is_secure()
+    secure = settings.HTTPS and request.is_secure()
     primary = _navigation_items(PRIMARY_NAVIGATION, view_permissions, secure)
     secondary = _navigation_items(SECONDARY_NAVIGATION, view_permissions, secure)
     if admin:
@@ -83,6 +83,7 @@ def workspace_permissions(request):
         "workspace_view": view_permissions,
         "workspace_edit": {section: can_edit(user, section) for section in SECTIONS},
         "workspace_admin": admin,
+        "workspace_secure": secure,
         "workspace_home": home_url(user),
         "workspace_primary_navigation": primary,
         "workspace_secondary_navigation": secondary,

@@ -9,6 +9,7 @@ from django.db import transaction
 from django.db.models import Q
 from django.db.models.functions import Lower, Trim
 from django.utils import timezone
+from django.utils.crypto import salted_hmac
 from django.views.decorators.debug import sensitive_variables
 
 from mailimport.email_address import normalize_contact_email
@@ -439,6 +440,8 @@ def _update_booking(
         except _IdentityConflict as conflict:
             return _flag_review(event, mail, conflict.reason, seat)
     if not new:
+        if seat.status == BookingStatus.CONFIRMED and event.kind in CANCELLATION_EVENTS and event.occurred_at is None:
+            return _flag_review(event, mail, EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR, seat)
         latest_timestamp = seat.history.filter(source_event__occurred_at__isnull=False).order_by(
             "-source_event__occurred_at",
         ).values_list("source_event__occurred_at", flat=True).first()
@@ -523,6 +526,22 @@ def _recognized_booking_fields(mail: ParsedMail, *, include_previous: bool = Fal
     return {key: value for key, value in context.items() if value is not None}
 
 
+@sensitive_variables()
+def _cancellation_snapshot(event: EmailEvent, seat: CourseSeat) -> str:
+    session = seat.session
+    latest_change = seat.history.order_by("-recorded_at", "-pk").values_list("pk", flat=True).first()
+    latest_applied = seat.email_events.filter(
+        state=EmailEvent.State.APPLIED, processed_participant_id=seat.participant_id,
+    ).order_by("-imported_at", "-pk").values_list("pk", flat=True).first()
+    facts = (
+        event.pk, seat.pk, seat.participant_id, seat.participant.name, seat.participant.email,
+        str(seat.status), seat.external_reference, session.pk, session.course_id, session.course.name,
+        str(session.school), session.is_online, session.starts_at.isoformat(), session.ends_at.isoformat(),
+        latest_change, latest_applied,
+    )
+    return salted_hmac("bookings.review.apply_cancellation", repr(facts), algorithm="sha256").hexdigest()
+
+
 def _flag_review(
     event: EmailEvent,
     mail: ParsedMail,
@@ -537,6 +556,11 @@ def _flag_review(
     )
     if candidate_seat_id is not None:
         event.review_context["candidate_seat_id"] = candidate_seat_id
+    if (
+        reason == EmailEvent.ReviewReason.EVENT_ORDER_UNCLEAR and event.kind in CANCELLATION_EVENTS
+        and seat and seat.participant_id and seat.status in ACTIVE_STATUSES
+    ):
+        event.review_context["cancellation_snapshot"] = _cancellation_snapshot(event, seat)
     return _record(event, EmailEvent.State.NEEDS_REVIEW, seat)
 
 

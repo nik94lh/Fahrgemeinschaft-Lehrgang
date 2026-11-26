@@ -40,6 +40,14 @@ def live_script(request):
 
 @require_safe
 @cache_control(public=True, max_age=3600)
+def workspace_chrome_script(request):
+    return FileResponse(
+        Path(__file__).with_name("workspace_chrome.js").open("rb"), content_type="text/javascript; charset=utf-8",
+    )
+
+
+@require_safe
+@cache_control(public=True, max_age=3600)
 def calendar_timeline_script(request):
     return FileResponse(
         Path(__file__).with_name("calendar_timeline.js").open("rb"), content_type="text/javascript; charset=utf-8",
@@ -54,6 +62,7 @@ def favicon(request):
 
 urlpatterns = [
     path("assets/live.js", live_script, name="live_script"),
+    path("assets/workspace-chrome.js", workspace_chrome_script, name="workspace_chrome_script"),
     path("assets/calendar-timeline.js", calendar_timeline_script, name="calendar_timeline_script"),
     path("assets/ride-simulation.js", ride_simulation_script, name="ride_simulation_script"),
     path("favicon.png", favicon, name="favicon"),
