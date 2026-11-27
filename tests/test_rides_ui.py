@@ -66,6 +66,10 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
         self.assertContains(response, reverse("ride_detail", args=[case.pk]))
         self.assertContains(response, "Fahrgemeinschaftsvorschläge")
         self.assertContains(response, 'class="ride-card"')
+        history_link = f'href="{reverse("ride_history")}"'
+        self.assertContains(response, history_link, count=1)
+        html = response.content.decode()
+        self.assertLess(html.index('class="ride-card"'), html.index(history_link))
         self.assertContains(response, "SFS Würzburg")
         self.assertContains(response, '<strong class="ride-party-count">2</strong>', html=True)
         self.assertContains(
@@ -214,6 +218,7 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
         self.client.force_login(reader)
         listing = self.client.get(reverse("rides"))
         self.assertContains(listing, "mögliche Doppelbuchungen")
+        self.assertContains(listing, f'<a href="{reverse("ride_history")}">Verlauf ansehen</a>', count=1, html=True)
         self.assertNotContains(listing, "Bestätigte Buchungen ansehen")
         self.assertNotContains(listing, "Offene Klärungsfälle ansehen")
 

@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.23.1
+
+- Fahrgemeinschaftskacheln zeigen Einladungen, offene Antworten, Zusagen und Absagen als beschriftete Zähler. Der Link zum Verlauf steht unter der Kachelübersicht.
+- Breite Verwaltungsansichten stehen auf großen Bildschirmen zentriert und sind rund zehn Prozent schmaler.
+
 ## 0.23.0
 
 - Die Fahrgemeinschaftsübersicht zeigt aktuell passende, noch nicht begonnene Vorschläge. Unter zwei passenden Personen verschwindet ein Vorschlag. Bei erneutem Abgleich mit mindestens zwei passenden Personen kommt dieselbe Vorschlags-ID zurück.

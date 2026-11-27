@@ -32,11 +32,19 @@
     .ride-card-footer .button-link { margin-inline-start: auto; }
     .ride-card-inquiries { color: var(--muted); font-size: .87rem; }
     .ride-card-inquiries strong { color: var(--ink); }
-    .ride-card-inquiry-counts { display: flex; flex-wrap: wrap; gap: .15rem .75rem; margin-block-start: .3rem; }
+    .ride-card-inquiry-counts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem; margin: .5rem 0 0; }
+    .ride-card-inquiry-counts > div { padding: .35rem .55rem; border-radius: .375rem; background: var(--inquiry-count-bg, #ffffffb8); }
+    .ride-card-inquiry-counts dt { font-weight: 650; line-height: 1.2; }
+    .ride-card-inquiry-counts dd { margin-block-start: .15rem; color: var(--inquiry-count-ink, var(--ink)); font-size: 1.3rem; font-weight: 750; font-variant-numeric: tabular-nums; line-height: 1.1; overflow-wrap: anywhere; }
+    .ride-card-inquiry-open { --inquiry-count-bg: #cddff9; --inquiry-count-ink: #173e76; }
+    .ride-card-inquiry-yes { --inquiry-count-bg: #d1eadb; --inquiry-count-ink: #185239; }
+    .ride-card-inquiry-no { --inquiry-count-bg: #f6d9dc; --inquiry-count-ink: #79343c; }
+    .ride-card-inquiry-unavailable { margin-block-start: .4rem; }
     .ride-card-inquiry-form button { width: auto; margin: 0; padding: .47rem .75rem; }
     .ride-empty .quiet { margin-block-start: .35rem; }
     .ride-match-help { margin-block-start: 1rem; }
     .ride-match-help .ride-page-actions { margin-block-start: .65rem; }
+    .ride-history-link { margin-block-start: 1rem; }
     @media (max-width: 560px) {
         .ride-stats div { padding: .7rem .85rem; }
         .ride-stats dt { font-size: .9rem; line-height: 1.4; }
@@ -48,14 +56,11 @@
         <div class="page-heading"><h1 id="ride-cases">Frühere Einzelstrecken</h1></div>
     {% else %}
         <h1 id="ride-cases" class="visually-hidden">Fahrgemeinschaftsvorschläge</h1>
-        <div class="page-heading page-heading--actions">
-            <div class="ride-page-actions">
-                <a class="button-link" href="{% url 'ride_history' %}">Verlauf</a>
-                {% if workspace_edit.rides %}
-                    <a class="button-link" href="{% url 'ride_simulation' %}">Teilnehmerabfrage testen</a>
-                {% endif %}
+        {% if workspace_edit.rides %}
+            <div class="page-heading page-heading--actions">
+                <a class="button-link" href="{% url 'ride_simulation' %}">Teilnehmerabfrage testen</a>
             </div>
-        </div>
+        {% endif %}
         {% if removed %}<p class="notice" role="status">Vorschlag entfernt.</p>{% endif %}
         {% if restored %}<p class="notice" role="status">Vorschlag wiederhergestellt.</p>{% endif %}
         {% if synced %}<p class="notice" role="status">Abgleich abgeschlossen.{% if not active_count %} Keine aktuell passenden Vorschläge.{% endif %}</p>{% endif %}
@@ -160,6 +165,9 @@
                     </div>
                 {% endif %}
             </div>
+        {% endif %}
+        {% if not archived %}
+            <p class="ride-history-link"><a href="{% url 'ride_history' %}">Verlauf ansehen</a></p>
         {% endif %}
     </section>
 {% endblock %}

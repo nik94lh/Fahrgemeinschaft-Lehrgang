@@ -80,7 +80,7 @@ class RideInquiryWorkspaceTests(WorkspaceTestCase):
         self.assertIn(b"Zugesagt", response.content)
         self.assertIn(b"Einladung vorbereitet", response.content)
         self.assertIn("no-store", response.headers["Cache-Control"])
-        self.assertContains(self.client.get(reverse("rides"), secure=True), "2 Einladungen vorbereitet")
+        self.assertContains(self.client.get(reverse("rides"), secure=True), "<dt>Einladungen</dt><dd>2</dd>", html=True)
         self.assertNotContains(self.client.get(reverse("rides"), secure=True), "Persönlicher Testcode")
 
         self.client.force_login(self.user_with("view_rides"))
