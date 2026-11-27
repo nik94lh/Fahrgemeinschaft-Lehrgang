@@ -1,5 +1,12 @@
 # Änderungen
 
+## 0.23.0
+
+- Die Fahrgemeinschaftsübersicht zeigt aktuell passende, noch nicht begonnene Vorschläge. Unter zwei passenden Personen verschwindet ein Vorschlag. Bei erneutem Abgleich mit mindestens zwei passenden Personen kommt dieselbe Vorschlags-ID zurück.
+- Bearbeitungsberechtigte können Vorschläge nach Bestätigung manuell entfernen und aus dem Verlauf wiederherstellen.
+- In einer bereits begonnenen Testabfrage lassen sich neu passende Personen ergänzen. Ihr Zugang richtet sich nach der zugeordneten Buchung.
+- Der Verlauf trennt reguläre, Test- und entfernte Vorschläge. Er zählt die Vorschläge, Personen mit Kontaktfreigabe und ausdrücklich als zustande gekommen bestätigte Fahrten.
+
 ## 0.22.0
 
 - Die Fahrgemeinschaftskachel zeigt eine laufende Abfrage in Blau, freigegebene Kontakte in Grün und eine abgeschlossene Abfrage ohne gültige Kontaktfreigabe in Rot. Vor dem Start bleibt die Kachel neutral.

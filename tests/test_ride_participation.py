@@ -51,6 +51,7 @@ class RideCodeMigrationTests(TransactionTestCase):
             travel_date=timezone.localdate(start), return_date=timezone.localdate(end),
             earliest=start, latest=start, return_earliest=end, return_latest=end,
         )
+        case.seats.add(seat)
         entry = apps.get_model("bookings", "RideParticipation")(
             case=case, seat=seat, session=session, participant=participant, email=participant.email,
             expires_at=end + timedelta(days=1),
@@ -61,9 +62,11 @@ class RideCodeMigrationTests(TransactionTestCase):
         entry.token_digest = previous_digest
         entry.save()
 
-        MigrationExecutor(connection).migrate([("bookings", "0019_short_ride_codes")])
+        MigrationExecutor(connection).migrate(executor.loader.graph.leaf_nodes())
 
         migrated = RideParticipation.objects.get(pk=entry.pk)
+        self.assertIsNone(migrated.case.removed_at)
+        self.assertIsNone(migrated.case.ride_confirmed_at)
         self.assertEqual(len(invite_code(migrated)), 19)
         self.assertEqual(participation_for_code(invite_code(migrated)), migrated)
         self.assertEqual(participation_for_code(previous_code), migrated)

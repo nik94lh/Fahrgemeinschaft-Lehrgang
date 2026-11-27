@@ -18,8 +18,9 @@ from django.views.decorators.http import require_http_methods, require_POST, req
 from accounts.access import can_edit
 
 from .models import RideCase, RideNotice, RideParticipation
+from .ride_history import HISTORY_MODES
 from .ride_inquiry_views import get_ride_automation, inquiry_controls_available
-from .ride_participation import _has_access, _open_test_case, notice_preview
+from .ride_participation import _has_access, _open_test_case, notice_preview, uninvited_participants, with_case_membership
 from .ride_settings import get_ride_lead_days
 from .rides_matching import BERLIN, set_ride_case_status, sync_ride_cases
 
@@ -68,7 +69,9 @@ def _ride_window_end(*, now: datetime, lead_days: int) -> date:
 def ride_phase_filters(*, now: datetime, lead_days: int) -> tuple[Q, dict[str, Q]]:
     """Return shared eligibility and the two phase predicates for the proposal list and dashboard."""
     window_end = _ride_window_end(now=now, lead_days=lead_days)
-    eligible = Q(direction=RideCase.ROUND_TRIP, currently_matches=True, earliest__gt=now) & ~Q(status=RideCase.Status.CLOSED)
+    eligible = Q(
+        direction=RideCase.ROUND_TRIP, currently_matches=True, removed_at__isnull=True, earliest__gt=now,
+    ) & ~Q(status=RideCase.Status.CLOSED)
     return eligible, {"ready": Q(travel_date__lte=window_end), "standby": Q(travel_date__gt=window_end)}
 
 
@@ -80,6 +83,8 @@ class _Mediation:
 
 
 def _mediation(case: RideCase, *, now: datetime, lead_days: int) -> _Mediation:
+    if case.removed_at is not None:
+        return _Mediation("removed", "Manuell entfernt")
     if not case.currently_matches:
         if now >= case.earliest:
             return _Mediation("elapsed", "Terminbeginn verstrichen")
@@ -108,7 +113,8 @@ def _inquiry_participations():
     release_notices = RideNotice.objects.filter(
         participation_id=OuterRef("pk"), kind=RideNotice.Kind.CONTACTS,
     )
-    return RideParticipation.objects.select_related("participant", "seat__participant", "seat__session").annotate(
+    participations = RideParticipation.objects.select_related("participant", "seat__participant", "seat__session")
+    return with_case_membership(participations).annotate(
         had_release=Exists(release_notices),
     )
 
@@ -149,21 +155,25 @@ def rides(request):
     params = _list_filters(request.GET, archived=archived)
     selected_status = params.get("status", "")
     selected_phase = params.get("phase", "")
-    combined = RideCase.objects.filter(direction=RideCase.ROUND_TRIP)
-    counts = combined.aggregate(
-        active=Count("pk", filter=Q(currently_matches=True)),
-        pending=Count("pk", filter=Q(currently_matches=True) & ~Q(status=RideCase.Status.CLOSED)),
-    )
-    cases = RideCase.objects.exclude(direction=RideCase.ROUND_TRIP) if archived else combined
-    if selected_status:
-        cases = cases.filter(status=selected_status)
+    if not archived and selected_status == RideCase.Status.CLOSED:
+        return redirect("ride_history")
     now = timezone.now()
     lead_days = get_ride_lead_days() if not archived else None
-    if selected_phase:
+    active_count = 0
+    if archived:
+        cases = RideCase.objects.exclude(direction=RideCase.ROUND_TRIP)
+    else:
         eligible, phases = ride_phase_filters(now=now, lead_days=lead_days)
-        cases = cases.filter(eligible, phases[selected_phase])
+        cases = RideCase.objects.filter(eligible)
+        active_count = cases.count()
+        if selected_phase:
+            cases = cases.filter(phases[selected_phase])
+    if selected_status:
+        cases = cases.filter(status=selected_status)
     show_inquiries = not archived and inquiry_controls_available(request)
     manual_inquiries = show_inquiries and can_edit(request.user, "rides") and not get_ride_automation()
+    if manual_inquiries:
+        cases = cases.annotate(has_uninvited=uninvited_participants())
     cases = cases.annotate(participant_count=Count("seats__participant_id", distinct=True)).order_by(
         "-currently_matches", "travel_date", "earliest", "pk",
     )
@@ -187,15 +197,14 @@ def rides(request):
                 "case": case,
                 "mediation": mediation,
                 "inquiry": inquiry,
-                "can_start_inquiry": manual_inquiries and can_start and inquiry is not None and not inquiry.total,
+                "can_start_inquiry": manual_inquiries and can_start and inquiry is not None and case.has_uninvited,
             })
     return render(request, "workspace/rides.html", {
         "section": "rides",
         "page_obj": page_obj,
         "ride_cards": ride_cards,
-        "active_count": counts["active"],
-        "pending_count": counts["pending"],
-        "status_choices": RideCase.Status.choices,
+        "active_count": active_count,
+        "status_choices": [choice for choice in RideCase.Status.choices if archived or choice[0] != RideCase.Status.CLOSED],
         "selected_status": selected_status,
         "phase_choices": RIDE_PHASE_CHOICES.items(),
         "selected_phase": selected_phase,
@@ -203,6 +212,8 @@ def rides(request):
         "querystring": urlencode(params),
         "detail_query": urlencode(detail_params),
         "synced": request.GET.get("abgleich") == "1",
+        "removed": request.GET.get("entfernt") == "1",
+        "restored": request.GET.get("wiederhergestellt") == "1",
     })
 
 
@@ -246,6 +257,13 @@ def ride_detail(request, case_id):
     case = get_object_or_404(RideCase, pk=case_id)
     round_trip = case.direction == RideCase.ROUND_TRIP
     list_filters = _list_filters(request.GET, archived=not round_trip, include_page=True)
+    history_mode = request.GET.get("verlauf", "")
+    if round_trip and case.removed_at is not None:
+        history_mode = "entfernt"
+    history_url = ""
+    if round_trip and history_mode in HISTORY_MODES:
+        list_filters = {"verlauf": history_mode} | ({"page": list_filters["page"]} if "page" in list_filters else {})
+        history_url = reverse("ride_history", query=list_filters)
     status = 200
     conflict = ""
     if request.method == "POST":
@@ -282,6 +300,9 @@ def ride_detail(request, case_id):
         "case": case,
         "round_trip": round_trip,
         "list_query": urlencode(list_filters),
+        "history_url": history_url,
+        "history_mode": history_mode if history_url else "",
+        "history_page": list_filters.get("page", "") if history_url else "",
         "mediation": _mediation(case, now=now, lead_days=get_ride_lead_days()) if round_trip else None,
         "seats": seats,
         "form": form,
@@ -292,4 +313,8 @@ def ride_detail(request, case_id):
         "inquiry_summary": _inquiry_summary(participations, active_ids) if participations else None,
         "inquiry_message": INQUIRY_MESSAGES.get(inquiry_result),
         "inquiry_failed": inquiry_result == "nicht-moeglich",
+        "can_confirm_ride": round_trip and case.removed_at is None and case.return_latest <= now,
+        "action_failed": request.GET.get("aktion") == "nicht-moeglich",
+        "restored": request.GET.get("wiederhergestellt") == "1",
+        "outcome_saved": request.GET.get("fahrt") in {"0", "1"},
     }, status=status)

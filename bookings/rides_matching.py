@@ -17,6 +17,7 @@ from .services import _lock_import, _normalized_name
 
 
 BERLIN = ZoneInfo("Europe/Berlin")
+_MATCH_FIELDS = ["currently_matches", "earliest", "latest", "return_earliest", "return_latest"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -145,17 +146,32 @@ def _seat_links(cases):
     return links
 
 
+def _refresh_match(case: RideCase, match: _Match) -> bool:
+    times = (match.earliest, match.latest, match.return_earliest, match.return_latest)
+    if case.currently_matches and (case.earliest, case.latest, case.return_earliest, case.return_latest) == times:
+        return False
+    case.currently_matches = True
+    case.earliest, case.latest, case.return_earliest, case.return_latest = times
+    return True
+
+
 @transaction.atomic
-def sync_ride_cases(*, now: datetime | None = None) -> int:
+def sync_ride_cases(*, now: datetime | None = None, match_keys: set[str] | None = None) -> int:
     """Refresh round-trip suggestions while preserving their workflow state."""
+    if match_keys is not None and not match_keys:
+        return 0
     _lock_import()
-    matches = {match.key: match for match in _round_trip_matches(now or timezone.now())}
+    matches = {
+        match.key: match for match in _round_trip_matches(now or timezone.now())
+        if match_keys is None or match.key in match_keys
+    }
     cases = RideCase.objects.in_bulk(matches, field_name="match_key")
+    removed_keys = {key for key, case in cases.items() if case.removed_at is not None}
+    matches = {key: match for key, match in matches.items() if key not in removed_keys}
     new = []
     changed = []
     for key, match in matches.items():
         case = cases.get(key)
-        times = (match.earliest, match.latest, match.return_earliest, match.return_latest)
         if case is None:
             new.append(RideCase(
                 match_key=key, school=match.school, direction=RideCase.ROUND_TRIP,
@@ -164,24 +180,76 @@ def sync_ride_cases(*, now: datetime | None = None) -> int:
                 return_earliest=match.return_earliest, return_latest=match.return_latest,
                 is_test=match.is_test,
             ))
-        elif not case.currently_matches or (case.earliest, case.latest, case.return_earliest, case.return_latest) != times:
-            case.currently_matches = True
-            case.earliest, case.latest, case.return_earliest, case.return_latest = times
+        elif _refresh_match(case, match):
             changed.append(case)
     if new:
         RideCase.objects.bulk_create(new)
         cases.update((case.match_key, case) for case in new)
     if changed:
-        RideCase.objects.bulk_update(changed, ["currently_matches", "earliest", "latest", "return_earliest", "return_latest"])
+        RideCase.objects.bulk_update(changed, _MATCH_FIELDS)
 
-    links = _seat_links(cases.values())
+    links = _seat_links(cases[key] for key in matches)
     for key, match in matches.items():
         case = cases[key]
         if links[case.pk] != match.seat_ids:
             case.seats.set(match.seat_ids)
 
-    RideCase.objects.filter(currently_matches=True).exclude(match_key__in=matches).update(currently_matches=False)
+    obsolete = RideCase.objects.filter(currently_matches=True).exclude(match_key__in=matches)
+    if match_keys is not None:
+        obsolete = obsolete.filter(match_key__in=match_keys)
+    obsolete.update(currently_matches=False)
     return len(matches)
+
+
+@transaction.atomic
+def remove_ride_case(case_id: int, *, now: datetime | None = None) -> RideCase:
+    """Pause the proposal and invitations while keeping its previous state."""
+    _lock_import()
+    case = RideCase.objects.select_for_update().filter(pk=case_id).first()
+    if case is None:
+        raise ValueError("Dieser Fahrgemeinschaftsvorschlag ist nicht mehr vorhanden.")
+    if case.removed_at is None:
+        case.removed_at = now or timezone.now()
+        case.currently_matches = False
+        case.save(update_fields=["removed_at", "currently_matches"])
+    return case
+
+
+@transaction.atomic
+def restore_ride_case(case_id: int, *, now: datetime | None = None) -> RideCase:
+    """Restore normal matching for a proposal, preserving its identity and history."""
+    _lock_import()
+    case = RideCase.objects.select_for_update().filter(pk=case_id).first()
+    if case is None:
+        raise ValueError("Dieser Fahrgemeinschaftsvorschlag ist nicht mehr vorhanden.")
+    if case.removed_at is None:
+        return case
+
+    match = next((match for match in _round_trip_matches(now or timezone.now()) if match.key == case.match_key), None)
+    case.removed_at = None
+    case.currently_matches = False
+    if match is not None:
+        _refresh_match(case, match)
+    case.save(update_fields=["removed_at", *_MATCH_FIELDS])
+    if match is not None:
+        case.seats.set(match.seat_ids)
+    return case
+
+
+@transaction.atomic
+def set_ride_confirmed(case_id: int, confirmed: bool, *, now: datetime | None = None) -> RideCase:
+    """Record whether the proposed round trip actually took place."""
+    case = RideCase.objects.select_for_update().filter(pk=case_id).first()
+    now = now or timezone.now()
+    if (
+        case is None or case.removed_at is not None or case.direction != RideCase.ROUND_TRIP
+        or case.return_latest > now
+    ):
+        raise ValueError("Erst nach der Rückfahrt kann die Durchführung bestätigt werden.")
+    if confirmed != (case.ride_confirmed_at is not None):
+        case.ride_confirmed_at = now if confirmed else None
+        case.save(update_fields=["ride_confirmed_at"])
+    return case
 
 
 @transaction.atomic
@@ -190,7 +258,7 @@ def set_ride_case_status(case_id: int, status: str, *, expected_status: str) -> 
     if status not in RideCase.Status.values:
         raise ValueError("Wähle einen gültigen Bearbeitungsstand.")
     case = RideCase.objects.select_for_update().filter(pk=case_id).first()
-    if case is None or case.status != expected_status:
+    if case is None or case.removed_at is not None or case.status != expected_status:
         raise ValueError("Der Bearbeitungsstand hat sich geändert. Lade die Seite neu.")
     if case.status != status:
         case.status = status

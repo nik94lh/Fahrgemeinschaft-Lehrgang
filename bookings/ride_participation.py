@@ -5,6 +5,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Exists, OuterRef
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
@@ -54,20 +55,33 @@ def _matching_test_seat(seat, case):
 
 
 def _open_test_case(case):
-    return case.is_test and case.direction == RideCase.ROUND_TRIP and case.status != RideCase.Status.CLOSED
+    return (
+        case.is_test and case.removed_at is None and case.direction == RideCase.ROUND_TRIP
+        and case.status != RideCase.Status.CLOSED
+    )
+
+
+def with_case_membership(queryset):
+    seat_links = RideCase.seats.through.objects.filter(
+        ridecase_id=OuterRef("case_id"), courseseat_id=OuterRef("seat_id"),
+    )
+    return queryset.annotate(is_case_member=Exists(seat_links))
 
 
 def _entries():
-    return RideParticipation.objects.select_related("case", "participant", "seat__participant", "seat__session__course")
+    return with_case_membership(RideParticipation.objects.select_related(
+        "case", "participant", "seat__participant", "seat__session__course",
+    ))
 
 
 def _has_access(entry, now):
-    # The saved invitation stays tied to its booking when the matcher drops an already started course.
     return (
         entry.seat_id is not None
         and entry.expires_at > now
         and entry.seat.participant_id == entry.participant_id
         and entry.seat.session_id == entry.session_id
+        # After its own course starts, an invitation can remain valid without a future match.
+        and ((entry.case.currently_matches and entry.is_case_member) or entry.seat.session.starts_at <= now)
         and entry.email == entry.participant.email
         and _matching_test_seat(entry.seat, entry.case)
     )
@@ -99,6 +113,15 @@ def set_ride_automation(enabled):
     RideConfiguration.objects.update_or_create(pk=1, defaults={"automatic_inquiries": enabled})
 
 
+def uninvited_participants():
+    invitations = RideParticipation.objects.filter(
+        case_id=OuterRef("ridecase_id"), participant_id=OuterRef("courseseat__participant_id"),
+    )
+    return Exists(RideCase.seats.through.objects.filter(
+        ridecase_id=OuterRef("pk"), courseseat__participant_id__isnull=False,
+    ).filter(~Exists(invitations)))
+
+
 @transaction.atomic
 def start_ride_inquiry(case_id, *, automatic=False, now=None):
     if not portal_enabled():
@@ -116,9 +139,6 @@ def start_ride_inquiry(case_id, *, automatic=False, now=None):
         lead_days = config.lead_days if config else DEFAULT_RIDE_LEAD_DAYS
         if case.travel_date > timezone.localdate(now, timezone=BERLIN) + timedelta(days=lead_days):
             return 0
-    if case.participation_requests.exists():
-        return 0
-
     seats = {}
     for seat in case.seats.select_related("participant", "session").order_by("pk"):
         if _matching_test_seat(seat, case):
@@ -126,8 +146,11 @@ def start_ride_inquiry(case_id, *, automatic=False, now=None):
     if len(seats) < 2:
         raise ValueError("Die Testabfrage braucht mindestens zwei passende Testbuchungen.")
 
+    invited = set(case.participation_requests.values_list("participant_id", flat=True))
     entries = []
-    for seat in seats.values():
+    for participant_id, seat in seats.items():
+        if participant_id in invited:
+            continue
         entry = RideParticipation(
             case=case, seat=seat, session=seat.session, participant=seat.participant,
             email=seat.participant.email, expires_at=seat.session.ends_at + timedelta(days=1),
@@ -154,8 +177,8 @@ def run_automatic_ride_inquiries(*, now=None):
     case_ids = RideCase.objects.filter(
         is_test=True, direction=RideCase.ROUND_TRIP, currently_matches=True, earliest__gt=now,
         travel_date__lte=timezone.localdate(now, timezone=BERLIN) + timedelta(days=lead_days),
-        participation_requests__isnull=True,
-    ).exclude(status=RideCase.Status.CLOSED).values_list("pk", flat=True)
+        removed_at__isnull=True,
+    ).exclude(status=RideCase.Status.CLOSED).filter(uninvited_participants()).values_list("pk", flat=True)
     started = 0
     for case_id in case_ids:
         try:

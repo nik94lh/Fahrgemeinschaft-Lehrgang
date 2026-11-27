@@ -17,7 +17,9 @@ from bookings.calendar import calendar, calendar_detail
 from bookings.participant_views import booking_participant
 from bookings.people import people
 from bookings.review_actions import review_detail
+from bookings.ride_history import ride_history
 from bookings.ride_inquiry_views import ride_automation, ride_inquiry_start
+from bookings.ride_management import ride_confirm, ride_remove, ride_restore
 from bookings.ride_portal import ride_portal, ride_portal_reply, ride_portal_script
 from bookings.ride_settings import rides_settings, workspace_settings
 from bookings.ride_simulation import (
@@ -88,6 +90,7 @@ urlpatterns = [
     path("kalender/", calendar, name="calendar"),
     path("kalender/<int:session_id>/", calendar_detail, name="calendar_detail"),
     path("fahrgemeinschaften/", rides, name="rides"),
+    path("fahrgemeinschaften/verlauf/", ride_history, name="ride_history"),
     path("fahrgemeinschaften/abgleichen/", rides_sync, name="rides_sync"),
     path("fahrgemeinschaften/automatik/", ride_automation, name="ride_automation"),
     path("fahrgemeinschaften/einstellungen/", rides_settings, name="rides_settings"),
@@ -99,6 +102,9 @@ urlpatterns = [
         name="ride_simulation_response",
     ),
     path("fahrgemeinschaften/<int:case_id>/", ride_detail, name="ride_detail"),
+    path("fahrgemeinschaften/<int:case_id>/entfernen/", ride_remove, name="ride_remove"),
+    path("fahrgemeinschaften/<int:case_id>/wiederherstellen/", ride_restore, name="ride_restore"),
+    path("fahrgemeinschaften/<int:case_id>/fahrt-bestaetigen/", ride_confirm, name="ride_confirm"),
     path("fahrgemeinschaften/<int:case_id>/testabfrage/", ride_inquiry_start, name="ride_inquiry_start"),
     path("feuerwehren/", brigades, name="brigades"),
     path("feuerwehren/neu/", brigade_edit, name="brigade_create"),
