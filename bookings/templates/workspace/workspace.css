@@ -3,6 +3,9 @@
 a { color: var(--accent); text-underline-offset: .16em; }
 body:has(.workspace-main-wide) { --workspace-max: none; }
 .workspace-main-wide { max-width: none; font-size: 1.0625rem; }
+@media (min-width: 1200px) {
+    .workspace-main-wide { max-width: 90%; }
+}
 .page-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-block-end: 1.3rem; }
 .page-heading--actions { justify-content: flex-end; }
 .page-heading .intro { margin-block-end: 0; max-width: 52rem; }

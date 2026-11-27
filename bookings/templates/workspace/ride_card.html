@@ -28,13 +28,19 @@
     {% if inquiry %}
         <div class="ride-card-inquiries">
             <p>Testabfrage · <strong>{{ inquiry.label }}</strong></p>
-            <p class="ride-card-inquiry-counts">
-                <span>{{ inquiry.total }} {{ inquiry.total|pluralize:"Einladung,Einladungen" }} vorbereitet</span>
-                <span>{{ inquiry.pending }} offen</span>
-                <span>{{ inquiry.yes }} zugesagt</span>
-                <span>{{ inquiry.no }} abgesagt</span>
-                {% if inquiry.unavailable %}<span>{{ inquiry.unavailable }} ohne gültigen Zugang</span>{% endif %}
-            </p>
+            <dl class="ride-card-inquiry-counts">
+                <div><dt>Einladungen</dt><dd>{{ inquiry.total }}</dd></div>
+                <div{% if inquiry.pending %} class="ride-card-inquiry-open"{% endif %}>
+                    <dt>Offen</dt><dd>{{ inquiry.pending }}</dd>
+                </div>
+                <div{% if inquiry.yes %} class="ride-card-inquiry-yes"{% endif %}>
+                    <dt>Zusagen</dt><dd>{{ inquiry.yes }}</dd>
+                </div>
+                <div{% if inquiry.no %} class="ride-card-inquiry-no"{% endif %}>
+                    <dt>Absagen</dt><dd>{{ inquiry.no }}</dd>
+                </div>
+            </dl>
+            {% if inquiry.unavailable %}<p class="ride-card-inquiry-unavailable">{{ inquiry.unavailable }} ohne gültigen Zugang</p>{% endif %}
         </div>
         {% if can_start_inquiry %}
             <form class="ride-card-inquiry-form" method="post" action="{% url 'ride_inquiry_start' item.pk %}">
