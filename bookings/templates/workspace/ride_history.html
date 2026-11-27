@@ -1,0 +1,88 @@
+{% extends "workspace/base.html" %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
+{% block title %}Verlauf der Fahrgemeinschaften{% endblock %}
+{% block page_styles %}
+    .ride-history-modes { display: flex; flex-wrap: wrap; gap: .5rem; margin-block-end: .75rem; }
+    .ride-history-modes [aria-current="page"] { border-color: var(--navy); background: var(--navy); color: white; }
+    .ride-history-scope { margin-block: 0 1rem; }
+    .ride-history-stats { grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr)); max-inline-size: 46rem; gap: .65rem; }
+    .ride-history-date { display: block; }
+    .ride-history-when { display: block; color: var(--muted); font-size: .85rem; }
+    .ride-history-table .status-label { align-self: start; justify-self: start; }
+    @media (max-width: 560px) { .ride-history-stats div { padding: .6rem .75rem; } }
+{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'rides' %}">‹ Zu den Fahrgemeinschaftsvorschlägen</a></p>
+    <div class="page-heading"><h1 id="ride-history-heading">Verlauf der Fahrgemeinschaften</h1></div>
+    {% if removed %}<p class="notice" role="status">Vorschlag entfernt.</p>{% endif %}
+    {% if restored %}<p class="notice" role="status">Vorschlag wiederhergestellt.</p>{% endif %}
+    <nav class="ride-history-modes" aria-label="Verlauf filtern">
+        {% for mode, label in modes %}
+            <a class="button-link" href="{% url 'ride_history' %}?verlauf={{ mode }}"{% if mode == selected_mode %} aria-current="page"{% endif %}>{{ label }}</a>
+        {% endfor %}
+    </nav>
+    <p class="quiet ride-history-scope">
+        {% if selected_mode == 'entfernt' %}Entfernte reguläre und Testvorschläge.
+        {% else %}Vorschläge ab Terminbeginn sowie manuell abgeschlossene Vorschläge.{% endif %}
+    </p>
+    <dl class="stats ride-history-stats">
+        <div><dt>Vorschläge</dt><dd>{{ totals.proposals }}</dd></div>
+        <div><dt>Personen mit Kontaktfreigabe</dt><dd>{{ totals.people }}</dd></div>
+        <div><dt>Bestätigte Fahrten</dt><dd>{{ totals.confirmed }}</dd></div>
+    </dl>
+
+    {% if page_obj %}
+        <div class="panel table-scroll" tabindex="0" role="region" aria-labelledby="ride-history-heading">
+            <table class="mobile-table ride-history-table">
+                <thead>
+                    <tr>
+                        <th scope="col">Vorschlag</th>
+                        <th scope="col">Schulungsort</th>
+                        <th scope="col">Hin- und Rückfahrt</th>
+                        <th scope="col">Bearbeitungsstand</th>
+                        <th scope="col">Fahrtbestätigung</th>
+                        {% if selected_mode == 'entfernt' %}<th scope="col">Entfernt am</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in page_obj %}
+                        <tr>
+                            <td data-label="Vorschlag">
+                                <div>
+                                    <a href="{% url 'ride_detail' item.pk %}?{{ detail_query }}">Nr. {{ item.pk|stringformat:'d' }} öffnen</a>
+                                    {% if item.is_test and selected_mode == 'entfernt' %}<span class="status-label">Test</span>{% endif %}
+                                </div>
+                            </td>
+                            <td data-label="Schulungsort">{{ item.get_school_display }}</td>
+                            <td data-label="Hin- und Rückfahrt">
+                                <div>
+                                    <time class="ride-history-date" datetime="{{ item.travel_date|date:'Y-m-d' }}">{{ item.travel_date|date:"d.m.Y" }}</time>
+                                    {% if item.return_date %}<time class="ride-history-date" datetime="{{ item.return_date|date:'Y-m-d' }}">{{ item.return_date|date:"d.m.Y" }}</time>{% endif %}
+                                </div>
+                            </td>
+                            <td data-label="Status"><span class="status-label status-{{ item.status }}">{{ item.get_status_display }}</span></td>
+                            <td data-label="Bestätigung">
+                                {% if item.ride_confirmed_at %}
+                                    <div>
+                                        <span class="status-label status-confirmed">Fahrt bestätigt</span>
+                                        <time class="ride-history-when" datetime="{{ item.ride_confirmed_at|date:'c' }}">{{ item.ride_confirmed_at|date:"d.m.Y" }}</time>
+                                    </div>
+                                {% else %}<span class="quiet">Keine Bestätigung</span>{% endif %}
+                            </td>
+                            {% if selected_mode == 'entfernt' %}
+                                <td data-label="Entfernt am"><time datetime="{{ item.removed_at|date:'c' }}">{{ item.removed_at|date:"d.m.Y, H:i" }} Uhr</time></td>
+                            {% endif %}
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% include "workspace/pagination.html" %}
+    {% else %}
+        <p class="quiet">
+            {% if selected_mode == 'entfernt' %}Keine entfernten Vorschläge.
+            {% elif selected_mode == 'test' %}Keine Vorschläge im Testverlauf.
+            {% else %}Keine regulären Vorschläge im Verlauf.{% endif %}
+        </p>
+    {% endif %}
+{% endblock %}

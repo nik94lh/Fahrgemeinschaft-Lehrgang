@@ -39,7 +39,7 @@
         {% if can_start_inquiry %}
             <form class="ride-card-inquiry-form" method="post" action="{% url 'ride_inquiry_start' item.pk %}">
                 {% csrf_token %}
-                <button type="submit">Testabfrage starten</button>
+                <button type="submit">{% if inquiry.total %}Weitere Personen einladen{% else %}Testabfrage starten{% endif %}</button>
             </form>
         {% endif %}
     {% endif %}

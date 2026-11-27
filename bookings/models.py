@@ -323,6 +323,8 @@ class RideCase(models.Model):
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.OPEN)
     currently_matches = models.BooleanField(default=True)
     is_test = models.BooleanField(default=False, db_default=False)
+    removed_at = models.DateTimeField(null=True, blank=True)
+    ride_confirmed_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["travel_date", "earliest", "pk"]

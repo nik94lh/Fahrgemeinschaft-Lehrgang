@@ -8,7 +8,8 @@ from django.utils import timezone
 from django.utils.crypto import constant_time_compare, salted_hmac
 from django.views.decorators.debug import sensitive_variables
 
-from .models import CourseSeat, EmailEvent, RideCase
+from .models import CourseSeat, EmailEvent
+from .rides_matching import sync_ride_cases
 from .services import _lock_import
 
 
@@ -68,7 +69,7 @@ def delete_booking(seat_id: int, snapshot: str) -> BookingDeletionResult:
         review_resolution=EmailEvent.ReviewResolution.BOOKING_DELETED,
         reviewed_at=timezone.now(),
     )
-    # A proposal must be matched again before it can be used with a changed membership.
-    RideCase.objects.filter(seats=seat, currently_matches=True).update(currently_matches=False)
+    match_keys = set(seat.ride_cases.values_list("match_key", flat=True))
     seat.delete()
+    sync_ride_cases(match_keys=match_keys)
     return BookingDeletionResult.DELETED

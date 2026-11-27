@@ -59,3 +59,24 @@ class RidePilotAutomationTests(TestCase):
         self.assertFalse(case.seats.filter(pk=early.pk).exists())
         with patch("bookings.ride_participation.timezone.now", return_value=after_start):
             self.assertEqual(participation_for_code(invite_code(entry)), entry)
+
+    def test_automatic_inquiry_invites_the_new_peer_when_a_case_matches_again(self):
+        first, leaving = (self.booking(index, days=3) for index in (0, 1))
+        sync_ride_cases(now=self.now)
+        case = RideCase.objects.get(is_test=True)
+        set_ride_automation(True)
+        self.assertEqual(run_automatic_ride_inquiries(now=self.now), 2)
+        original = case.participation_requests.get(seat=first)
+        leaving.status = BookingStatus.CANCELLED
+        leaving.save(update_fields=["status"])
+        self.assertEqual(sync_ride_cases(now=self.now), 0)
+
+        newcomer = self.booking(2, days=3)
+        self.assertEqual(sync_ride_cases(now=self.now), 1)
+
+        self.assertEqual(run_automatic_ride_inquiries(now=self.now), 1)
+        self.assertEqual(run_automatic_ride_inquiries(now=self.now), 0)
+        self.assertEqual(RideCase.objects.count(), 1)
+        self.assertEqual(case.participation_requests.get(seat=first).pk, original.pk)
+        new_entry = case.participation_requests.get(seat=newcomer)
+        self.assertEqual(new_entry.notices.filter(kind=RideNotice.Kind.INVITATION).count(), 1)

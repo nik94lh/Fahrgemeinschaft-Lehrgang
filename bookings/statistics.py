@@ -95,7 +95,9 @@ def _year_trend(sessions, year):
 def _ride_counts(start, stop, school, now):
     if school == School.ONLINE:
         return {"total": 0, "active": 0, "closed": 0}
-    cases = RideCase.objects.filter(direction=RideCase.ROUND_TRIP, travel_date__gte=start, travel_date__lt=stop)
+    cases = RideCase.objects.filter(
+        direction=RideCase.ROUND_TRIP, removed_at__isnull=True, travel_date__gte=start, travel_date__lt=stop,
+    )
     if school:
         cases = cases.filter(school=school)
     closed = Q(status=RideCase.Status.CLOSED)

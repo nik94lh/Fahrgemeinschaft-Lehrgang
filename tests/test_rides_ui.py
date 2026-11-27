@@ -81,7 +81,6 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
         self.assertContains(response, "16:45–17:30")
         self.assertNotContains(response, "Fallstatus")
         self.assertEqual(response.context["active_count"], 1)
-        self.assertEqual(response.context["pending_count"], 1)
         self.assertEqual(response.context["page_obj"].paginator.count, 1)
         self.assertIn("no-store", response.headers["Cache-Control"])
 
@@ -178,27 +177,27 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
         refreshed = self.client.post(reverse("rides_sync"), filters)
         self.assertRedirects(refreshed, f"{list_url}?abgleich=1&{query}")
 
-    def test_started_and_closed_cases_show_their_state(self):
+    def test_started_and_closed_cases_move_to_history(self):
         case = self.sync()
+        detail = reverse("ride_detail", args=[case.pk])
         with patch("django.utils.timezone.now", return_value=case.earliest):
             started = self.client.get(reverse("rides"))
-        self.assertContains(started, "Lehrgang begonnen")
-        self.assertNotContains(started, 'class="status-label ride-phase-ready"')
+            self.assertNotContains(started, detail)
+            self.assertContains(self.client.get(detail), "Lehrgang begonnen")
 
         case.status = RideCase.Status.CLOSED
         case.save(update_fields=["status"])
-        closed = self.client.get(reverse("rides"), {"status": RideCase.Status.CLOSED})
-        self.assertContains(closed, "Abgeschlossen")
-        self.assertContains(closed, '<span class="status-label">Passend</span>', html=True)
-        self.assertNotContains(closed, 'class="status-label ride-phase-ready"')
+        self.assertNotContains(self.client.get(reverse("rides")), detail)
+        self.assertRedirects(self.client.get(reverse("rides"), {"status": RideCase.Status.CLOSED}), "/fahrgemeinschaften/verlauf/")
 
     def test_past_proposal_keeps_a_distinct_time_state_after_reconciliation(self):
         case = self.sync()
+        detail = reverse("ride_detail", args=[case.pk])
         with patch("django.utils.timezone.now", return_value=case.earliest):
             self.client.post(reverse("rides_sync"))
             listing = self.client.get(reverse("rides"))
-        self.assertContains(listing, "Terminbeginn verstrichen")
-        self.assertNotContains(listing, 'class="status-label ride-phase-ready"')
+            self.assertNotContains(listing, detail)
+            self.assertContains(self.client.get(detail), "Terminbeginn verstrichen")
 
     def test_empty_after_sync_shows_match_requirements_and_permitted_next_actions(self):
         self.first_seat.status = BookingStatus.AWAITING_CONFIRMATION
@@ -257,7 +256,6 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
         self.assertContains(listing, current_detail)
         self.assertNotContains(listing, legacy_detail)
         self.assertEqual(listing.context["active_count"], 1)
-        self.assertEqual(listing.context["pending_count"], 1)
 
         archive = self.client.get(url, {"archiv": "1", "status": RideCase.Status.IN_REVIEW})
         self.assertContains(archive, "Frühere Einzelstrecken")
@@ -313,7 +311,7 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
         self.assertTrue(case.currently_matches)
 
         listing = reverse("rides")
-        self.assertContains(self.client.get(listing, {"status": "closed"}), detail)
+        self.assertContains(self.client.get(listing, {"status": "closed"}, follow=True), detail)
         filtered = self.client.get(listing, {"status": "open"})
         self.assertNotContains(filtered, detail)
         self.assertContains(filtered, "Keine Vorschläge mit diesem Bearbeitungsstand.")
@@ -324,8 +322,9 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
         self.first_seat.refresh_from_db()
         self.assertEqual(self.first_seat.status, BookingStatus.CONFIRMED)
 
-    def test_inactive_case_preserves_related_bookings_for_review(self):
+    def test_inactive_case_leaves_the_overview_and_returns_with_two_matching_bookings(self):
         case = self.sync()
+        detail = reverse("ride_detail", args=[case.pk])
         self.first_seat.status = BookingStatus.CANCELLED
         self.first_seat.save(update_fields=["status"])
         self.assertEqual(self.client.post(reverse("rides_sync")).status_code, 302)
@@ -333,9 +332,14 @@ class RideCaseWorkspaceTests(WorkspaceTestCase):
         case.refresh_from_db()
         self.assertFalse(case.currently_matches)
         listing = self.client.get(reverse("rides"))
-        self.assertContains(listing, "Kein aktueller Treffer")
+        self.assertNotContains(listing, detail)
         self.assertNotContains(listing, 'class="status-label ride-phase-ready"')
-        response = self.client.get(reverse("ride_detail", args=[case.pk]))
+        response = self.client.get(detail)
         self.assertContains(response, "Kein Treffer beim letzten Abgleich")
         self.assertContains(response, "Zuletzt zugeordnete Buchungen")
         self.assertContains(response, "Storniert")
+
+        self.first_seat.status = BookingStatus.CONFIRMED
+        self.first_seat.save(update_fields=["status"])
+        self.assertEqual(self.sync().pk, case.pk)
+        self.assertContains(self.client.get(reverse("rides")), detail)

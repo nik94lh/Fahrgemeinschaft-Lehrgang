@@ -43,6 +43,27 @@ class RideInquiryCardTests(WorkspaceTestCase):
     def assert_card_state(self, response, state):
         self.assertContains(response, f'<article class="ride-card ride-card--{state}"')
 
+    def test_reappearing_card_offers_a_test_invitation_for_the_new_participant(self):
+        case = self.make_case()
+        first, second, third = self.start(case)
+        CourseSeat.objects.filter(pk__in=(second.seat_id, third.seat_id)).update(status=BookingStatus.CANCELLED)
+        sync_ride_cases()
+        self.assertNotContains(self.listing(), reverse("ride_detail", args=[case.pk]))
+
+        newcomer = CourseSeat.objects.create(
+            session_id=first.session_id, status=BookingStatus.CONFIRMED, is_test=True,
+            participant=Participant.objects.create(name="Neue Fiktive Person", email="neu@example.invalid"),
+        )
+        sync_ride_cases()
+        self.assertContains(self.listing(), "Weitere Personen einladen")
+
+        response = self.client.post(reverse("ride_inquiry_start", args=[case.pk]), secure=True)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(case.participation_requests.get(participant_id=first.participant_id).pk, first.pk)
+        self.assertTrue(case.participation_requests.filter(seat=newcomer).exists())
+        self.assertNotContains(self.listing(), "Weitere Personen einladen")
+
     def test_card_tracks_open_answers_and_current_contact_sharing(self):
         case = self.make_case()
         listing = self.listing()
@@ -117,7 +138,6 @@ class RideInquiryCardTests(WorkspaceTestCase):
             (second, {"consented_at": None}),
             (second.participant, {"email": "korrigierte-adresse@example.invalid"}),
             (second.seat, {"status": BookingStatus.CANCELLED}),
-            (case, {"status": RideCase.Status.CLOSED}),
         )
         for obj, updates in failure_updates:
             with self.subTest(updates=updates), transaction.atomic():
@@ -126,8 +146,12 @@ class RideInquiryCardTests(WorkspaceTestCase):
                 self.assertContains(listing, "Kontaktfreigabe beendet")
                 self.assertContains(listing, "2 zugesagt")
                 self.assertNotContains(listing, "Kontakte freigegeben")
-                self.assert_card_state(listing, "no-match" if obj == case else "awaiting-replies")
+                self.assert_card_state(listing, "awaiting-replies")
                 transaction.set_rollback(True)
+
+        case.status = RideCase.Status.CLOSED
+        case.save(update_fields=["status"])
+        self.assertNotContains(self.listing(), reverse("ride_detail", args=[case.pk]))
 
     def test_expired_unanswered_invitation_is_no_longer_open(self):
         case = self.make_case()

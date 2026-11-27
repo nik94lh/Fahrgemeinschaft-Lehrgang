@@ -4,6 +4,11 @@
     .ride-case-panel { margin-block-end: 1rem; }
     .ride-case-status { max-width: 24rem; margin-block: 1rem; }
     .ride-case-status select { display: block; width: 100%; margin-block-start: .25rem; padding: .6rem; font: inherit; border: 1px solid var(--line); border-radius: .45rem; background: white; color: var(--ink); }
+    .ride-case-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-block-start: .9rem; }
+    .ride-case-actions form { margin: 0; }
+    .ride-case-actions button { width: auto; }
+    .ride-case-remove { border-color: #a97780; color: #812736; }
+    .ride-case-remove:hover { background: #f9ecee; }
     .ride-inquiry-list { display: grid; gap: .9rem; margin: 0; padding: 0; list-style: none; }
     .ride-inquiry-list > li + li { padding-block-start: .9rem; border-block-start: 1px solid var(--line); }
     .ride-inquiry-person { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem .7rem; }
@@ -16,7 +21,11 @@
 {% endblock %}
 {% block content %}
     {% if round_trip %}
-        <p class="back-link"><a href="{% url 'rides' %}{% if list_query %}?{{ list_query }}{% endif %}">‹ Zurück zu den Fahrgemeinschaftsvorschlägen</a></p>
+        {% if history_url %}
+            <p class="back-link"><a href="{{ history_url }}">‹ Zurück zum Verlauf</a></p>
+        {% else %}
+            <p class="back-link"><a href="{% url 'rides' %}{% if list_query %}?{{ list_query }}{% endif %}">‹ Zurück zu den Fahrgemeinschaftsvorschlägen</a></p>
+        {% endif %}
         <h1 class="ride-heading">Fahrgemeinschaftsvorschlag {{ case.pk }}</h1>
         <p class="intro">{{ case.get_school_display }}</p>
     {% else %}
@@ -26,6 +35,9 @@
     {% endif %}
 
     {% if saved %}<p class="notice" role="status">Bearbeitungsstand gespeichert.</p>{% endif %}
+    {% if restored %}<p class="notice" role="status">Vorschlag wiederhergestellt.</p>{% endif %}
+    {% if outcome_saved %}<p class="notice" role="status">Fahrtergebnis gespeichert.</p>{% endif %}
+    {% if action_failed %}<p class="errorlist" role="alert">Die Aktion ist für diesen Vorschlag aktuell nicht möglich.</p>{% endif %}
     {% if inquiry_message %}<p class="{% if inquiry_failed %}errorlist{% else %}notice{% endif %}" role="status">{{ inquiry_message }}</p>{% endif %}
     <section class="panel ride-case-panel" aria-labelledby="ride-status">
         <h2 id="ride-status">Fahrten und Bearbeitung</h2>
@@ -33,15 +45,18 @@
             {% if round_trip %}
                 <div><dt>Hinfahrt</dt><dd>{{ case.travel_date|date:"d.m.Y" }} · {{ case.earliest|date:"H:i" }}{% if case.latest != case.earliest %}–{{ case.latest|date:"H:i" }}{% endif %} Uhr</dd></div>
                 <div><dt>Rückfahrt</dt><dd>{{ case.return_date|date:"d.m.Y" }} · {{ case.return_earliest|date:"H:i" }}{% if case.return_latest != case.return_earliest %}–{{ case.return_latest|date:"H:i" }}{% endif %} Uhr</dd></div>
-                <div><dt>Letzter Abgleich</dt><dd>{% if case.currently_matches %}Buchungen passen zusammen{% else %}Kein Treffer beim letzten Abgleich{% endif %}</dd></div>
+                {% if not case.removed_at %}<div><dt>Letzter Abgleich</dt><dd>{% if case.currently_matches %}Buchungen passen zusammen{% else %}Kein Treffer beim letzten Abgleich{% endif %}</dd></div>{% endif %}
                 <div><dt>Vermittlung</dt><dd>{% include "workspace/ride_mediation.html" %}</dd></div>
             {% else %}
                 <div><dt>{{ case.get_direction_display }}</dt><dd>{{ case.travel_date|date:"d.m.Y" }} · {{ case.earliest|date:"H:i" }}{% if case.latest != case.earliest %}–{{ case.latest|date:"H:i" }}{% endif %} Uhr</dd></div>
             {% endif %}
             <div><dt>Bearbeitungsstand</dt><dd>{{ case.get_status_display }}</dd></div>
+            {% if can_confirm_ride or case.ride_confirmed_at %}
+                <div><dt>Fahrtergebnis</dt><dd>{% if case.ride_confirmed_at %}<span class="status-label status-confirmed">Fahrt zustande gekommen</span>{% else %}Noch ohne Bestätigung{% endif %}</dd></div>
+            {% endif %}
         </dl>
         {% if conflict %}<p class="errorlist" role="alert">{{ conflict }}</p>{% endif %}
-        {% if workspace_edit.rides %}
+        {% if workspace_edit.rides and not case.removed_at %}
         <form class="ride-case-status" method="post">
             {% csrf_token %}
             {{ form.non_field_errors }}
@@ -52,6 +67,29 @@
             {{ form.status }}
             <button type="submit">Bearbeitungsstand speichern</button>
         </form>
+        {% endif %}
+        {% if workspace_edit.rides and round_trip %}
+            <div class="ride-case-actions">
+                {% if case.removed_at %}
+                    <form method="post" action="{% url 'ride_restore' case.pk %}">
+                        {% csrf_token %}
+                        <input type="hidden" name="verlauf" value="{{ history_mode }}">
+                        {% if history_page %}<input type="hidden" name="page" value="{{ history_page }}">{% endif %}
+                        <button type="submit">Vorschlag wiederherstellen</button>
+                    </form>
+                {% else %}
+                    {% if can_confirm_ride %}
+                        <form method="post" action="{% url 'ride_confirm' case.pk %}">
+                            {% csrf_token %}
+                            {% if history_mode %}<input type="hidden" name="verlauf" value="{{ history_mode }}">{% endif %}
+                            {% if history_page %}<input type="hidden" name="page" value="{{ history_page }}">{% endif %}
+                            <input type="hidden" name="confirmed" value="{% if case.ride_confirmed_at %}0{% else %}1{% endif %}">
+                            <button type="submit" class="secondary-button">{% if case.ride_confirmed_at %}Bestätigung zurücknehmen{% else %}Fahrt als zustande gekommen bestätigen{% endif %}</button>
+                        </form>
+                    {% endif %}
+                    <a class="button-link ride-case-remove" href="{% url 'ride_remove' case.pk %}{% if history_mode %}?{{ list_query }}{% endif %}">Vorschlag entfernen</a>
+                {% endif %}
+            </div>
         {% endif %}
     </section>
 

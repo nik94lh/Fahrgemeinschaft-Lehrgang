@@ -1,0 +1,28 @@
+{% extends "workspace/base.html" %}
+{% block title %}Fahrgemeinschaftsvorschlag entfernen{% endblock %}
+{% block live_region %}{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{{ back_href }}">‹ Zurück zum Vorschlag</a></p>
+    <div class="page-heading"><h1>Fahrgemeinschaftsvorschlag entfernen</h1></div>
+    <section class="panel" aria-labelledby="remove-ride-summary">
+        <h2 id="remove-ride-summary">Vorschlag {{ case.pk|stringformat:"d" }}</h2>
+        <dl class="details">
+            <div><dt>Schulungsort</dt><dd>{{ case.get_school_display }}</dd></div>
+            <div><dt>Hinfahrt</dt><dd>{{ case.travel_date|date:"d.m.Y" }}</dd></div>
+            <div><dt>Rückfahrt</dt><dd>{{ case.return_date|date:"d.m.Y" }}</dd></div>
+        </dl>
+        {% if error %}<p class="errorlist" role="alert">{{ error }}</p>{% endif %}
+        {% if case.removed_at %}
+            <p>Dieser Vorschlag wurde bereits entfernt.</p>
+        {% else %}
+            <p>Du entfernst diesen Fahrgemeinschaftsvorschlag aus der Übersicht. Im Verlauf unter „Entfernte“ kannst du ihn wiederherstellen.</p>
+            {% if case.is_test %}<p>Die Zugänge einer laufenden Testabfrage werden gesperrt.</p>{% endif %}
+            <form method="post" action="{% url 'ride_remove' case.pk %}">
+                {% csrf_token %}
+                {% for name, value in origin.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}
+                <button type="submit" name="confirm" value="1">Vorschlag entfernen</button>
+                <a class="button-link" href="{{ back_href }}">Abbrechen</a>
+            </form>
+        {% endif %}
+    </section>
+{% endblock %}
