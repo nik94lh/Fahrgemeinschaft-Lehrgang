@@ -1,4 +1,4 @@
-"""Workspace entry points for the synthetic participant questionnaire."""
+"""Workspace entry points for participation inquiries and mail retries."""
 
 from django.http import Http404, HttpResponseBadRequest
 from django.shortcuts import get_object_or_404, redirect
@@ -9,8 +9,10 @@ from django.views.decorators.csrf import csrf_protect
 from django.views.decorators.http import require_POST
 
 from accounts.access import is_workspace_admin
+from mailimport import outbound
 
-from .models import RideCase, RideConfiguration
+from .models import RideCase, RideConfiguration, RideNotice
+from .ride_mail import queue_ride_resend
 from .ride_participation import portal_enabled, set_ride_automation, start_ride_inquiry
 
 
@@ -50,14 +52,32 @@ def ride_automation(request):
 @never_cache
 @require_POST
 @csrf_protect
-def ride_inquiry_start(request, case_id):
+def ride_inquiry_start(request, case_id, *, is_test=True):
     if not inquiry_controls_available(request):
         raise Http404
-    get_object_or_404(RideCase, pk=case_id, is_test=True)
+    get_object_or_404(RideCase, pk=case_id, is_test=is_test)
+    if not is_test and not outbound.outbound_enabled():
+        raise Http404
     try:
         prepared = start_ride_inquiry(case_id, automatic=False)
     except ValueError:
         result = "nicht-moeglich"
     else:
         result = "vorbereitet" if prepared else "unveraendert"
-    return redirect(reverse("ride_detail", args=[case_id], query={"testabfrage": result}))
+    return redirect(reverse("ride_detail", args=[case_id], query={"testabfrage" if is_test else "abfrage": result}))
+
+
+@never_cache
+@require_POST
+@csrf_protect
+def ride_notice_resend(request, case_id, notice_id):
+    if not inquiry_controls_available(request):
+        raise Http404
+    get_object_or_404(RideNotice, pk=notice_id, participation__case_id=case_id, participation__case__is_test=False)
+    try:
+        queue_ride_resend(notice_id)
+    except ValueError:
+        result = "erneut-nicht-moeglich"
+    else:
+        result = "erneut-vorgemerkt"
+    return redirect(reverse("ride_detail", args=[case_id], query={"abfrage": result}))

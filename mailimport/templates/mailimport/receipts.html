@@ -6,9 +6,12 @@
     {% if workspace_view.mailbox %}
         <div class="page-heading page-heading--actions"><a class="button-link" href="{% url 'mailbox' %}">Postfachstatus</a></div>
     {% endif %}
+    {% for mailbox in mailbox_statuses %}
+    {% with cursor=mailbox.cursor %}
     <div class="status-strip{% if cursor and not cursor.last_sync_ok %} status-strip-warning{% endif %}">
+        <strong>{{ mailbox.slot.label }}</strong>
         {% if cursor %}
-            <strong>Letzter Abruf</strong>
+            <span>Letzter Abruf</span>
             <time datetime="{{ cursor.last_sync_at|date:'c' }}">{{ cursor.last_sync_at|date:"d.m.Y, H:i" }} Uhr</time>
             {% if not cursor.last_sync_ok %}
                 <span>Fehlgeschlagen. Prüfe die Einstellungen unter Postfach.</span>
@@ -22,9 +25,11 @@
                 <span>Erfolgreich. Für diesen Abruf wurden noch keine Einzelheiten erfasst.</span>
             {% endif %}
         {% else %}
-            <span>{{ mailbox_status }}</span>
+            <span>{{ mailbox.message }}</span>
         {% endif %}
     </div>
+    {% endwith %}
+    {% endfor %}
 
     <nav class="section-tabs" aria-label="Ansicht Mail-Eingang">
         <a href="{% url 'mail_receipts' %}"{% if not archive %} aria-current="page"{% endif %}>Neu im Postfach</a>
@@ -37,8 +42,15 @@
         {% else %}
             <form class="receipt-search" method="get" role="search">
                 <label>Mail suchen<input type="search" name="q" value="{{ query }}" maxlength="100" placeholder="Name, Lehrgang, Referenz oder Nr."></label>
+                <label>Importpostfach
+                    <select name="postfach">
+                        <option value="">Alle Eingänge</option>
+                        <option value="1"{% if mailbox_slot == "1" %} selected{% endif %}>IMAP-Eingang A</option>
+                        <option value="2"{% if mailbox_slot == "2" %} selected{% endif %}>IMAP-Eingang B</option>
+                    </select>
+                </label>
                 <button type="submit">Suchen</button>
-                {% if query %}<a href="{% url 'mail_receipts' %}">Zurücksetzen</a>{% endif %}
+                {% if query or mailbox_slot %}<a href="{% url 'mail_receipts' %}">Zurücksetzen</a>{% endif %}
             </form>
         {% endif %}
         {% if page_obj.object_list %}
@@ -68,7 +80,7 @@
                         {% else %}
                             {% for receipt in page_obj %}
                                 <tr>
-                                    <td data-label="Abruf"><span>{{ receipt.observed_at|date:"d.m.Y, H:i" }}<small>IMAP-Nr. {{ receipt.uid }}{% if source_id and receipt.source_id != source_id %} · Früheres Postfach{% endif %}</small></span></td>
+                                    <td data-label="Abruf"><span>{{ receipt.observed_at|date:"d.m.Y, H:i" }}<small>{{ receipt.get_mailbox_slot_display }} · IMAP-Nr. {{ receipt.uid }}</small></span></td>
                                     <td data-label="Erkannte Mail">
                                         <span><strong>{{ receipt.fields.mail_type|default:"Nicht ausgewertet" }}</strong>
                                         {% if receipt.fields.participant_name or receipt.fields.course_name %}
@@ -88,7 +100,7 @@
             <div class="receipt-list-empty">
                 {% if archive %}
                     <h2>Keine früheren Importe</h2>
-                {% elif query %}
+                {% elif query or mailbox_slot %}
                     <h2>Keine Mail zur Suche gefunden</h2>
                 {% else %}
                     <h2>Hier ist noch kein neuer Eingang erfasst</h2>

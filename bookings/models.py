@@ -391,6 +391,31 @@ class RideNotice(models.Model):
         ordering = ["created_at", "pk"]
 
 
+class RideMailDelivery(models.Model):
+    class Status(models.TextChoices):
+        PENDING = "pending", "Eingeplant"
+        SENDING = "sending", "Versand läuft"
+        SENT = "sent", "Versendet"
+        FAILED = "failed", "Versand fehlgeschlagen"
+        CANCELLED = "cancelled", "Versand hinfällig"
+        UNCERTAIN = "uncertain", "Versandstatus unklar"
+
+    notice = models.ForeignKey(RideNotice, on_delete=models.CASCADE, related_name="deliveries")
+    status = models.CharField(max_length=10, choices=Status.choices, default=Status.PENDING)
+    created_at = models.DateTimeField(auto_now_add=True)
+    claimed_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at", "-pk"]
+        indexes = [models.Index(fields=["status", "id"], name="bookings_ride_mail_queue")]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["notice"], condition=Q(status__in=("pending", "sending")), name="bookings_one_active_ride_mail",
+            ),
+        ]
+
+
 class RideSimulationInvitation(models.Model):
     owner = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     respondent = models.PositiveSmallIntegerField()

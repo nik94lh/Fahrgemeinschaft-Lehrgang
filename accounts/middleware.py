@@ -18,6 +18,7 @@ RIDE_PORTAL_ROUTES = frozenset({"ride_portal", "ride_portal_reply", "ride_portal
 ACCOUNT_ROUTES = frozenset({"account", "account_password_change", "logout"})
 ADMIN_ROUTES = frozenset({
     "account_list", "account_create", "account_edit", "account_password_reset", "account_admin_role", "ride_automation",
+    "outbound_settings",
 })
 VIEW_ROUTES = {
     "overview": "overview",
@@ -51,6 +52,8 @@ EDIT_ROUTES = {
     "rides_settings": "rides",
     "workspace_settings": "rides",
     "ride_inquiry_start": "rides",
+    "ride_live_inquiry_start": "rides",
+    "ride_notice_resend": "rides",
     "ride_simulation": "rides",
     "ride_simulation_open": "rides",
     "ride_simulation_response": "rides",

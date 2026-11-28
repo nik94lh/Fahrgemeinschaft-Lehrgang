@@ -156,7 +156,7 @@ def _edit_booking(seat_id, data):
 
     changes_assignment = changed.intersection((*SESSION_FIELDS, *PARTICIPANT_FIELDS))
     remember_previous = changed.intersection((*SESSION_FIELDS, "participant_name"))
-    if seat.is_test and (changes_assignment or "status" in changed and data["status"] != BookingStatus.CONFIRMED):
+    if changes_assignment or ("status" in changed and data["status"] != BookingStatus.CONFIRMED):
         expire_booking_participation(seat.pk)
     for field in BOOKING_FIELDS:
         setattr(seat, field, data[field])

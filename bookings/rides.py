@@ -16,11 +16,14 @@ from django.views.decorators.debug import sensitive_variables
 from django.views.decorators.http import require_http_methods, require_POST, require_safe
 
 from accounts.access import can_edit
+from mailimport import outbound
+from mailimport.participant_settings import get_functional_addresses
 
 from .models import RideCase, RideNotice, RideParticipation
 from .ride_history import HISTORY_MODES
 from .ride_inquiry_views import get_ride_automation, inquiry_controls_available
-from .ride_participation import _has_access, _open_test_case, notice_preview, uninvited_participants, with_case_membership
+from .ride_mail import can_resend_ride_notice
+from .ride_participation import _has_access, _open_ride_case, notice_preview, uninvited_participants, with_case_membership
 from .ride_settings import get_ride_lead_days
 from .rides_matching import BERLIN, set_ride_case_status, sync_ride_cases
 
@@ -30,6 +33,13 @@ INQUIRY_MESSAGES = {
     "vorbereitet": "Testabfrage vorbereitet. Die Einladungen stehen als Vorschau bereit.",
     "unveraendert": "Für diesen Vorschlag sind bereits Testeinladungen vorbereitet.",
     "nicht-moeglich": "Die Testabfrage lässt sich für diesen Vorschlag derzeit nicht starten.",
+}
+LIVE_INQUIRY_MESSAGES = {
+    "vorbereitet": "Die Einladungen sind für den Versand vorgemerkt.",
+    "unveraendert": "Für die passenden Personen gibt es bereits Einladungen.",
+    "nicht-moeglich": "Für den Start müssen die Automatik aus, das Versandkonto aktiv und mindestens zwei passende persönliche Adressen vorhanden sein.",
+    "erneut-vorgemerkt": "Die Nachricht ist für den erneuten Versand vorgemerkt.",
+    "erneut-nicht-moeglich": "Die Nachricht kann derzeit nicht erneut gesendet werden.",
 }
 INQUIRY_ANSWER_LABELS = {
     RideParticipation.Answer.PENDING: "Einladung vorbereitet",
@@ -120,9 +130,10 @@ def _inquiry_participations():
 
 
 def _active_inquiry_ids(case, participations, *, now):
-    if not _open_test_case(case):
+    if not participations or not _open_ride_case(case):
         return set()
-    return {entry.pk for entry in participations if _has_access(entry, now)}
+    excluded = () if case.is_test else get_functional_addresses()
+    return {entry.pk for entry in participations if _has_access(entry, now, functional_addresses=excluded)}
 
 
 def _inquiry_summary(participations, active_ids):
@@ -172,6 +183,7 @@ def rides(request):
         cases = cases.filter(status=selected_status)
     show_inquiries = not archived and inquiry_controls_available(request)
     manual_inquiries = show_inquiries and can_edit(request.user, "rides") and not get_ride_automation()
+    live_manual = manual_inquiries and outbound.outbound_enabled()
     if manual_inquiries:
         cases = cases.annotate(has_uninvited=uninvited_participants())
     cases = cases.annotate(participant_count=Count("seats__participant_id", distinct=True)).order_by(
@@ -183,21 +195,22 @@ def rides(request):
     if not archived and page_obj:
         if show_inquiries:
             prefetch_related_objects(
-                [case for case in page_obj if case.is_test],
+                list(page_obj),
                 Prefetch("participation_requests", queryset=_inquiry_participations(), to_attr="inquiry_participations"),
             )
         for case in page_obj:
             mediation = _mediation(case, now=now, lead_days=lead_days)
             can_start = mediation.state in {"ready", "standby"}
             inquiry = None
-            if show_inquiries and case.is_test and (can_start or case.inquiry_participations):
+            can_launch = can_start and (case.is_test or live_manual)
+            if show_inquiries and (can_launch or case.inquiry_participations):
                 active_ids = _active_inquiry_ids(case, case.inquiry_participations, now=now)
                 inquiry = _inquiry_summary(case.inquiry_participations, active_ids)
             ride_cards.append({
                 "case": case,
                 "mediation": mediation,
                 "inquiry": inquiry,
-                "can_start_inquiry": manual_inquiries and can_start and inquiry is not None and case.has_uninvited,
+                "can_start_inquiry": manual_inquiries and can_launch and case.has_uninvited,
             })
     return render(request, "workspace/rides.html", {
         "section": "rides",
@@ -231,20 +244,29 @@ def _status_form(case):
 
 
 @sensitive_variables("rows", "previews")
-def _inquiry_rows(participations, active_ids):
+def _inquiry_rows(participations, active_ids, *, is_test, now):
     rows = []
     for participation in participations:
-        previews = [
-            notice_preview(notice) | {"id": notice.pk, "kind": notice.kind, "label": notice.get_kind_display()}
-            for notice in participation.notices.all()
-        ]
+        previews, messages = [], []
+        for notice in participation.notices.all():
+            message = {"id": notice.pk, "kind": notice.kind, "label": notice.get_kind_display()}
+            if is_test:
+                previews.append(message | notice_preview(notice))
+            else:
+                delivery = next(iter(notice.deliveries.all()), None)
+                messages.append(message | {
+                    "delivery": delivery,
+                    "can_resend": participation.pk in active_ids and can_resend_ride_notice(notice, now=now),
+                })
         rows.append({
             "participant_name": participation.participant.name,
             "answer": participation.answer,
-            "answer_label": INQUIRY_ANSWER_LABELS[participation.answer],
+            "answer_label": "Antwort offen" if not is_test and participation.answer == RideParticipation.Answer.PENDING
+            else INQUIRY_ANSWER_LABELS[participation.answer],
             "access_active": participation.pk in active_ids,
             "answered_at": participation.answered_at,
             "previews": previews,
+            "messages": messages,
         })
     return rows
 
@@ -286,15 +308,17 @@ def ride_detail(request, case_id):
         form = _status_form(case)
 
     seats = case.seats.select_related("participant", "session__course").order_by("participant__name", "pk")
-    show_inquiries = round_trip and case.is_test and inquiry_controls_available(request) and can_edit(request.user, "rides")
+    show_inquiries = round_trip and inquiry_controls_available(request) and can_edit(request.user, "rides")
     now = timezone.now()
-    participations = list(
-        _inquiry_participations().filter(case=case).select_related("case", "session__course")
-        .prefetch_related("notices").order_by("pk")
-    ) if show_inquiries else []
+    participations = []
+    if show_inquiries:
+        related_notices = "notices" if case.is_test else "notices__deliveries"
+        participations = list(_inquiry_participations().filter(case=case).select_related("case", "session__course")
+                              .prefetch_related(related_notices).order_by("pk"))
     active_ids = _active_inquiry_ids(case, participations, now=now)
-    inquiry_rows = _inquiry_rows(participations, active_ids)
-    inquiry_result = request.GET.get("testabfrage") if show_inquiries else None
+    inquiry_rows = _inquiry_rows(participations, active_ids, is_test=case.is_test, now=now)
+    inquiry_result = request.GET.get("testabfrage" if case.is_test else "abfrage") if show_inquiries else None
+    inquiry_messages = INQUIRY_MESSAGES if case.is_test else LIVE_INQUIRY_MESSAGES
     return render(request, "workspace/ride_detail.html", {
         "section": "rides",
         "case": case,
@@ -308,11 +332,11 @@ def ride_detail(request, case_id):
         "form": form,
         "conflict": conflict,
         "saved": request.method == "GET" and request.GET.get("gespeichert") == "1",
-        "show_inquiries": show_inquiries,
+        "show_inquiries": show_inquiries and (case.is_test or bool(participations) or outbound.outbound_enabled()),
         "inquiry_rows": inquiry_rows,
         "inquiry_summary": _inquiry_summary(participations, active_ids) if participations else None,
-        "inquiry_message": INQUIRY_MESSAGES.get(inquiry_result),
-        "inquiry_failed": inquiry_result == "nicht-moeglich",
+        "inquiry_message": inquiry_messages.get(inquiry_result),
+        "inquiry_failed": inquiry_result in {"nicht-moeglich", "erneut-nicht-moeglich"},
         "can_confirm_ride": round_trip and case.removed_at is None and case.return_latest <= now,
         "action_failed": request.GET.get("aktion") == "nicht-moeglich",
         "restored": request.GET.get("wiederhergestellt") == "1",

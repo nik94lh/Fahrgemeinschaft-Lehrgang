@@ -13,8 +13,10 @@ class RideWorkerTests(SimpleTestCase):
     def test_watch_reconciles_ride_cases_even_without_active_imap(self):
         with (
             patch(f"{COMMAND}.load_configuration", return_value=None),
+            patch(f"{COMMAND}.load_second_configuration", return_value=None),
             patch(f"{COMMAND}.sync_ride_cases") as reconcile,
             patch(f"{COMMAND}.process_contact_replay") as replay,
+            patch(f"{COMMAND}.deliver_ride_mail"),
             patch(f"{COMMAND}.sleep", side_effect=KeyboardInterrupt),
         ):
             call_command("sync_mailbox", watch=True, stdout=StringIO())
@@ -27,8 +29,10 @@ class RideWorkerTests(SimpleTestCase):
         errors = StringIO()
         with (
             patch(f"{COMMAND}.load_configuration", return_value=None),
+            patch(f"{COMMAND}.load_second_configuration", return_value=None),
             patch(f"{COMMAND}.sync_ride_cases", side_effect=[DatabaseError("internal detail"), None]) as reconcile,
             patch(f"{COMMAND}.process_contact_replay"),
+            patch(f"{COMMAND}.deliver_ride_mail"),
             patch(f"{COMMAND}.sleep", side_effect=[None, KeyboardInterrupt]),
         ):
             call_command("sync_mailbox", watch=True, stderr=errors)

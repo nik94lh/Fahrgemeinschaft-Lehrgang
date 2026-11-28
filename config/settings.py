@@ -9,6 +9,10 @@ from django.core.exceptions import ImproperlyConfigured
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEBUG = os.environ.get("BMS_DEBUG") == "1"
 HTTPS = os.environ.get("BMS_HTTPS") == "1"
+BMS_SMTP_ENABLED = os.environ.get("BMS_SMTP_ENABLED") == "1"
+BMS_SMTP_LINKED_HOSTS = tuple(
+    host.strip().lower().rstrip(".") for host in os.environ.get("BMS_SMTP_LINKED_HOSTS", "").split(",") if host.strip()
+)
 SECRET_KEY = os.environ.get("BMS_SECRET_KEY", "")
 if HTTPS and (DEBUG or len(SECRET_KEY) < 50 or SECRET_KEY.startswith("local-")):
     raise ImproperlyConfigured("HTTPS requires debug off and a non-default secret of at least 50 characters.")

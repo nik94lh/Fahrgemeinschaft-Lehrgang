@@ -19,8 +19,8 @@ from bookings.participant_views import _receipt_address
 from bookings.services import ACTIVATION_EVENTS, ACTIVE_STATUSES
 
 from .contact_replay import ACTIVE_STATES, ContactReplayError, queue_receipt_contact_replay
-from .imap_sync import ImapSyncError, load_configuration
-from .models import ContactReplayJob, MailReceipt, MailboxCursor
+from .imap_sync import ImapSyncError, configuration_for_source, load_configuration, load_second_configuration
+from .models import ContactReplayJob, MailReceipt, MailboxConfiguration, MailboxCursor
 
 
 CASE_STATES = (
@@ -35,19 +35,20 @@ def mail_receipts(request):
     if not settings.HTTPS or not request.is_secure():
         raise Http404
 
-    config, mailbox_status = _active_mailbox()
-    source_id = config.source_id if config else None
-    cursor = MailboxCursor.objects.filter(source_id=source_id, last_sync_at__isnull=False).first() if config else None
-    if config and cursor is None:
-        mailbox_status = "Für das aktive Importpostfach wurde noch kein Abruf erfasst."
+    mailbox_statuses = _mailbox_statuses()
     archive = request.GET.get("ansicht") == "frueher"
     query = request.GET.get("q", "").strip()[:100] if not archive else ""
+    mailbox_slot = request.GET.get("postfach", "") if not archive else ""
+    if mailbox_slot not in ("1", "2"):
+        mailbox_slot = ""
     if archive:
         records = EmailEvent.objects.filter(mail_receipts__isnull=True).select_related(
             "seat__participant", "seat__session__course",
         ).order_by("-imported_at", "-pk")
     else:
         records = MailReceipt.objects.order_by("-observed_at", "-pk")
+        if mailbox_slot:
+            records = records.filter(mailbox_slot=int(mailbox_slot))
         if query:
             matches = (
                 Q(fields__participant_name__icontains=query)
@@ -60,24 +61,40 @@ def mail_receipts(request):
     return render(request, "mailimport/receipts.html", {
         "section": "mail_receipts",
         "archive": archive,
-        "cursor": cursor,
-        "source_id": source_id,
-        "mailbox_status": mailbox_status,
+        "mailbox_statuses": mailbox_statuses,
+        "mailbox_slot": mailbox_slot,
         "query": query,
         "case_states": CASE_STATES,
         "page_obj": Paginator(records, 25).get_page(request.GET.get("page")),
-        "querystring": "ansicht=frueher" if archive else urlencode({"q": query}) if query else "",
+        "querystring": "ansicht=frueher" if archive else urlencode({
+            name: value for name, value in (("q", query), ("postfach", mailbox_slot)) if value
+        }),
     })
 
 
-def _active_mailbox():
-    try:
-        config = load_configuration()
-    except ImapSyncError:
-        return None, "Die Importkonfiguration ist unvollständig oder konnte nicht geladen werden."
-    if config is None:
-        return None, "Der automatische Abruf ist deaktiviert."
-    return config, ""
+def _mailbox_statuses():
+    statuses = []
+    sources = set()
+    for slot, load in zip(MailboxConfiguration.Slot, (load_configuration, load_second_configuration), strict=True):
+        source = None
+        message = "Der automatische Abruf ist deaktiviert."
+        try:
+            config = load()
+        except ImapSyncError:
+            message = "Die Importkonfiguration ist unvollständig oder konnte nicht geladen werden."
+        else:
+            if config is not None:
+                if config.source_id in sources:
+                    message = "Dieses Postfach ist bereits bei Eingang A aktiv."
+                else:
+                    source = config.source_id
+                    sources.add(source)
+                    message = "Für das aktive Importpostfach wurde noch kein Abruf erfasst."
+        statuses.append({"slot": slot, "source_id": source, "message": message})
+    cursors = MailboxCursor.objects.filter(last_sync_at__isnull=False).in_bulk(sources)
+    for status in statuses:
+        status["cursor"] = cursors.get(status["source_id"])
+    return statuses
 
 
 def _get_mail_receipt(receipt_id):
@@ -91,6 +108,9 @@ def _can_recheck(receipt, seat, config):
         and receipt.event.kind in ACTIVATION_EVENTS
         and seat is not None and seat.status in ACTIVE_STATUSES and seat.participant_id is not None
         and not seat.participant.email
+        and MailboxCursor.objects.filter(
+            source_id=receipt.source_id, uid_validity=receipt.uid_validity, last_uid__gte=receipt.uid,
+        ).exists()
     )
 
 
@@ -127,7 +147,10 @@ def mail_receipt(request, receipt_id):
 
     receipt = _get_mail_receipt(receipt_id)
     seat = receipt.event.seat if receipt.event_id else None
-    config, _ = _active_mailbox()
+    try:
+        config = configuration_for_source(receipt.source_id, load_first=load_configuration)
+    except ImapSyncError:
+        config = None
     can_recheck = _can_recheck(receipt, seat, config)
     recheck_error = request.session.get(RECHECK_ERROR_SESSION_KEY, {})
     if recheck_error.get("receipt_id") == receipt_id:

@@ -1,5 +1,11 @@
 # Änderungen
 
+## 0.24.0
+
+- Zwei lesende IMAP-Eingänge lassen sich einzeln aktivieren. Jeder Eingang hat einen eigenen Abrufstatus. Die vorhandene Konfiguration bleibt als erster Eingang erhalten.
+- Administratoren können ein SMTP-Versandkonto separat einrichten oder den Zugang eines der beiden Eingänge verwenden. Versand und automatische Abfragen für reguläre Buchungen brauchen eigene Freigaben.
+- Bei ausgeschalteter Automatik lässt sich die Teilnahmeabfrage auf der Kachel starten. Im Vorschlag stehen der Versandstatus pro Nachricht und „Erneut senden“ für gültige Einladungen und aktuelle Benachrichtigungen.
+
 ## 0.23.1
 
 - Fahrgemeinschaftskacheln zeigen Einladungen, offene Antworten, Zusagen und Absagen als beschriftete Zähler. Der Link zum Verlauf steht unter der Kachelübersicht.

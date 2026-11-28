@@ -18,4 +18,7 @@
             <button type="submit">Speichern</button>
         </form>
     </section>
+    {% if workspace_admin and workspace_secure %}
+        <p><a href="{% url 'outbound_settings' %}">Versandkonto einrichten</a></p>
+    {% endif %}
 {% endblock %}

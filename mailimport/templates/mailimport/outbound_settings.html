@@ -1,0 +1,31 @@
+{% extends "workspace/base.html" %}
+{% block main_layout %} class="workspace-main-wide"{% endblock %}
+{% block title %}SMTP-Versand{% endblock %}
+{% block live_region %}{% endblock %}
+{% block page_styles %}
+    .outbound-settings { max-width: 38rem; }
+    .outbound-settings select { display: block; width: 100%; padding: .6rem; margin-block-start: .25rem; border: 1px solid var(--line); border-radius: .45rem; color: var(--ink); background: white; font: inherit; }
+    .outbound-settings .helptext { color: var(--muted); }
+{% endblock %}
+{% block content %}
+    <p class="back-link"><a href="{% url 'mailbox' %}">‹ Zum Postfach</a></p>
+    <div class="page-heading"><h1>SMTP-Versand</h1></div>
+    {% if saved %}<p class="notice" role="status">Versandkonfiguration gespeichert.</p>{% endif %}
+    <section class="panel outbound-settings" aria-labelledby="outbound-heading">
+        <h2 id="outbound-heading">Versandkonto</h2>
+        {% if not smtp_server_allowed %}
+            <p class="note">Der Server hat den SMTP-Versand gesperrt.</p>
+        {% elif smtp_enabled %}
+            <p class="note">SMTP-Versand aktiviert.</p>
+        {% elif smtp_opted_in %}
+            <p class="note">Prüfe die Zugangsdaten und speichere das Versandkonto erneut.</p>
+        {% else %}
+            <p class="note">SMTP-Versand deaktiviert.</p>
+        {% endif %}
+        <form method="post" action="{% url 'outbound_settings' %}">
+            {% csrf_token %}
+            {{ form.as_p }}
+            <button type="submit">Versandkonto speichern</button>
+        </form>
+    </section>
+{% endblock %}
