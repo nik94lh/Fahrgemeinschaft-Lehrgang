@@ -1,5 +1,10 @@
 # Änderungen
 
+## 0.25.0
+
+- Der Fahrgemeinschaftsabgleich teilt Präsenzlehrgänge an dazwischenliegenden vollen Wochenenden in einzelne Fahrabschnitte auf. Jeder Abschnitt kann zu anderen bestätigten Buchungen derselben Schule passen.
+- Buchungen und Kalender zeigen den durchgehenden Lehrgangstermin. Bei Fahrgemeinschaften bleiben die Uhrzeiten an den inneren Abschnittsgrenzen zur Abstimmung offen.
+
 ## 0.24.0
 
 - Zwei lesende IMAP-Eingänge lassen sich einzeln aktivieren. Jeder Eingang hat einen eigenen Abrufstatus. Die vorhandene Konfiguration bleibt als erster Eingang erhalten.

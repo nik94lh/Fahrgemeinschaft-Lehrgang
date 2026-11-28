@@ -5,6 +5,7 @@ from django.contrib.auth.models import Permission
 from django.utils import timezone
 
 from bookings.models import BookingStatus, Course, CourseSeat, CourseSession, Participant, School
+from bookings.rides_matching import sync_ride_cases
 from tests.workspace_client import WorkspaceTestCase
 
 
@@ -264,6 +265,35 @@ class CalendarTests(WorkspaceTestCase):
         self.assertEqual(bars[tuesday.pk], (date(2031, 5, 13), date(2031, 5, 13), 2))
         self.assertEqual(bars[ends_sunday.pk], (date(2031, 5, 24), date(2031, 5, 25), 1))
         self.assertEqual(bars[regensburg.pk], (date(2031, 5, 12), date(2031, 5, 12), 1))
+
+    def test_month_keeps_one_full_course_bar_after_matching_weekly_rides(self):
+        session = CourseSession.objects.create(
+            course=Course.objects.create(name="Musterlehrgang über zwei Wochen"), school=School.GERETSRIED,
+            starts_at=datetime(2031, 5, 12, 6, tzinfo=UTC), ends_at=datetime(2031, 5, 23, 12, tzinfo=UTC),
+        )
+        for number in (1, 2):
+            CourseSeat.objects.create(
+                session=session, status=BookingStatus.CONFIRMED,
+                participant=Participant.objects.create(
+                    name=f"Synthetische Kalenderperson {number}", email=f"kalender-{number}@example.org",
+                ),
+            )
+
+        self.assertEqual(sync_ride_cases(now=datetime(2031, 5, 1, tzinfo=UTC)), 2)
+
+        response = self.client.get("/kalender/", {"month": "2031-05", "school": School.GERETSRIED})
+
+        self.assertContains(response, "Musterlehrgang über zwei Wochen, 2 Personen", count=1)
+        group, = response.context["timeline_groups"]
+        bar, = group["bars"]
+        days = response.context["timeline_days"]
+        self.assertEqual(bar["session"], session)
+        self.assertEqual(days[bar["start_column"] - 1]["date"], date(2031, 5, 12))
+        self.assertEqual(days[bar["end_column"] - 2]["date"], date(2031, 5, 23))
+
+        detail = self.client.get(f"/kalender/{session.pk}/")
+        self.assertContains(detail, "12.05.2031, 08:00 Uhr")
+        self.assertContains(detail, "23.05.2031, 14:00 Uhr")
 
     def test_legacy_range_parameter_does_not_move_month_during_live_refresh(self):
         response = self.client.get("/kalender/", {

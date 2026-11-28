@@ -14,14 +14,14 @@
             <dt>Hinfahrt</dt>
             <dd>
                 <time datetime="{{ item.travel_date|date:'Y-m-d' }}">{{ item.travel_date|date:"d.m.Y" }}</time>
-                <span class="ride-time">Beginn {{ item.earliest|date:"H:i" }}{% if item.latest != item.earliest %}–{{ item.latest|date:"H:i" }}{% endif %}</span>
+                <span class="ride-time">{% if item.departure_time_unknown %}Uhrzeit abstimmen{% else %}Beginn {{ item.earliest|date:"H:i" }}{% if item.latest != item.earliest %}–{{ item.latest|date:"H:i" }}{% endif %}{% endif %}</span>
             </dd>
         </div>
         <div>
             <dt>Rückfahrt</dt>
             <dd>
                 <time datetime="{{ item.return_date|date:'Y-m-d' }}">{{ item.return_date|date:"d.m.Y" }}</time>
-                <span class="ride-time">Ende {{ item.return_earliest|date:"H:i" }}{% if item.return_latest != item.return_earliest %}–{{ item.return_latest|date:"H:i" }}{% endif %}</span>
+                <span class="ride-time">{% if item.return_time_unknown %}Uhrzeit abstimmen{% else %}Ende {{ item.return_earliest|date:"H:i" }}{% if item.return_latest != item.return_earliest %}–{{ item.return_latest|date:"H:i" }}{% endif %}{% endif %}</span>
             </dd>
         </div>
     </dl>

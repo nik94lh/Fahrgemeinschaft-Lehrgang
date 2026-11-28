@@ -154,7 +154,8 @@ class BookingEditTests(WorkspaceTestCase):
 
     @override_settings(HTTPS=True, RIDE_PORTAL_HOST="mitfahren.example.test")
     def test_cancelling_a_test_booking_permanently_retires_its_participation_access(self):
-        start = timezone.localtime().replace(second=0, microsecond=0) + timedelta(days=6)
+        today = timezone.localtime()
+        start = today.replace(second=0, microsecond=0) + timedelta(days=7 - today.weekday())
         end = start + timedelta(days=3)
         session = CourseSession.objects.create(
             course=Course.objects.create(name="Synthetischer Testlehrgang"), school=School.WUERZBURG,
