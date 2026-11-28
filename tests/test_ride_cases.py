@@ -100,18 +100,20 @@ class RideCaseTests(TestCase):
         self.assertEqual(RideCase.objects.get(currently_matches=True).pk, second.pk)
         self.assertEqual(RideCase.objects.count(), 2)
 
-    def test_short_friday_to_monday_course_keeps_its_existing_date_pair_and_times(self):
+    def test_even_a_short_course_splits_at_a_full_weekend(self):
         friday = START + timedelta(days=4)
         monday = START + timedelta(days=7, hours=8)
         make_seat(self.course, self.alex, start=friday, end=monday)
         make_seat(self.course, self.sam, start=friday, end=monday)
 
-        self.assertEqual(sync_ride_cases(now=NOW), 1)
-        case = RideCase.objects.get()
-        self.assertEqual((case.travel_date, case.return_date), (friday.date(), monday.date()))
-        self.assertEqual((case.earliest, case.latest, case.return_earliest, case.return_latest), (friday, friday, monday, monday))
-        self.assertFalse(case.departure_time_unknown)
-        self.assertFalse(case.return_time_unknown)
+        self.assertEqual(sync_ride_cases(now=NOW), 2)
+        first, second = RideCase.objects.order_by("travel_date")
+        self.assertEqual((first.travel_date, first.return_date), (friday.date(), friday.date()))
+        self.assertEqual((second.travel_date, second.return_date), (monday.date(), monday.date()))
+        self.assertEqual(first.earliest, friday)
+        self.assertEqual(second.return_latest, monday)
+        self.assertEqual((first.departure_time_unknown, first.return_time_unknown), (False, True))
+        self.assertEqual((second.departure_time_unknown, second.return_time_unknown), (True, False))
 
     def test_time_precision_updates_on_the_existing_case_when_members_change(self):
         friday = START + timedelta(days=4, hours=8)

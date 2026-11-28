@@ -2,7 +2,7 @@
 
 ## 0.25.0
 
-- Der Fahrgemeinschaftsabgleich teilt mehrwöchige Lehrgänge an dazwischenliegenden Wochenenden in einzelne Fahrabschnitte auf. Jeder Abschnitt kann zu anderen bestätigten Buchungen derselben Schule passen.
+- Der Fahrgemeinschaftsabgleich teilt Präsenzlehrgänge an dazwischenliegenden vollen Wochenenden in einzelne Fahrabschnitte auf. Jeder Abschnitt kann zu anderen bestätigten Buchungen derselben Schule passen.
 - Buchungen und Kalender zeigen den durchgehenden Lehrgangstermin. Bei Fahrgemeinschaften bleiben die Uhrzeiten an den inneren Abschnittsgrenzen zur Abstimmung offen.
 
 ## 0.24.0

@@ -1,4 +1,5 @@
 from datetime import timedelta
+from unittest.mock import patch
 
 from django.urls import reverse
 from django.utils import timezone
@@ -63,9 +64,11 @@ class RideSuggestionTests(WorkspaceTestCase):
         self.assertEqual(list(response.context["page_obj"]), [])
 
     def test_manual_sync_lists_long_range_matches_and_excludes_past_trips(self):
-        future = self.date + timedelta(days=395)
-        past = self.date - timedelta(days=7)
-        upcoming_return = self.date - timedelta(days=2)
+        today = timezone.localtime()
+        midweek = today + timedelta(days=2 - today.weekday())
+        future = midweek + timedelta(days=395)
+        past = midweek - timedelta(days=2)
+        upcoming_return = midweek + timedelta(days=2)
         for start, end in (
             (past, past + timedelta(hours=4)),
             (past, upcoming_return),
@@ -74,7 +77,8 @@ class RideSuggestionTests(WorkspaceTestCase):
             self.seat(self.first, start, end)
             self.seat(self.second, start, end)
 
-        response = self.client.post(reverse("rides_sync"), follow=True)
+        with patch("django.utils.timezone.now", return_value=midweek):
+            response = self.client.post(reverse("rides_sync"), follow=True)
 
         self.assertContains(response, "Abgleich abgeschlossen.")
         self.assertEqual(
