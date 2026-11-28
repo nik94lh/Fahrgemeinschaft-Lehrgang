@@ -2,8 +2,7 @@
 
 from collections import Counter, defaultdict
 from dataclasses import dataclass
-from datetime import date, datetime
-from zoneinfo import ZoneInfo
+from datetime import date, datetime, time
 
 from django.db import transaction
 from django.utils import timezone
@@ -13,11 +12,14 @@ from mailimport.participant_settings import get_functional_addresses
 
 from .booking_state import booking_missing_fields
 from .models import IN_PERSON_SCHOOL_CHOICES, BookingStatus, CourseSeat, EmailEvent, RideCase
+from .ride_segments import BERLIN, ride_segments
 from .services import _lock_import, _normalized_name
 
 
-BERLIN = ZoneInfo("Europe/Berlin")
-_MATCH_FIELDS = ["currently_matches", "earliest", "latest", "return_earliest", "return_latest"]
+_MATCH_FIELDS = [
+    "currently_matches", "earliest", "latest", "return_earliest", "return_latest",
+    "departure_time_unknown", "return_time_unknown",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +33,8 @@ class _Match:
     return_latest: datetime
     seat_ids: frozenset[int]
     is_test: bool
+    departure_time_unknown: bool
+    return_time_unknown: bool
 
     @property
     def key(self) -> str:
@@ -94,7 +98,7 @@ def _open_review_exclusions():
 
 def _round_trip_matches(now: datetime):
     seats = CourseSeat.objects.filter(
-        session__starts_at__gt=now,
+        session__ends_at__gt=now,
         participant__isnull=False,
         session__school__in=[code for code, _ in IN_PERSON_SCHOOL_CHOICES],
         session__is_online=False,
@@ -103,6 +107,7 @@ def _round_trip_matches(now: datetime):
     functional_addresses = set(get_functional_addresses())
     booking_counts = Counter()
     eligible_bookings = {}
+    segments_by_session = {}
     for seat in seats.iterator():
         session = seat.session
         term = (session.course.name.casefold(), session.school, session.starts_at, session.ends_at)
@@ -119,23 +124,37 @@ def _round_trip_matches(now: datetime):
             or booking_missing_fields(seat, functional_addresses=functional_addresses)
         ):
             continue
-        eligible_bookings[identity] = seat.pk
+        if session.pk not in segments_by_session:
+            segments_by_session[session.pk] = ride_segments(session)
+        eligible_bookings[identity] = (seat.pk, segments_by_session[session.pk])
 
     groups = defaultdict(list)
-    for identity, seat_id in eligible_bookings.items():
+    for identity, (seat_id, segments) in eligible_bookings.items():
         if booking_counts[identity] != 1:
             continue
-        is_test, (_, school, start, end), participant = identity
-        key = (is_test, school, start.astimezone(BERLIN).date(), end.astimezone(BERLIN).date())
-        groups[key].append((start, end, participant, seat_id))
+        is_test, (_, school, _, _), participant = identity
+        for segment in segments:
+            if segment.starts_at > now:
+                key = (is_test, school, segment.departure_day, segment.return_day)
+                groups[key].append((segment, participant, seat_id))
 
     for (is_test, school, travel_date, return_date), trips in groups.items():
-        starts, ends, participants, seat_ids = zip(*trips)
-        if len(set(participants)) >= 2:
-            yield _Match(
-                school, travel_date, return_date,
-                min(starts), max(starts), min(ends), max(ends), frozenset(seat_ids), is_test,
-            )
+        segments, participants, seat_ids = zip(*trips)
+        if len(set(participants)) < 2:
+            continue
+        departure_unknown = any(not segment.start_known for segment in segments)
+        return_unknown = any(not segment.end_known for segment in segments)
+        departures = _local_day_bounds(travel_date) if departure_unknown else [segment.starts_at for segment in segments]
+        returns = _local_day_bounds(return_date) if return_unknown else [segment.ends_at for segment in segments]
+        yield _Match(
+            school, travel_date, return_date,
+            min(departures), max(departures), min(returns), max(returns), frozenset(seat_ids), is_test,
+            departure_time_unknown=departure_unknown, return_time_unknown=return_unknown,
+        )
+
+
+def _local_day_bounds(day: date):
+    return datetime.combine(day, time.min, tzinfo=BERLIN), datetime.combine(day, time.max, tzinfo=BERLIN)
 
 
 def _seat_links(cases):
@@ -148,11 +167,21 @@ def _seat_links(cases):
 
 def _refresh_match(case: RideCase, match: _Match) -> bool:
     times = (match.earliest, match.latest, match.return_earliest, match.return_latest)
-    if case.currently_matches and (case.earliest, case.latest, case.return_earliest, case.return_latest) == times:
+    if (
+        case.currently_matches and (case.earliest, case.latest, case.return_earliest, case.return_latest) == times
+        and case.departure_time_unknown == match.departure_time_unknown
+        and case.return_time_unknown == match.return_time_unknown
+    ):
         return False
     case.currently_matches = True
     case.earliest, case.latest, case.return_earliest, case.return_latest = times
+    case.departure_time_unknown = match.departure_time_unknown
+    case.return_time_unknown = match.return_time_unknown
     return True
+
+
+def _inferred_departure_started(case: RideCase, now: datetime) -> bool:
+    return case.departure_time_unknown and case.earliest <= now
 
 
 @transaction.atomic
@@ -161,13 +190,16 @@ def sync_ride_cases(*, now: datetime | None = None, match_keys: set[str] | None 
     if match_keys is not None and not match_keys:
         return 0
     _lock_import()
+    now = now or timezone.now()
     matches = {
-        match.key: match for match in _round_trip_matches(now or timezone.now())
+        match.key: match for match in _round_trip_matches(now)
         if match_keys is None or match.key in match_keys
     }
     cases = RideCase.objects.in_bulk(matches, field_name="match_key")
-    removed_keys = {key for key, case in cases.items() if case.removed_at is not None}
-    matches = {key: match for key, match in matches.items() if key not in removed_keys}
+    retained_keys = {
+        key for key, case in cases.items() if case.removed_at is not None or _inferred_departure_started(case, now)
+    }
+    matches = {key: match for key, match in matches.items() if key not in retained_keys}
     new = []
     changed = []
     for key, match in matches.items():
@@ -178,6 +210,7 @@ def sync_ride_cases(*, now: datetime | None = None, match_keys: set[str] | None 
                 travel_date=match.travel_date, return_date=match.return_date,
                 earliest=match.earliest, latest=match.latest,
                 return_earliest=match.return_earliest, return_latest=match.return_latest,
+                departure_time_unknown=match.departure_time_unknown, return_time_unknown=match.return_time_unknown,
                 is_test=match.is_test,
             ))
         elif _refresh_match(case, match):
@@ -225,7 +258,10 @@ def restore_ride_case(case_id: int, *, now: datetime | None = None) -> RideCase:
     if case.removed_at is None:
         return case
 
-    match = next((match for match in _round_trip_matches(now or timezone.now()) if match.key == case.match_key), None)
+    now = now or timezone.now()
+    match = None
+    if not _inferred_departure_started(case, now):
+        match = next((match for match in _round_trip_matches(now) if match.key == case.match_key), None)
     case.removed_at = None
     case.currently_matches = False
     if match is not None:

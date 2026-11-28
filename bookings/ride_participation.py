@@ -1,11 +1,12 @@
 """Invitations, replies and consent-based contact sharing for a ride proposal."""
 
 import re
-from datetime import timedelta
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 
 from django.conf import settings
 from django.db import transaction
-from django.db.models import Exists, OuterRef
+from django.db.models import Exists, OuterRef, Q
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
@@ -24,6 +25,7 @@ from .models import (
     RideParticipation,
 )
 from .ride_codes import code_digest, compact_code_v1, display_code, legacy_code, normalize_code
+from .ride_segments import ride_segments
 from .rides_matching import BERLIN
 from .services import _lock_import
 
@@ -47,18 +49,35 @@ def invite_code(participation):
     return display_code(participation)
 
 
-def _matching_ride_seat(seat, case):
+@dataclass(frozen=True)
+class _RidePeriod:
+    starts_at: datetime
+    ends_at: datetime
+    legacy_whole_course: bool = False
+
+
+def _matching_ride_period(seat, case, *, allow_legacy=False):
     if seat.is_test != case.is_test or seat.status != BookingStatus.CONFIRMED or seat.participant is None:
-        return False
+        return None
     session = seat.session
     email = normalize_contact_email(seat.participant.email)
-    return (
-        bool(email) and _test_email(email) == case.is_test
-        and not session.is_online
-        and session.school == case.school
+    if not email or _test_email(email) != case.is_test or session.is_online or session.school != case.school:
+        return None
+    for segment in ride_segments(session):
+        if segment.departure_day == case.travel_date and segment.return_day == case.return_date:
+            return _RidePeriod(segment.starts_at, segment.ends_at)
+
+    if (
+        allow_legacy
         and session.starts_at.astimezone(BERLIN).date() == case.travel_date
         and session.ends_at.astimezone(BERLIN).date() == case.return_date
-    )
+    ):
+        return _RidePeriod(session.starts_at, session.ends_at, legacy_whole_course=True)
+    return None
+
+
+def _period_expiry(ends_at):
+    return ends_at.astimezone(UTC) + timedelta(days=1)
 
 
 def _open_ride_case(case):
@@ -72,7 +91,12 @@ def with_case_membership(queryset):
     seat_links = RideCase.seats.through.objects.filter(
         ridecase_id=OuterRef("case_id"), courseseat_id=OuterRef("seat_id"),
     )
-    return queryset.annotate(is_case_member=Exists(seat_links))
+    issued_invitations = RideNotice.objects.filter(
+        Q(participation__case__is_test=True)
+        | Q(deliveries__status__in=(RideMailDelivery.Status.SENT, RideMailDelivery.Status.UNCERTAIN)),
+        participation_id=OuterRef("pk"), kind=RideNotice.Kind.INVITATION,
+    )
+    return queryset.annotate(is_case_member=Exists(seat_links), invitation_issued=Exists(issued_invitations))
 
 
 def _entries():
@@ -81,21 +105,34 @@ def _entries():
     ))
 
 
-def _has_access(entry, now, *, functional_addresses=None):
-    if not entry.case.is_test:
-        excluded = get_functional_addresses() if functional_addresses is None else functional_addresses
-        if normalize_contact_email(entry.email) in excluded:
-            return False
-    return (
+def _accessible_ride_period(entry, now, *, functional_addresses=None):
+    if not (
         entry.seat_id is not None
         and entry.expires_at > now
         and entry.seat.participant_id == entry.participant_id
         and entry.seat.session_id == entry.session_id
-        # After its own course starts, an invitation can remain valid without a future match.
-        and ((entry.case.currently_matches and entry.is_case_member) or entry.seat.session.starts_at <= now)
         and entry.email == entry.participant.email
-        and _matching_ride_seat(entry.seat, entry.case)
-    )
+    ):
+        return None
+    if not entry.case.is_test:
+        excluded = get_functional_addresses() if functional_addresses is None else functional_addresses
+        if normalize_contact_email(entry.email) in excluded:
+            return None
+    period = _matching_ride_period(entry.seat, entry.case, allow_legacy=entry.is_case_member)
+    if period is None or now >= _period_expiry(period.ends_at):
+        return None
+    if now >= period.starts_at:
+        # A started seat can drop from the future match while its own participation still applies.
+        return period
+    if period.legacy_whole_course:
+        return period if entry.invitation_issued else None
+    if not (entry.case.currently_matches and entry.is_case_member):
+        return None
+    return period
+
+
+def _has_access(entry, now, *, functional_addresses=None):
+    return _accessible_ride_period(entry, now, functional_addresses=functional_addresses) is not None
 
 
 def _check_access(entry):
@@ -165,19 +202,22 @@ def start_ride_inquiry(case_id, *, automatic=False, now=None):
     seats = {}
     excluded = set() if case.is_test else set(get_functional_addresses())
     for seat in case.seats.select_related("participant", "session").order_by("pk"):
-        if _matching_ride_seat(seat, case) and normalize_contact_email(seat.participant.email) not in excluded:
-            seats.setdefault(seat.participant_id, seat)
+        period = _matching_ride_period(seat, case)
+        if period is None:
+            continue
+        if period.starts_at > now and normalize_contact_email(seat.participant.email) not in excluded:
+            seats.setdefault(seat.participant_id, (seat, period.ends_at))
     if len(seats) < 2:
         raise ValueError("Die Abfrage braucht mindestens zwei passende persönliche E-Mail-Adressen.")
 
     invited = set(case.participation_requests.values_list("participant_id", flat=True))
     entries = []
-    for participant_id, seat in seats.items():
+    for participant_id, (seat, ends_at) in seats.items():
         if participant_id in invited:
             continue
         entry = RideParticipation(
             case=case, seat=seat, session=seat.session, participant=seat.participant,
-            email=seat.participant.email, expires_at=seat.session.ends_at + timedelta(days=1),
+            email=seat.participant.email, expires_at=_period_expiry(ends_at),
         )
         entry.token_digest = code_digest(legacy_code(entry.token_seed))
         entry.short_token_digest = code_digest(compact_code_v1(entry.token_seed))
@@ -398,10 +438,13 @@ def ride_mail_payload(notice, *, now):
             return None
         notice.participation = entry
     case = entry.case
-    if case.is_test or not portal_enabled() or not _open_ride_case(case) or not _has_access(entry, now):
+    if case.is_test or not portal_enabled() or not _open_ride_case(case):
+        return None
+    period = _accessible_ride_period(entry, now)
+    if period is None:
         return None
     if notice.kind == RideNotice.Kind.INVITATION:
-        if now >= min(case.earliest, entry.seat.session.starts_at) and not any(
+        if (period.legacy_whole_course or now >= min(case.earliest, period.starts_at)) and not any(
             delivery.status == RideMailDelivery.Status.SENT for delivery in notice.deliveries.all()
         ):
             return None

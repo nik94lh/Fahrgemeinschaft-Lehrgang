@@ -136,7 +136,7 @@ def _create_booking(data):
         external_reference=reference, confirmation_deadline=data["confirmation_deadline"],
     )
     BookingHistory.objects.create(seat=seat, participant=participant, status=seat.status)
-    if seat.status == BookingStatus.CONFIRMED and not online and session.starts_at > timezone.now():
+    if seat.status == BookingStatus.CONFIRMED and not online and session.ends_at > timezone.now():
         sync_ride_cases()
     return seat
 

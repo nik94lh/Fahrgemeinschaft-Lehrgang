@@ -1,5 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from threading import Barrier
 from zoneinfo import ZoneInfo
 
@@ -8,7 +8,7 @@ from django.test import TestCase, TransactionTestCase, skipUnlessDBFeature
 from django.utils import timezone
 
 from bookings.models import BookingStatus, Carpool, Course, CourseSeat, CourseSession, EmailEvent, Participant, RideCase, School
-from bookings.rides_matching import set_ride_case_status, sync_ride_cases
+from bookings.rides_matching import remove_ride_case, restore_ride_case, set_ride_case_status, sync_ride_cases
 from bookings.services import set_participant_email
 from mailimport.models import ParticipantRecognitionConfiguration
 
@@ -60,6 +60,102 @@ class RideCaseTests(TestCase):
         self.assertEqual(sync_ride_cases(now=START), 0)
 
         self.assertFalse(RideCase.objects.get().currently_matches)
+
+    def test_multiday_course_matches_independently_for_each_week_including_after_it_begins(self):
+        second_monday = START + timedelta(days=7)
+        first_friday = START + timedelta(days=4, hours=8)
+        second_friday = first_friday + timedelta(days=7)
+        continuing = make_seat(self.course, self.alex, end=second_friday)
+        first_week = make_seat(self.course, self.sam, start=START + timedelta(hours=1), end=first_friday)
+        second_week = make_seat(self.course, self.toni, start=second_monday + timedelta(hours=1), end=second_friday)
+
+        self.assertEqual(sync_ride_cases(now=NOW), 2)
+        first, second = RideCase.objects.order_by("travel_date")
+        self.assertCountEqual(first.seats.all(), [continuing, first_week])
+        self.assertCountEqual(second.seats.all(), [continuing, second_week])
+        self.assertEqual((first.travel_date, first.return_date), (START.date(), first_friday.date()))
+        self.assertEqual((second.travel_date, second.return_date), (second_monday.date(), second_friday.date()))
+        self.assertEqual((first.earliest, first.latest), (START, first_week.session.starts_at))
+        self.assertEqual((first.departure_time_unknown, first.return_time_unknown), (False, True))
+        self.assertEqual(first.return_earliest, datetime.combine(first_friday.date(), time.min, tzinfo=BERLIN))
+        self.assertEqual(first.return_latest, datetime.combine(first_friday.date(), time.max, tzinfo=BERLIN))
+        self.assertEqual((second.departure_time_unknown, second.return_time_unknown), (True, False))
+        self.assertEqual(second.earliest, datetime.combine(second_monday.date(), time.min, tzinfo=BERLIN))
+        self.assertEqual(second.latest, datetime.combine(second_monday.date(), time.max, tzinfo=BERLIN))
+        self.assertEqual((second.return_earliest, second.return_latest), (second_friday, second_friday))
+
+        self.assertEqual(sync_ride_cases(now=START + timedelta(days=2)), 1)
+        self.assertEqual(RideCase.objects.get(currently_matches=True).pk, second.pk)
+        self.assertEqual(RideCase.objects.count(), 2)
+
+    def test_removing_one_week_does_not_remove_another_week_of_the_same_bookings(self):
+        end = START + timedelta(days=11, hours=8)
+        make_seat(self.course, self.alex, end=end)
+        make_seat(self.course, self.sam, end=end)
+        self.assertEqual(sync_ride_cases(now=NOW), 2)
+        first, second = RideCase.objects.order_by("travel_date")
+
+        remove_ride_case(first.pk, now=NOW)
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        self.assertEqual(RideCase.objects.get(currently_matches=True).pk, second.pk)
+        self.assertEqual(RideCase.objects.count(), 2)
+
+    def test_short_friday_to_monday_course_keeps_its_existing_date_pair_and_times(self):
+        friday = START + timedelta(days=4)
+        monday = START + timedelta(days=7, hours=8)
+        make_seat(self.course, self.alex, start=friday, end=monday)
+        make_seat(self.course, self.sam, start=friday, end=monday)
+
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        case = RideCase.objects.get()
+        self.assertEqual((case.travel_date, case.return_date), (friday.date(), monday.date()))
+        self.assertEqual((case.earliest, case.latest, case.return_earliest, case.return_latest), (friday, friday, monday, monday))
+        self.assertFalse(case.departure_time_unknown)
+        self.assertFalse(case.return_time_unknown)
+
+    def test_time_precision_updates_on_the_existing_case_when_members_change(self):
+        friday = START + timedelta(days=4, hours=8)
+        make_seat(self.course, self.alex, end=friday)
+        make_seat(self.course, self.sam, end=friday)
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        case = RideCase.objects.get()
+
+        long = make_seat(self.course, self.toni, end=friday + timedelta(days=7))
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        case.refresh_from_db()
+        self.assertTrue(case.return_time_unknown)
+        self.assertEqual(case.return_latest, datetime.combine(friday.date(), time.max, tzinfo=BERLIN))
+
+        long.status = BookingStatus.CANCELLED
+        long.save(update_fields=["status"])
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        case.refresh_from_db()
+        self.assertFalse(case.return_time_unknown)
+        self.assertEqual(case.return_latest, friday)
+        self.assertEqual(RideCase.objects.count(), 1)
+
+    def test_inferred_departure_day_already_underway_cannot_be_rebuilt_with_later_known_departures(self):
+        monday = START + timedelta(days=7)
+        friday = monday + timedelta(days=4, hours=8)
+        continuing = make_seat(self.course, self.alex, end=friday)
+        first = make_seat(self.course, self.sam, start=monday, end=friday)
+        second = make_seat(self.course, self.toni, start=monday + timedelta(hours=1), end=friday)
+        morning = monday.replace(hour=0, minute=30)
+        self.assertEqual(sync_ride_cases(now=NOW), 1)
+        case = RideCase.objects.get()
+        self.assertTrue(case.departure_time_unknown)
+
+        self.assertEqual(sync_ride_cases(now=morning), 0)
+        case.refresh_from_db()
+        self.assertFalse(case.currently_matches)
+        self.assertTrue(case.departure_time_unknown)
+        self.assertCountEqual(case.seats.all(), [continuing, first, second])
+
+        remove_ride_case(case.pk, now=morning)
+        restored = restore_ride_case(case.pk, now=morning)
+        self.assertIsNone(restored.removed_at)
+        self.assertFalse(restored.currently_matches)
+        self.assertEqual(RideCase.objects.count(), 1)
 
     def test_shared_start_and_end_from_different_people_or_bookings_do_not_combine(self):
         make_seat(self.course, self.alex)

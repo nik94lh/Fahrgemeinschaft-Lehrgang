@@ -32,6 +32,9 @@
                     <div><dt>Hinfahrt</dt><dd><time datetime="{{ participation.case.travel_date|date:'Y-m-d' }}">{{ participation.case.travel_date|date:"d.m.Y" }}</time></dd></div>
                     {% if participation.case.return_date %}<div><dt>Rückfahrt</dt><dd><time datetime="{{ participation.case.return_date|date:'Y-m-d' }}">{{ participation.case.return_date|date:"d.m.Y" }}</time></dd></div>{% endif %}
                 </dl>
+                {% if participation.case.departure_time_unknown or participation.case.return_time_unknown %}
+                    <p class="portal-note">Stimmt die Uhrzeiten für diesen Fahrabschnitt miteinander ab.</p>
+                {% endif %}
                 <div class="portal-attendee">
                     <span class="visually-hidden">Teilnehmende Person</span>
                     <strong>{{ participation.participant.name }}</strong>
