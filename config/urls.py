@@ -18,7 +18,7 @@ from bookings.participant_views import booking_participant
 from bookings.people import people
 from bookings.review_actions import review_detail
 from bookings.ride_history import ride_history
-from bookings.ride_inquiry_views import ride_automation, ride_inquiry_start
+from bookings.ride_inquiry_views import ride_automation, ride_inquiry_start, ride_notice_resend
 from bookings.ride_management import ride_confirm, ride_remove, ride_restore
 from bookings.ride_portal import ride_portal, ride_portal_reply, ride_portal_script
 from bookings.ride_settings import rides_settings, workspace_settings
@@ -31,6 +31,7 @@ from bookings.ride_simulation import (
 from bookings.rides import ride_detail, rides, rides_sync
 from bookings.statistics import statistics
 from mailimport.mailbox_views import mailbox_view
+from mailimport.outbound_views import outbound_settings
 from mailimport.receipt_views import mail_receipt, mail_receipt_recheck, mail_receipts
 from mailimport.views import manual_import, preview, sample_eml
 
@@ -106,6 +107,8 @@ urlpatterns = [
     path("fahrgemeinschaften/<int:case_id>/wiederherstellen/", ride_restore, name="ride_restore"),
     path("fahrgemeinschaften/<int:case_id>/fahrt-bestaetigen/", ride_confirm, name="ride_confirm"),
     path("fahrgemeinschaften/<int:case_id>/testabfrage/", ride_inquiry_start, name="ride_inquiry_start"),
+    path("fahrgemeinschaften/<int:case_id>/abfrage/", ride_inquiry_start, {"is_test": False}, name="ride_live_inquiry_start"),
+    path("fahrgemeinschaften/<int:case_id>/nachricht/<int:notice_id>/erneut/", ride_notice_resend, name="ride_notice_resend"),
     path("feuerwehren/", brigades, name="brigades"),
     path("feuerwehren/neu/", brigade_edit, name="brigade_create"),
     path("feuerwehren/<int:brigade_id>/", brigade_edit, name="brigade_edit"),
@@ -115,6 +118,7 @@ urlpatterns = [
     path("importieren/", manual_import, name="manual_import"),
     path("testmail.eml", sample_eml, name="sample_eml"),
     path("postfach/", mailbox_view, name="mailbox"),
+    path("postfach/versand/", outbound_settings, name="outbound_settings"),
     path("mail-eingang/", mail_receipts, name="mail_receipts"),
     path("mail-eingang/<int:receipt_id>/", mail_receipt, name="mail_receipt"),
     path("mail-eingang/<int:receipt_id>/adresse-pruefen/", mail_receipt_recheck, name="mail_receipt_recheck"),

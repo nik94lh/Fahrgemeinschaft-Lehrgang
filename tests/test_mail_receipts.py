@@ -10,10 +10,11 @@ from django.utils import timezone
 
 from bookings.models import BookingStatus, CourseSeat, EmailEvent
 from bookings.services import _reconcile, ingest, set_participant_email
-from mailimport.imap_sync import ImapConfig, sync_mailbox
-from mailimport.models import ContactReplayJob, MailReceipt, MailboxCursor
+from mailimport.contact_replay import process_contact_replay
+from mailimport.imap_sync import ImapConfig, load_second_configuration, sync_mailbox
+from mailimport.models import ContactReplayJob, MailReceipt, MailboxConfiguration, MailboxCursor
 from mailimport.parser import MAX_EML_BYTES, parse_eml
-from tests.test_imap_sync import body_result, mock_mailbox
+from tests.test_imap_sync import body_result, mock_mailbox, second_mailbox_setting
 from tests.test_participant_email_parser import APPROVAL, booking_message, nested_booking_forward
 from tests.test_participant_identity import PERSONAL, booking_mail
 from tests.test_reconciliation import JUNE, eml
@@ -23,7 +24,7 @@ from tests.workspace_client import WorkspaceTestCase
 class MailReceiptTests(WorkspaceTestCase):
     config = ImapConfig("imap.example.invalid", 993, "test", "test-password")
 
-    def sync(self, entries):
+    def sync(self, entries, config=None):
         client = mock_mailbox(uid_next=max(entries, default=0) + 1)
         responses = [("OK", [" ".join(map(str, entries)).encode()])]
         for uid, raw in entries.items():
@@ -33,7 +34,7 @@ class MailReceiptTests(WorkspaceTestCase):
                 responses.append(body_result(uid, raw))
         client.uid.side_effect = responses
         with patch("mailimport.imap_sync._open_mailbox", return_value=nullcontext(client)):
-            return sync_mailbox(self.config)
+            return sync_mailbox(config or self.config)
 
     def test_records_each_delivery_and_skipped_mail_without_reapplying_booking(self):
         raw = booking_mail(address=PERSONAL)
@@ -263,6 +264,54 @@ class MailReceiptTests(WorkspaceTestCase):
             self.assertContains(self.client.get(detail, secure=True), "aktuellen Importordner")
             self.assertNotContains(self.client.get(detail, secure=True), "aktuellen Importordner")
         self.assertFalse(ContactReplayJob.objects.exists())
+
+    @override_settings(HTTPS=True)
+    def test_receipt_from_second_input_can_be_rechecked_when_first_input_is_unavailable(self):
+        MailboxConfiguration.objects.create(
+            host="imap.first.example.org", username="first@example.invalid",
+            encrypted_password="unreadable-test-value", enabled=True,
+        )
+        second_mailbox_setting()
+        config = load_second_configuration()
+        raw = booking_mail()
+        self.sync({1: raw}, config)
+        receipt = MailReceipt.objects.get()
+        detail = reverse("mail_receipt", args=[receipt.pk])
+        action = reverse("mail_receipt_recheck", args=[receipt.pk])
+
+        self.assertContains(self.client.get(detail, secure=True), "Adresse erneut prüfen")
+        self.assertRedirects(self.client.post(action, secure=True), detail, fetch_redirect_response=False)
+        job = ContactReplayJob.objects.get()
+        self.assertEqual((job.source_id, job.uid_validity, job.upper_uid), (config.source_id, 11, 1))
+
+        client = mock_mailbox(uid_next=2)
+        client.uid.side_effect = [
+            ("OK", [b"1"]), ("OK", [f"1 (UID 1 RFC822.SIZE {len(raw)})".encode()]), body_result(1, raw),
+        ]
+        with patch("mailimport.imap_sync._open_mailbox", return_value=nullcontext(client)):
+            job = process_contact_replay()
+
+        self.assertEqual(job.status, ContactReplayJob.Status.COMPLETED)
+        receipt.refresh_from_db()
+        self.assertIsNotNone(receipt.address_checked_at)
+        client.select.assert_called_once_with('"IMPORT"', readonly=True)
+
+    def test_disabled_second_input_releases_its_pending_job_even_if_first_input_is_unreadable(self):
+        MailboxConfiguration.objects.create(
+            host="imap.first.example.org", username="first@example.invalid",
+            encrypted_password="unreadable-test-value", enabled=True,
+        )
+        second = second_mailbox_setting()
+        config = load_second_configuration()
+        ContactReplayJob.objects.create(source_id=config.source_id, uid_validity=11, upper_uid=1)
+        second.enabled = False
+        second.save(update_fields=["enabled"])
+
+        with patch("mailimport.imap_sync._open_mailbox") as connect:
+            job = process_contact_replay()
+
+        self.assertEqual(job.status, ContactReplayJob.Status.FAILED)
+        connect.assert_not_called()
 
     @override_settings(HTTPS=True)
     def test_receipt_reports_targeted_failure_until_a_new_result_exists(self):

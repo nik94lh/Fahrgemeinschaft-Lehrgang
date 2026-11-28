@@ -1,7 +1,9 @@
 """Stored configuration for the optional, read-only mailbox worker."""
 
 import base64
+import hashlib
 import hmac
+import json
 from dataclasses import dataclass, field
 
 from cryptography.fernet import Fernet, InvalidToken
@@ -13,6 +15,11 @@ from .models import MailboxConfiguration
 
 class MailboxSettingsError(ValueError):
     """Stored mailbox settings cannot be used."""
+
+
+def mailbox_source_id(host: str, port: int, username: str, mailbox: str) -> str:
+    identity = (host.lower().rstrip("."), port, username, mailbox)
+    return hashlib.sha256(json.dumps(identity, ensure_ascii=True).encode("ascii")).hexdigest()
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,15 +46,19 @@ def encrypt_password(password: str) -> str:
 
 
 @sensitive_variables()
-def load_mailbox_settings() -> MailboxSettings | None:
+def load_mailbox_settings(slot=MailboxConfiguration.Slot.FIRST, *, only_source_id=None) -> MailboxSettings | None:
     """Prefer a saved configuration, including an explicitly disabled one."""
 
-    record = MailboxConfiguration.objects.filter(pk=1).first()
+    record = MailboxConfiguration.objects.filter(pk=slot).first()
     if record is None:
         return None
 
+    selected = only_source_id is None or only_source_id == mailbox_source_id(
+        record.host, record.port, record.username, record.mailbox,
+    )
+    enabled = record.enabled and selected
     password = ""
-    if record.enabled:
+    if enabled:
         try:
             password = _cipher().decrypt(record.encrypted_password.encode("ascii")).decode("utf-8")
         except (InvalidToken, UnicodeError):
@@ -58,5 +69,5 @@ def load_mailbox_settings() -> MailboxSettings | None:
         username=record.username,
         password=password,
         mailbox=record.mailbox,
-        enabled=record.enabled,
+        enabled=enabled,
     )

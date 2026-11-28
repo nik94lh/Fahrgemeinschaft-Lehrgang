@@ -12,6 +12,10 @@
     .ride-inquiry-list { display: grid; gap: .9rem; margin: 0; padding: 0; list-style: none; }
     .ride-inquiry-list > li + li { padding-block-start: .9rem; border-block-start: 1px solid var(--line); }
     .ride-inquiry-person { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem .7rem; }
+    .ride-mail-status { display: grid; gap: .45rem; margin-block-start: .55rem; padding: 0; list-style: none; }
+    .ride-mail-status > li { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem .75rem; }
+    .ride-mail-status form { margin: 0; }
+    .ride-mail-status button { width: auto; margin: 0; padding: .35rem .65rem; }
     .ride-notice-preview { margin-block-start: .55rem; }
     .ride-notice-preview summary { width: fit-content; color: var(--accent); cursor: pointer; }
     .ride-notice-preview .details { margin-block: .5rem; }
@@ -95,7 +99,7 @@
 
     {% if show_inquiries %}
         <section class="panel ride-case-panel" aria-labelledby="ride-inquiries">
-            <h2 id="ride-inquiries">Testabfrage</h2>
+            <h2 id="ride-inquiries">{% if case.is_test %}Testabfrage{% else %}Teilnahmeabfrage{% endif %}</h2>
             {% if inquiry_rows %}
                 <p><strong>{{ inquiry_summary.label }}</strong></p>
                 <ul class="ride-inquiry-list" role="list">
@@ -104,7 +108,7 @@
                             <div class="ride-inquiry-person">
                                 <h3>{{ row.participant_name }}</h3>
                                 {% if row.access_active or row.answer != 'pending' %}<span class="status-label{% if row.answer == 'yes' %} status-confirmed{% elif row.answer == 'no' %} status-cancelled{% endif %}">{{ row.answer_label }}</span>{% endif %}
-                                {% if not row.access_active %}<span class="quiet">Testzugang beendet</span>{% endif %}
+                                {% if not row.access_active %}<span class="quiet">{% if case.is_test %}Testzugang beendet{% else %}Zugang beendet{% endif %}</span>{% endif %}
                                 {% if row.answered_at %}<time class="quiet" datetime="{{ row.answered_at|date:'c' }}">{{ row.answered_at|date:"d.m.Y, H:i" }}</time>{% endif %}
                             </div>
                             {% for preview in row.previews %}
@@ -123,11 +127,32 @@
                                     {% if row.access_active and preview.link %}<a class="button-link" href="{{ preview.link }}" target="_blank" rel="noopener noreferrer">Testfragebogen öffnen</a>{% endif %}
                                 </details>
                             {% endfor %}
+                            {% if row.messages %}
+                                <ul class="ride-mail-status" role="list">
+                                    {% for message in row.messages %}
+                                        <li>
+                                            <span>{{ message.label }}</span>
+                                            {% if message.delivery %}
+                                                <span class="status-label{% if message.delivery.status == 'sent' %} status-confirmed{% elif message.delivery.status == 'failed' or message.delivery.status == 'uncertain' %} status-cancelled{% endif %}">{{ message.delivery.get_status_display }}</span>
+                                                {% if message.delivery.finished_at %}<time class="quiet" datetime="{{ message.delivery.finished_at|date:'c' }}">{{ message.delivery.finished_at|date:"d.m.Y, H:i" }}</time>{% endif %}
+                                            {% else %}
+                                                <span class="status-label">Kein Versand vorgemerkt</span>
+                                            {% endif %}
+                                            {% if message.can_resend %}
+                                                <form method="post" action="{% url 'ride_notice_resend' case.pk message.id %}">
+                                                    {% csrf_token %}
+                                                    <button type="submit" class="secondary-button" aria-label="{{ message.label }} an {{ row.participant_name }} erneut senden">Erneut senden</button>
+                                                </form>
+                                            {% endif %}
+                                        </li>
+                                    {% endfor %}
+                                </ul>
+                            {% endif %}
                         </li>
                     {% endfor %}
                 </ul>
             {% else %}
-                <p class="quiet">Noch keine Testeinladungen vorbereitet.</p>
+                <p class="quiet">{% if case.is_test %}Noch keine Testeinladungen vorbereitet.{% else %}Noch keine Einladungen vorbereitet.{% endif %}</p>
             {% endif %}
         </section>
     {% endif %}

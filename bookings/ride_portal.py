@@ -1,10 +1,9 @@
-"""Participant-host views for the ride participation pilot."""
+"""Participant-host views for ride inquiries."""
 
 from functools import wraps
 from pathlib import Path
 
 from django import forms
-from django.core.validators import RegexValidator
 from django.http import FileResponse
 from django.middleware.csrf import rotate_token
 from django.shortcuts import redirect, render
@@ -20,6 +19,7 @@ from .ride_participation import (
     participation_for_code,
     portal_overview,
     record_ride_reply,
+    validate_ride_phone,
 )
 
 
@@ -27,7 +27,6 @@ PORTAL_GRANT = "ride_participation_grant"
 CODE_ERROR = "Dieser Zugangscode ist ungültig oder abgelaufen."
 SESSION_ERROR = "Dieser Zugang ist nicht mehr gültig. Gib deinen Zugangscode erneut ein."
 PHONE_CHANNELS = {"whatsapp", "call"}
-TEST_PHONE = RegexValidator(r"\A000(?:[ -]?[0-9]){3,12}\Z", "Verwende eine Testnummer mit der Vorwahl 000.")
 
 
 class AccessCodeForm(forms.Form):
@@ -48,13 +47,20 @@ class RideReplyForm(forms.Form):
         widget=forms.CheckboxSelectMultiple, required=False,
     )
     phone = forms.CharField(
-        label="Testtelefon", max_length=25, required=False, help_text="Zum Beispiel 000 000 001.",
+        label="Telefonnummer", max_length=25, required=False, help_text="Mit Vorwahl angeben.",
         widget=forms.TextInput(attrs={"inputmode": "tel", "autocomplete": "off"}),
     )
     consent = forms.BooleanField(
         label="Ich willige ein, dass BMS meinen Namen, meine angegebene Feuerwehr und die gewählten Kontaktdaten mit den zustimmenden Personen dieser Fahrgemeinschaft teilt.",
         required=False,
     )
+
+    def __init__(self, *args, is_test=True, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.is_test = is_test
+        if is_test:
+            self.fields["phone"].label = "Testtelefon"
+            self.fields["phone"].help_text = "Zum Beispiel 000 000 001."
 
     def clean(self):
         values = super().clean()
@@ -66,9 +72,9 @@ class RideReplyForm(forms.Form):
         if "phone" in values:
             if PHONE_CHANNELS.intersection(channels):
                 try:
-                    TEST_PHONE(values["phone"])
-                except forms.ValidationError as error:
-                    self.add_error("phone", error)
+                    validate_ride_phone(values["phone"], is_test=self.is_test)
+                except ValueError as error:
+                    self.add_error("phone", str(error))
             else:
                 values["phone"] = ""
         if not values.get("consent"):
@@ -115,7 +121,7 @@ def _render_portal(request, *, participation=None, form=None, access_error="", s
     context = {"code_form": AccessCodeForm(), "access_error": access_error}
     if participation is not None:
         if form is None:
-            form = RideReplyForm(initial={
+            form = RideReplyForm(is_test=participation.case.is_test, initial={
                 "answer": participation.answer if participation.answer != "pending" else "",
                 "brigade": participation.brigade,
                 "channels": participation.channels,
@@ -178,7 +184,7 @@ def ride_portal_reply(request):
         request.session.pop(PORTAL_GRANT, None)
         return _render_portal(request, access_error=SESSION_ERROR, status=403)
 
-    form = RideReplyForm(request.POST)
+    form = RideReplyForm(request.POST, is_test=participation.case.is_test)
     if form.is_valid():
         try:
             record_ride_reply(*grant, **form.cleaned_data)

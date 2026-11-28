@@ -109,6 +109,7 @@
                 <p>Die Mail wurde über eine aktuell nicht aktive Postfachverbindung abgerufen. Suche im damals verwendeten Importordner.</p>
             {% endif %}
             <dl class="details detail-note">
+                <div><dt>Eingang beim Abruf</dt><dd>{{ receipt.get_mailbox_slot_display }}</dd></div>
                 <div><dt>IMAP-UID</dt><dd>{{ receipt.uid }}</dd></div>
                 <div><dt>Ordnergeneration</dt><dd>{{ receipt.uid_validity }}</dd></div>
                 {% if receipt.event_id %}<div><dt>BMS-Ereignis</dt><dd>{{ receipt.event_id }} · {{ receipt.event.get_state_display }}</dd></div>{% endif %}

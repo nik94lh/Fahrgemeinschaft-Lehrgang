@@ -4,6 +4,13 @@
 {% block live_region %}{% endblock %}
 {% block title %}Postfach{% endblock %}
 {% block page_styles %}
+.mailbox-inputs {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+    align-items: start;
+    gap: 1rem;
+    max-width: 76rem;
+}
 #id_functional_addresses {
     display: block;
     width: 100%;
@@ -18,28 +25,37 @@
 
 {% block content %}
 <h1 class="visually-hidden">Postfach</h1>
-{% if workspace_view.mail_receipts %}
-  <div class="page-heading page-heading--actions"><a class="button-link" href="{% url 'mail_receipts' %}">Zum Mail-Eingang</a></div>
+{% if workspace_admin %}{% url 'outbound_settings' as outbound_settings_url %}{% endif %}
+{% if workspace_view.mail_receipts or outbound_settings_url %}
+  <div class="page-heading page-heading--actions">
+    {% if workspace_view.mail_receipts %}<a class="button-link" href="{% url 'mail_receipts' %}">Zum Mail-Eingang</a>{% endif %}
+    {% if outbound_settings_url %}<a class="button-link" href="{{ outbound_settings_url }}">Versandkonto einrichten</a>{% endif %}
+  </div>
 {% endif %}
-<section class="panel" aria-label="Postfachverbindung" style="max-width: 38rem;">
-  {% if saved %}
+<div class="mailbox-inputs">
+{% for input in inputs %}
+<section class="panel" aria-labelledby="mailbox-{{ input.slot.value }}-heading">
+  <h2 id="mailbox-{{ input.slot.value }}-heading">{{ input.slot.label }}</h2>
+  {% if input.saved %}
     <p role="status">Postfachkonfiguration gespeichert.</p>
   {% endif %}
-  <div data-live-region="mailbox-status">
-  {% if server_configuration_error %}
-    <p class="note">Die Importkonfiguration des Servers ist unvollständig oder konnte nicht geladen werden.</p>
-  {% elif configured or server_configured %}
-    {% if server_configured %}
+  <div data-live-region="{{ input.live_region }}">
+  {% if input.duplicate %}
+    <p class="note">Dieses Postfach ist bereits bei Eingang A eingerichtet.</p>
+  {% elif input.configuration_error %}
+    <p class="note">Die Importkonfiguration {% if not input.configured %}des Servers {% endif %}ist unvollständig oder konnte nicht geladen werden.</p>
+  {% elif input.configured or input.server_configured %}
+    {% if input.server_configured %}
       <p class="note">Lesender Abruf über die Serverkonfiguration aktiviert.</p>
     {% else %}
-      <p class="note">Abruf {% if enabled %}aktiviert{% else %}deaktiviert{% endif %}. {% if password_saved %}Ein Passwort ist hinterlegt.{% endif %}</p>
+      <p class="note">Abruf {% if input.enabled %}aktiviert{% else %}deaktiviert{% endif %}. {% if input.password_saved %}Ein Passwort ist hinterlegt.{% endif %}</p>
     {% endif %}
-    {% if last_sync_at %}
+    {% if input.cursor.last_sync_at %}
       <p class="note">
-        {% if last_sync_ok %}Letzter Abruf erfolgreich.{% else %}Letzter Abruf fehlgeschlagen.{% endif %}
-        <time datetime="{{ last_sync_at|date:'c' }}">{{ last_sync_at|date:"d.m.Y, H:i" }} Uhr</time>
+        {% if input.cursor.last_sync_ok %}Letzter Abruf erfolgreich.{% else %}Letzter Abruf fehlgeschlagen.{% endif %}
+        <time datetime="{{ input.cursor.last_sync_at|date:'c' }}">{{ input.cursor.last_sync_at|date:"d.m.Y, H:i" }} Uhr</time>
       </p>
-    {% elif enabled %}
+    {% elif input.enabled %}
       <p class="note">Für dieses Postfach liegt noch kein Abrufstatus vor.</p>
     {% endif %}
   {% else %}
@@ -47,21 +63,24 @@
   {% endif %}
   </div>
   {% if workspace_edit.mailbox and workspace_edit.bookings %}
-  {% if server_configured or server_configuration_error %}<p class="note">Eine hier gespeicherte Postfachkonfiguration ersetzt die Servereinstellungen.</p>{% endif %}
+  {% if input.server_configured or input.configuration_error and not input.configured %}<p class="note">Eine hier gespeicherte Postfachkonfiguration ersetzt die Servereinstellungen für diesen Eingang.</p>{% endif %}
   <form method="post">
     {% csrf_token %}
-    {{ form.as_p }}
+    <input type="hidden" name="slot" value="{{ input.slot.value }}">
+    {{ input.form.as_p }}
     <button type="submit">Postfach speichern</button>
   </form>
   <p class="note">Aktiviere den Abruf nur für ein freigegebenes Postfach.</p>
-  {% elif configured %}
+  {% elif input.configured %}
     <dl class="details">
-      <div><dt>IMAP-Server</dt><dd>{{ form.host.value }} · Port {{ form.port.value }}</dd></div>
-      <div><dt>Benutzername</dt><dd>{{ form.username.value }}</dd></div>
-      <div><dt>Ordner</dt><dd>{{ form.mailbox.value }}</dd></div>
+      <div><dt>IMAP-Server</dt><dd>{{ input.form.host.value }} · Port {{ input.form.port.value }}</dd></div>
+      <div><dt>Benutzername</dt><dd>{{ input.form.username.value }}</dd></div>
+      <div><dt>Ordner</dt><dd>{{ input.form.mailbox.value }}</dd></div>
     </dl>
   {% endif %}
 </section>
+{% endfor %}
+</div>
 <section class="panel" aria-labelledby="functional-addresses-heading" style="max-width: 38rem; margin-block-start: 1rem;">
   <h2 id="functional-addresses-heading">Funktionsadressen der Lehrgangskommunikation</h2>
   {% if addresses_saved %}
@@ -87,6 +106,7 @@
   {% endif %}
   {% if replay_job %}
     <dl class="details" style="margin-block-start: .75rem;">
+      <div><dt>Postfach</dt><dd>{{ replay_source_label }}</dd></div>
       <div><dt>Status</dt><dd>{{ replay_job.get_status_display }}</dd></div>
       <div><dt>Geprüfte Nachrichten</dt><dd>{{ replay_job.scanned_count }}</dd></div>
       <div><dt>Ergänzte Adressen</dt><dd>{{ replay_job.enriched_count }}</dd></div>
@@ -109,6 +129,10 @@
     <form method="post">
       {% csrf_token %}
       <input type="hidden" name="action" value="start-contact-replay">
+      <p><label for="id_replay_slot">Importpostfach</label>
+      <select name="slot" id="id_replay_slot">
+        {% for input in inputs %}<option value="{{ input.slot.value }}"{% if not input.enabled or input.configuration_error or input.duplicate %} disabled{% endif %}>{{ input.slot.label }}</option>{% endfor %}
+      </select></p>
       <button type="submit">Adressabgleich starten</button>
     </form>
   {% endif %}

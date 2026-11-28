@@ -58,6 +58,26 @@ class MailboxSettingsViewTests(WorkspaceTestCase):
         self.assertEqual(disabled.status_code, 404)
         self.assertFalse(MailboxConfiguration.objects.exists())
 
+    def test_saves_and_pauses_the_second_input_independently(self):
+        self.client.post("/postfach/", self.config(), secure=True)
+        backup = self.config(slot="2", username="second@example.invalid")
+        saved = self.client.post("/postfach/", backup, secure=True)
+        self.assertEqual(saved.status_code, 302)
+        self.client.post("/postfach/", backup | {"enabled": "", "password": ""}, secure=True)
+
+        self.assertTrue(MailboxConfiguration.objects.get(pk=1).enabled)
+        second = MailboxConfiguration.objects.filter(pk=2).first()
+        self.assertIsNotNone(second)
+        self.assertEqual(second.username, "second@example.invalid")
+        self.assertFalse(second.enabled)
+        self.assertTrue(second.encrypted_password)
+
+    def test_rejects_the_same_source_as_a_second_input(self):
+        self.client.post("/postfach/", self.config(), secure=True)
+        response = self.client.post("/postfach/", self.config(slot="2", host="IMAP.Example.org."), secure=True)
+        self.assertContains(response, "ist bereits beim anderen IMAP-Eingang eingerichtet")
+        self.assertFalse(MailboxConfiguration.objects.filter(pk=2).exists())
+
     def test_post_requires_csrf_token(self):
         response = self.authenticated_client(enforce_csrf_checks=True).post("/postfach/", self.config(), secure=True)
         self.assertEqual(response.status_code, 403)

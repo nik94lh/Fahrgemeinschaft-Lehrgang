@@ -20,9 +20,11 @@ from .imap_sync import (
     _read_message,
     _response_number,
     _search,
+    configuration_for_source,
     load_configuration,
+    load_second_configuration,
 )
-from .models import ContactReplayJob, MailboxCursor, MailReceipt
+from .models import ContactReplayJob, MailboxConfiguration, MailboxCursor, MailReceipt
 
 
 BATCH_SIZE = 25
@@ -37,13 +39,7 @@ def _active_jobs():
     return ContactReplayJob.objects.filter(status__in=ACTIVE_STATES).order_by("pk")
 
 
-def _replay_cursor() -> MailboxCursor:
-    try:
-        config = load_configuration()
-    except ImapSyncError:
-        raise ContactReplayError("Die IMAP-Einstellungen für den Kontaktabgleich sind nicht verfügbar.") from None
-    if config is None:
-        raise ContactReplayError("Aktiviere zuerst den Abruf des freigegebenen Postfachs.")
+def _replay_cursor(config) -> MailboxCursor:
     cursor = MailboxCursor.objects.filter(source_id=config.source_id).first()
     if cursor is None or not (1 <= cursor.uid_validity <= MAX_UID and 1 <= cursor.last_uid <= MAX_UID):
         raise ContactReplayError("Warte zuerst auf einen erfolgreichen Import aus diesem Postfach.")
@@ -66,12 +62,20 @@ def _create_replay_job(cursor: MailboxCursor, *, last_uid: int, upper_uid: int) 
         raise ContactReplayError("Der Kontaktabgleich konnte gerade nicht vorgemerkt werden.") from None
 
 
-def queue_contact_replay() -> ContactReplayJob:
+def queue_contact_replay(slot=MailboxConfiguration.Slot.FIRST) -> ContactReplayJob:
     """Pin the current source and the already imported UID range."""
-    if active := _active_jobs().first():
+    load = load_second_configuration if slot == MailboxConfiguration.Slot.SECOND else load_configuration
+    try:
+        config = load()
+    except ImapSyncError:
+        raise ContactReplayError("Die IMAP-Einstellungen für den Kontaktabgleich sind nicht verfügbar.") from None
+    if config is None:
+        raise ContactReplayError("Aktiviere zuerst den Abruf des freigegebenen Postfachs.")
+    cursor = _replay_cursor(config)
+    active = _active_jobs().first() or _create_replay_job(cursor, last_uid=0, upper_uid=cursor.last_uid)
+    if active.source_id == cursor.source_id and active.uid_validity == cursor.uid_validity:
         return active
-    cursor = _replay_cursor()
-    return _create_replay_job(cursor, last_uid=0, upper_uid=cursor.last_uid)
+    raise ContactReplayError("Ein anderer Adressabgleich läuft. Versuche es nach dessen Abschluss erneut.")
 
 
 def queue_receipt_contact_replay(receipt: MailReceipt) -> ContactReplayJob:
@@ -82,11 +86,14 @@ def queue_receipt_contact_replay(receipt: MailReceipt) -> ContactReplayJob:
     seat = event.seat
     if not seat or seat.status not in ACTIVE_STATUSES or not seat.participant_id or seat.participant.email:
         raise ContactReplayError("Zu diesem Eingang gibt es keine aktive Buchung mit fehlender Adresse.")
-    cursor = _replay_cursor()
-    if (
-        receipt.source_id != cursor.source_id or receipt.uid_validity != cursor.uid_validity
-        or not 1 <= receipt.uid <= cursor.last_uid
-    ):
+    try:
+        config = configuration_for_source(receipt.source_id, load_first=load_configuration)
+    except ImapSyncError:
+        raise ContactReplayError("Die IMAP-Einstellungen für den Kontaktabgleich sind nicht verfügbar.") from None
+    if config is None:
+        raise ContactReplayError("Dieser Eingang gehört nicht zum aktuellen Importordner eines aktiven Postfachs.")
+    cursor = _replay_cursor(config)
+    if receipt.uid_validity != cursor.uid_validity or not 1 <= receipt.uid <= cursor.last_uid:
         raise ContactReplayError("Dieser Eingang gehört nicht zum aktuellen Importordner oder zur aktuellen Ordnergeneration.")
     job = _active_jobs().first() or _create_replay_job(cursor, last_uid=receipt.uid - 1, upper_uid=receipt.uid)
     if (
@@ -99,8 +106,8 @@ def queue_receipt_contact_replay(receipt: MailReceipt) -> ContactReplayJob:
 
 @sensitive_variables()
 def _scan_step(job: ContactReplayJob) -> tuple[int, Counter[str]]:
-    config = load_configuration()
-    if config is None or config.source_id != job.source_id:
+    config = configuration_for_source(job.source_id, load_first=load_configuration)
+    if config is None:
         raise ContactReplayError("Das ausgewählte Postfach wurde geändert oder der Abruf wurde deaktiviert.")
     if job.last_uid > job.upper_uid:
         raise ContactReplayError("Der gespeicherte UID-Bereich des Auftrags ist ungültig.")

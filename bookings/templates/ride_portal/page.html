@@ -13,7 +13,7 @@
     <header class="portal-header">
         <div class="portal-width">
             <div class="portal-brand"><strong>BMS</strong><span>Fahrgemeinschaften</span></div>
-            <span class="portal-test">Testbetrieb</span>
+            {% if participation.case.is_test %}<span class="portal-test">Testbetrieb</span>{% endif %}
         </div>
     </header>
     <main class="portal-width">
@@ -100,7 +100,7 @@
                                 <dl>
                                     {% if contact.brigade %}<div><dt>Feuerwehr</dt><dd>{{ contact.brigade }}</dd></div>{% endif %}
                                     {% if contact.email %}<div><dt>E-Mail-Adresse</dt><dd>{{ contact.email }}</dd></div>{% endif %}
-                                    {% if contact.phone %}<div><dt>Testtelefon</dt><dd>{{ contact.phone }}</dd></div>{% endif %}
+                                    {% if contact.phone %}<div><dt>{% if participation.case.is_test %}Testtelefon{% else %}Telefonnummer{% endif %}</dt><dd>{{ contact.phone }}</dd></div>{% endif %}
                                     <div><dt>Kontaktkanäle</dt><dd>{{ contact.channels|join:", " }}</dd></div>
                                 </dl>
                             </li>

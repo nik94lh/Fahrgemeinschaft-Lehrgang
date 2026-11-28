@@ -16,7 +16,7 @@
             <p>Dieser Vorschlag wurde bereits entfernt.</p>
         {% else %}
             <p>Du entfernst diesen Fahrgemeinschaftsvorschlag aus der Übersicht. Im Verlauf unter „Entfernte“ kannst du ihn wiederherstellen.</p>
-            {% if case.is_test %}<p>Die Zugänge einer laufenden Testabfrage werden gesperrt.</p>{% endif %}
+            <p>Die Zugänge einer laufenden Teilnahmeabfrage werden gesperrt.</p>
             <form method="post" action="{% url 'ride_remove' case.pk %}">
                 {% csrf_token %}
                 {% for name, value in origin.items %}<input type="hidden" name="{{ name }}" value="{{ value }}">{% endfor %}

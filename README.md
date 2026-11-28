@@ -1,6 +1,6 @@
 # Lehrgangs- und Fahrgemeinschaftsmanagement
 
-LFM verwaltet Lehrgänge und Buchungen für die Feuerwehren eines Landkreises. Die Anwendung enthält eine Buchungsübersicht, einen Kalender mit Tages-, Wochen-, Monats- und Jahresansicht, eine EML-Vorschau und einen optionalen lesenden IMAP-Import. Sie zeigt Fahrgemeinschaftsvorschläge für gemeinsame Hin- und Rückfahrten anhand bestätigter Lehrgänge. Einladung, Teilnahme und Kontaktfreigabe folgen in späteren Entwicklungsphasen.
+LFM verwaltet Lehrgänge und Buchungen für die Feuerwehren eines Landkreises. Die Anwendung enthält eine Buchungsübersicht, einen Kalender, eine EML-Vorschau und einen optionalen lesenden IMAP-Import. Aus bestätigten Buchungen ermittelt sie Fahrgemeinschaftsvorschläge für gemeinsame Hin- und Rückfahrten. Das Teilnahmeportal nimmt Antworten entgegen und zeigt nach Einwilligung die freigegebenen Kontaktdaten. [Versand einrichten](docs/MAILIMPORT.md#teilnahme-e-mails-per-smtp)
 
 Der BMS-Arbeitsbereich verwendet persönliche Konten. Administratoren legen unter **Benutzer** weitere Konten an und wählen je Reiter **Kein Zugriff**, **Ansehen** oder **Bearbeiten**. Unter **Mein Konto** kannst du dein Passwort ändern. Die Einrichtung des ersten Administrators und der Wechsel vom gemeinsamen Testzugang sind in der [Architektur-Dokumentation](docs/ARCHITEKTUR.md#persönliche-konten-für-den-testserver) beschrieben.
 
@@ -43,9 +43,9 @@ In einer Python-Umgebung mit den Projektabhängigkeiten funktioniert auch `pytho
 
 ## Automatischer Postfachimport
 
-Auf dem zugriffsgeschützten HTTPS-Testhost richtest du unter **Postfach** eine separate IMAP-Adresse ein. Das Passwort wird verschlüsselt gespeichert. Aktiviere den Abruf nur für ein freigegebenes Postfach, das Kopien der Lehrgangskommunikation erhält. **Postfach** zeigt den letzten Abrufstatus. Unter **Übersicht**, **Buchungen** und **Klärung** siehst du die verarbeiteten Ereignisse, Buchungen und offenen Fälle. Bei neuen Klärungsfällen siehst du den Grund und die erkannten Angaben. Ältere Fälle zeigen die zum damaligen Import gespeicherten Daten. SMTP-Versand ist technisch deaktiviert. [Mailimport](docs/MAILIMPORT.md)
+Unter **Postfach** lassen sich auf dem geschützten HTTPS-Host bis zu zwei IMAP-Eingänge getrennt einrichten und aktivieren. Verwende freigegebene Postfächer mit Kopien der Lehrgangskommunikation. Jeder Eingang hat einen eigenen Abrufstatus. Die Passwörter werden verschlüsselt gespeichert. [Mailimport](docs/MAILIMPORT.md)
 
-Ein aktivierter Postfachdienst verarbeitet standardmäßig bis zu 25 Nachrichten pro Abrufversuch und wartet danach 120 Sekunden bis zum nächsten Versuch. Sichtbare BMS-Ansichten prüfen den Datenbankstand alle 15 Sekunden im Hintergrund. Der Abgleich verwendet die aktuellen Filter und wartet in bearbeiteten Bereichen auf das Ende der Eingabe.
+Der Postfachdienst verarbeitet standardmäßig bis zu 25 Nachrichten pro aktivem Eingang und wartet danach 120 Sekunden bis zum nächsten Durchlauf. Sichtbare BMS-Ansichten prüfen den Datenbankstand alle 15 Sekunden im Hintergrund. Der Abgleich verwendet die aktuellen Filter und wartet in bearbeiteten Bereichen auf das Ende der Eingabe.
 
 Unter **Mail-Eingang** findest du den letzten Abruf und jede ab diesem Stand erfasste IMAP-Nachricht. Suche nach Teilnehmer, Lehrgang, Referenz oder IMAP-Nummer und öffne **Mail ansehen**. Dort stehen Verarbeitungsergebnis, erkannte Felder, Gründe für eine ausgebliebene Adressübernahme und der Link zur Buchung oder Klärung. Frühere Buchungsereignisse ohne protokollierten Postfachabruf stehen unter **Frühere Importe**.
 

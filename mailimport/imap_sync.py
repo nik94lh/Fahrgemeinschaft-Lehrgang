@@ -1,8 +1,6 @@
 """Read-only bounded import from an explicitly configured IMAP mailbox."""
 
-import hashlib
 import imaplib
-import json
 import os
 import re
 import ssl
@@ -16,8 +14,8 @@ from django.views.decorators.debug import sensitive_variables
 from bookings.services import ingest
 
 from .imap_network import BoundedIMAP4_SSL, resolve_public_host, validate_public_hostname
-from .mailbox_settings import load_mailbox_settings
-from .models import MailReceipt, MailboxCursor
+from .mailbox_settings import load_mailbox_settings, mailbox_source_id
+from .models import MailReceipt, MailboxConfiguration, MailboxCursor
 from .parser import MAX_EML_BYTES, MailParseError
 
 
@@ -41,11 +39,6 @@ class ImapMessageError(ImapSyncError):
     """An invalid response for a specific message, independent of the connection."""
 
 
-def mailbox_source_id(host: str, port: int, username: str, mailbox: str) -> str:
-    identity = (host.lower().rstrip("."), port, username, mailbox)
-    return hashlib.sha256(json.dumps(identity, ensure_ascii=True).encode("ascii")).hexdigest()
-
-
 @dataclass(frozen=True, slots=True)
 class ImapConfig:
     host: str
@@ -54,6 +47,7 @@ class ImapConfig:
     password: str = field(repr=False)
     mailbox: str = "INBOX"
     pin_public_host: bool = False
+    slot: MailboxConfiguration.Slot = MailboxConfiguration.Slot.FIRST
 
     @property
     def source_id(self) -> str:
@@ -71,9 +65,10 @@ def _printable_ascii(value: str) -> bool:
     return bool(re.fullmatch(r"[ -~]+", value))
 
 
-def load_configuration() -> ImapConfig | None:
+@sensitive_variables()
+def load_configuration(slot=MailboxConfiguration.Slot.FIRST, *, only_source_id=None) -> ImapConfig | None:
     try:
-        settings = load_mailbox_settings()
+        settings = load_mailbox_settings(slot, only_source_id=only_source_id)
         if settings is not None:
             if not settings.enabled:
                 return None
@@ -84,8 +79,9 @@ def load_configuration() -> ImapConfig | None:
                 password=settings.password,
                 mailbox=settings.mailbox,
                 pin_public_host=True,
+                slot=slot,
             )
-        elif os.environ.get("BMS_IMAP_ENABLED") == "1":
+        elif slot == MailboxConfiguration.Slot.FIRST and os.environ.get("BMS_IMAP_ENABLED") == "1":
             config = ImapConfig(
                 host=os.environ.get("BMS_IMAP_HOST", "").strip(),
                 port=int(os.environ.get("BMS_IMAP_PORT", "993")),
@@ -98,11 +94,34 @@ def load_configuration() -> ImapConfig | None:
     except (ValueError, DatabaseError):
         raise ImapSyncError("Die IMAP-Einstellungen konnten nicht geladen werden.") from None
 
+    if only_source_id is not None and config.source_id != only_source_id:
+        return None
     if not 1 <= config.port <= 65535 or not all(
         _printable_ascii(value) for value in (config.host, config.username, config.password, config.mailbox)
     ):
         raise ImapSyncError("Die IMAP-Einstellungen sind unvollständig oder ungültig.")
     return config
+
+
+def load_second_configuration(*, only_source_id=None) -> ImapConfig | None:
+    return load_configuration(MailboxConfiguration.Slot.SECOND, only_source_id=only_source_id)
+
+
+@sensitive_variables()
+def configuration_for_source(source_id, *, load_first=load_configuration) -> ImapConfig | None:
+    """Find the original active account even if the other input cannot be loaded."""
+    load_error = None
+    for load in (load_first, load_second_configuration):
+        try:
+            config = load(only_source_id=source_id)
+        except ImapSyncError as error:
+            load_error = error
+            continue
+        if config is not None and config.source_id == source_id:
+            return config
+    if load_error is not None:
+        raise load_error
+    return None
 
 
 def _open_mailbox(config):
@@ -214,8 +233,8 @@ def _read_message(client, uid: int) -> tuple[bytes | None, str]:
 
 
 @sensitive_variables()
-def _import_uid(client, cursor: MailboxCursor, uid: int) -> bool:
-    receipt = MailReceipt(source_id=cursor.source_id, uid_validity=cursor.uid_validity, uid=uid)
+def _import_uid(client, cursor: MailboxCursor, uid: int, slot: MailboxConfiguration.Slot) -> bool:
+    receipt = MailReceipt(source_id=cursor.source_id, uid_validity=cursor.uid_validity, uid=uid, mailbox_slot=slot)
     raw, detail = _read_message(client, uid)
     if raw is not None:
         try:
@@ -248,7 +267,7 @@ def _sync_selected(client, config: ImapConfig, limit: int) -> SyncSummary:
     first_uid = cursor.last_uid + 1
     last_uid = min(newest_uid, cursor.last_uid + SEARCH_WINDOW)
     uids = _search(client, first_uid, last_uid) if first_uid <= last_uid else []
-    processed = sum(_import_uid(client, cursor, uid) for uid in uids[:limit])
+    processed = sum(_import_uid(client, cursor, uid, config.slot) for uid in uids[:limit])
     cursor.last_uid = uids[limit - 1] if len(uids) > limit else last_uid
     cursor.last_sync_at = timezone.now()
     cursor.last_sync_ok = True

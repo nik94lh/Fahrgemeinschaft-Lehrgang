@@ -2,6 +2,10 @@ from django.db import models
 
 
 class MailboxConfiguration(models.Model):
+    class Slot(models.IntegerChoices):
+        FIRST = 1, "IMAP-Eingang A"
+        SECOND = 2, "IMAP-Eingang B"
+
     id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
     host = models.CharField(max_length=253)
     port = models.PositiveSmallIntegerField(default=993)
@@ -11,7 +15,10 @@ class MailboxConfiguration(models.Model):
     enabled = models.BooleanField(default=False)
 
     class Meta:
-        constraints = [models.CheckConstraint(condition=models.Q(id=1), name="single_mailbox_configuration")]
+        constraints = [
+            models.CheckConstraint(condition=models.Q(id__in=(1, 2)), name="mailimport_two_mailbox_slots"),
+            models.UniqueConstraint(fields=("host", "port", "username", "mailbox"), name="mailimport_unique_mailbox"),
+        ]
 
 
 class MailboxCursor(models.Model):
@@ -34,6 +41,7 @@ class MailReceipt(models.Model):
         SKIPPED = "skipped", "Übersprungen"
 
     source_id = models.CharField(max_length=64)
+    mailbox_slot = models.PositiveSmallIntegerField(choices=MailboxConfiguration.Slot.choices, db_default=1)
     uid_validity = models.PositiveBigIntegerField()
     uid = models.PositiveBigIntegerField()
     observed_at = models.DateTimeField(auto_now_add=True, db_index=True)
@@ -96,3 +104,29 @@ class ContactReplayJob(models.Model):
                 name="mailimport_one_active_contact_replay",
             ),
         ]
+
+
+class OutboundMailConfiguration(models.Model):
+    class SenderSource(models.TextChoices):
+        SEPARATE = "separate", "Separates Versandkonto"
+        INPUT_ONE = "input1", "Zugangsdaten von Eingang 1"
+        INPUT_TWO = "input2", "Zugangsdaten von Eingang 2"
+
+    class Security(models.TextChoices):
+        STARTTLS = "starttls", "STARTTLS"
+        TLS = "tls", "Direktes TLS"
+
+    id = models.PositiveSmallIntegerField(primary_key=True, default=1, editable=False)
+    sender_source = models.CharField(max_length=8, choices=SenderSource.choices, default=SenderSource.SEPARATE)
+    host = models.CharField(max_length=253)
+    port = models.PositiveSmallIntegerField(default=587)
+    security = models.CharField(max_length=8, choices=Security.choices, default=Security.STARTTLS)
+    sender_address = models.EmailField()
+    username = models.CharField(max_length=255, blank=True)
+    encrypted_password = models.TextField(blank=True)
+    linked_identity = models.CharField(max_length=64, blank=True)
+    enabled = models.BooleanField(default=False)
+    allow_automatic_inquiries = models.BooleanField(default=False)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=models.Q(id=1), name="single_outbound_mail_configuration")]

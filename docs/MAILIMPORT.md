@@ -14,7 +14,7 @@ Die ersten inhaltlichen Muster beruhen auf synthetischen Genehmigungs- und Best�
 
 ## Lesenden IMAP-Abruf einrichten
 
-1. Öffne **Postfach** auf dem zugriffsgeschützten BMS-Server per HTTPS.
+1. Öffne **Postfach** auf dem zugriffsgeschützten BMS-Server per HTTPS. Die vorhandene Konfiguration steht in **Eingang A**. **Eingang B** ist optional. Beide Eingänge lassen sich einzeln oder gemeinsam betreiben.
 2. Gib den öffentlichen IMAP-Hostnamen, den TLS-Port, den Benutzernamen, den Ordner und das Postfachpasswort ein. Üblich sind Port `993` und Ordner `INBOX`. Verwende ein separates Postfach mit Kopien der Lehrgangskommunikation. Falls der Anbieter ein gesondertes App-Passwort verlangt, trage dieses ein.
 3. Aktiviere **Lesenden Postfachabruf aktivieren** erst nach ausdrücklicher Freigabe und speichere. Der Server übernimmt die Einstellung beim nächsten Abruf. Bei Standardeinstellungen wartet er nach einem Abruf zwei Minuten und verarbeitet bis zu 25 Nachrichten pro Lauf. Der letzte Abrufstatus erscheint unter **Postfach**. Prüfe unter **Übersicht**, **Buchungen** und **Klärung**, welche Nachrichten verarbeitet wurden.
 
@@ -56,6 +56,10 @@ Unter **Postfach → Einmaliger Adressabgleich** kannst du mit **Adressabgleich 
 
 BMS ordnet eine erneut gelesene Mail anhand von Importpostfach, IMAP-Ordnergeneration und Nachrichtennummer ihrem protokollierten Ereignis zu. Für frühere Importe ohne Protokolleintrag verwendet BMS den SHA-256-Fingerabdruck. Der Adressnachtrag erfordert ein bereits angewendetes Ereignis und prüft die aktuellen Buchungsangaben, die Teilnehmerhistorie und die Ausschlüsse für Funktionsadressen. Er ergänzt ausschließlich leere Teilnehmeradressen. Unter **Postfach** stehen die Zähler für den Auftrag. Unter **Mail-Eingang → Mail ansehen** zeigt **Letzter Adressabgleich**, ob ein Nachtrag gelang oder warum BMS die Nachricht übersprang. Eine unlesbare oder fehlende Mail wird einzeln ausgewiesen. Nach einem Verbindungsabbruch setzt der Auftrag ab dem letzten vollständig geprüften Bereich fort.
 
-## Späterer Versand
+## Teilnahme-E-Mails per SMTP
 
-SMTP-Versand ist technisch deaktiviert. Eine spätere SMTP-Anbindung nutzt eine eigene Absenderidentität mit eigenen Zugangsdaten und kann einen anderen Anbieter verwenden. Vorgesehen sind Entwicklung, Simulation mit lokalen Vorschauen, Testversand nur an ausdrücklich freigegebene Adressen und ausdrücklich freigegebener Produktivbetrieb.
+Der Versand ist standardmäßig aus. Nach Freigabe setzt der Serverbetreiber `BMS_SMTP_ENABLED=1` und startet die Dienste mit der neuen Konfiguration. Ein Administrator richtet unter **Postfach → Versandkonto einrichten** den SMTP-Server, Port, die TLS-Verbindungsart und die vom Anbieter freigegebene Absenderadresse ein. Als Zugang kann er Eingang A, Eingang B oder ein separates SMTP-Konto auswählen. Wenn ein bereits gespeicherter IMAP-Zugang für SMTP verwendet wird und die Servernamen unterschiedlich sind, muss der SMTP-Hostname zuvor in `BMS_SMTP_LINKED_HOSTS` als genau passender Name freigegeben werden. Mehrere zulässige Namen werden durch Kommas getrennt.
+
+Bei ausgeschalteter **Automatik** können Bearbeitungsberechtigte über **Abfrage starten** auf der passenden Fahrgemeinschaftskachel die Einladungen vormerken. Für automatische Abfragen regulärer Buchungen muss zusätzlich **Automatische Teilnahmeabfragen für echte Buchungen erlauben** in den SMTP-Einstellungen gesetzt sein. Abfragen für Testbuchungen und Simulationen erzeugen weiterhin lokale Vorschauen.
+
+Der Postfachdienst bearbeitet Versandaufträge auch bei ausgeschaltetem IMAP-Abruf. Im Vorschlag zeigt BMS den Status pro Nachricht. **Erneut senden** legt bei gültigem Zugang einen neuen Versandversuch mit demselben persönlichen Code an. Ist die Antwort des SMTP-Servers ausgeblieben, zeigt BMS einen unklaren Versandstatus. Kontakte werden nach Einwilligung im Teilnahmeportal angezeigt. Die Benachrichtigungen enthalten den persönlichen Zugang und den Stand der Abfrage.

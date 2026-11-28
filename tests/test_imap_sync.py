@@ -8,9 +8,12 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 from django.test import TestCase
 
-from mailimport.imap_sync import ImapConfig, ImapSyncError, SyncSummary, sync_mailbox
-from mailimport.models import MailboxCursor
+from bookings.models import CourseSeat, EmailEvent
+from mailimport.imap_sync import ImapConfig, ImapSyncError, SyncSummary, mailbox_source_id, sync_mailbox
+from mailimport.mailbox_settings import encrypt_password
+from mailimport.models import MailReceipt, MailboxConfiguration, MailboxCursor
 from mailimport.parser import MAX_EML_BYTES
+from tests.test_participant_identity import booking_mail
 
 
 def synthetic_message():
@@ -29,6 +32,13 @@ def mock_mailbox(uid_validity=11, uid_next=3):
         [str({"UIDVALIDITY": uid_validity, "UIDNEXT": uid_next}[name]).encode("ascii")],
     )
     return client
+
+
+def second_mailbox_setting(*, enabled=True):
+    return MailboxConfiguration.objects.create(
+        pk=2, host="imap.second.example.org", username="second@example.invalid", mailbox="IMPORT",
+        encrypted_password=encrypt_password("second-fixture-mail-password"), enabled=enabled,
+    )
 
 
 def body_result(uid, raw, *, uid_after_literal=False):
@@ -136,6 +146,19 @@ class ImapSyncTests(TestCase):
         open_mailbox.assert_not_called()
         self.assertIn("deaktiviert", output.getvalue())
 
+    def test_watch_checks_outbox_even_when_both_imap_inputs_are_disabled(self):
+        command = "mailimport.management.commands.sync_mailbox"
+        with (
+            patch.dict("os.environ", {}, clear=True),
+            patch(f"{command}.deliver_ride_mail") as deliver,
+            patch(f"{command}.sleep", side_effect=KeyboardInterrupt),
+        ):
+            call_command("sync_mailbox", stdout=StringIO())
+            deliver.assert_not_called()
+            call_command("sync_mailbox", watch=True, stdout=StringIO())
+
+        deliver.assert_called_once_with()
+
     def test_operator_errors_do_not_leak_server_or_config_details(self):
         with (
             patch("mailimport.management.commands.sync_mailbox.load_configuration", return_value=self.config),
@@ -162,3 +185,54 @@ class ImapSyncTests(TestCase):
         self.assertEqual(pause.call_args_list, [call(9)] * 3)
         self.assertIn("Abruf fehlgeschlagen.", errors.getvalue())
         self.assertIn("Gelesen: 1.", output.getvalue())
+
+    def test_second_input_still_reads_when_first_connection_fails(self):
+        # The new account can be configured before moving the existing server-based input.
+        env = {
+            "BMS_IMAP_ENABLED": "1", "BMS_IMAP_HOST": "imap.first.example.invalid",
+            "BMS_IMAP_USERNAME": "first@example.invalid", "BMS_IMAP_PASSWORD": "first-fixture-password",
+        }
+        primary_source = mailbox_source_id(env["BMS_IMAP_HOST"], 993, env["BMS_IMAP_USERNAME"], "INBOX")
+        secondary = second_mailbox_setting()
+        secondary_source = mailbox_source_id(secondary.host, secondary.port, secondary.username, secondary.mailbox)
+        client = mock_mailbox(uid_next=2)
+        client.uid.return_value = "OK", [b""]
+
+        with (
+            patch.dict("os.environ", env, clear=True),
+            patch("mailimport.imap_sync._open_mailbox", side_effect=[OSError(), nullcontext(client)]),
+            self.assertRaises(CommandError),
+        ):
+            call_command("sync_mailbox", stderr=StringIO(), stdout=StringIO())
+
+        self.assertFalse(MailboxCursor.objects.get(pk=primary_source).last_sync_ok)
+        self.assertTrue(MailboxCursor.objects.get(pk=secondary_source).last_sync_ok)
+        client.select.assert_called_once_with('"IMPORT"', readonly=True)
+
+    def test_same_mail_in_two_inboxes_creates_two_receipts_and_one_import(self):
+        env = {
+            "BMS_IMAP_ENABLED": "1", "BMS_IMAP_HOST": "imap.first.example.invalid",
+            "BMS_IMAP_USERNAME": "first@example.invalid", "BMS_IMAP_PASSWORD": "first-fixture-password",
+        }
+        second_mailbox_setting()
+        raw = booking_mail()
+        clients = [mock_mailbox(uid_validity=11, uid_next=2) for _ in range(2)]
+        for client in clients:
+            client.uid.side_effect = [
+                ("OK", [b"1"]), ("OK", [f"1 (UID 1 RFC822.SIZE {len(raw)})".encode()]),
+                body_result(1, raw),
+            ]
+
+        with (
+            patch.dict("os.environ", env, clear=True),
+            patch("mailimport.imap_sync._open_mailbox", side_effect=[nullcontext(client) for client in clients]),
+        ):
+            call_command("sync_mailbox", stdout=StringIO())
+
+        self.assertEqual(EmailEvent.objects.count(), 1)
+        self.assertEqual(CourseSeat.objects.count(), 1)
+        self.assertEqual(MailReceipt.objects.count(), 2)
+        self.assertEqual(MailReceipt.objects.get(mailbox_slot=1).outcome, MailReceipt.Outcome.APPLIED)
+        self.assertEqual(MailReceipt.objects.get(mailbox_slot=2).outcome, MailReceipt.Outcome.DUPLICATE)
+        self.assertEqual(MailReceipt.objects.values("source_id").distinct().count(), 2)
+        self.assertEqual(set(MailReceipt.objects.values_list("mailbox_slot", flat=True)), {1, 2})

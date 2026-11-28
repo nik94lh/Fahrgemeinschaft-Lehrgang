@@ -1,4 +1,4 @@
-"""Test invitations, replies and contact sharing for a single ride proposal."""
+"""Invitations, replies and consent-based contact sharing for a ride proposal."""
 
 import re
 from datetime import timedelta
@@ -10,11 +10,16 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.debug import sensitive_variables
 
+from mailimport.email_address import normalize_contact_email
+from mailimport import outbound
+from mailimport.participant_settings import get_functional_addresses
+
 from .models import (
     DEFAULT_RIDE_LEAD_DAYS,
     BookingStatus,
     RideCase,
     RideConfiguration,
+    RideMailDelivery,
     RideNotice,
     RideParticipation,
 )
@@ -27,6 +32,7 @@ CONTACT_CHANNELS = (("email", "E-Mail"), ("whatsapp", "WhatsApp"), ("call", "Anr
 _CHANNEL_LABELS = dict(CONTACT_CHANNELS)
 _PHONE_CHANNELS = {"whatsapp", "call"}
 _TEST_PHONE = re.compile(r"000(?:[ -]?[0-9]){3,12}")
+_PHONE = re.compile(r"\+?[0-9][0-9 ()/.-]*[0-9]")
 
 
 def portal_enabled():
@@ -41,12 +47,13 @@ def invite_code(participation):
     return display_code(participation)
 
 
-def _matching_test_seat(seat, case):
-    if not seat.is_test or seat.status != BookingStatus.CONFIRMED or seat.participant is None:
+def _matching_ride_seat(seat, case):
+    if seat.is_test != case.is_test or seat.status != BookingStatus.CONFIRMED or seat.participant is None:
         return False
     session = seat.session
+    email = normalize_contact_email(seat.participant.email)
     return (
-        _test_email(seat.participant.email)
+        bool(email) and _test_email(email) == case.is_test
         and not session.is_online
         and session.school == case.school
         and session.starts_at.astimezone(BERLIN).date() == case.travel_date
@@ -54,9 +61,9 @@ def _matching_test_seat(seat, case):
     )
 
 
-def _open_test_case(case):
+def _open_ride_case(case):
     return (
-        case.is_test and case.removed_at is None and case.direction == RideCase.ROUND_TRIP
+        case.removed_at is None and case.direction == RideCase.ROUND_TRIP
         and case.status != RideCase.Status.CLOSED
     )
 
@@ -74,7 +81,11 @@ def _entries():
     ))
 
 
-def _has_access(entry, now):
+def _has_access(entry, now, *, functional_addresses=None):
+    if not entry.case.is_test:
+        excluded = get_functional_addresses() if functional_addresses is None else functional_addresses
+        if normalize_contact_email(entry.email) in excluded:
+            return False
     return (
         entry.seat_id is not None
         and entry.expires_at > now
@@ -83,12 +94,12 @@ def _has_access(entry, now):
         # After its own course starts, an invitation can remain valid without a future match.
         and ((entry.case.currently_matches and entry.is_case_member) or entry.seat.session.starts_at <= now)
         and entry.email == entry.participant.email
-        and _matching_test_seat(entry.seat, entry.case)
+        and _matching_ride_seat(entry.seat, entry.case)
     )
 
 
 def _check_access(entry):
-    if entry and _open_test_case(entry.case) and _has_access(entry, timezone.now()):
+    if entry and _open_ride_case(entry.case) and _has_access(entry, timezone.now()):
         return entry
     return None
 
@@ -122,15 +133,27 @@ def uninvited_participants():
     ).filter(~Exists(invitations)))
 
 
+def _create_notices(case, notices):
+    if not notices:
+        return
+    created = RideNotice.objects.bulk_create(notices)
+    if not case.is_test:
+        from .ride_mail import queue_ride_notices
+
+        queue_ride_notices(created)
+
+
 @transaction.atomic
 def start_ride_inquiry(case_id, *, automatic=False, now=None):
     if not portal_enabled():
-        raise ValueError("Der Zugang für den Teilnahme-Test ist noch nicht eingerichtet.")
+        raise ValueError("Der Zugang zum Teilnahmeportal ist noch nicht eingerichtet.")
     _lock_import()
     now = now or timezone.now()
     case = RideCase.objects.select_for_update().filter(pk=case_id).first()
-    if case is None or not _open_test_case(case) or not case.currently_matches or case.earliest <= now:
-        raise ValueError("Für diesen Vorschlag ist derzeit keine Testabfrage möglich.")
+    if case is None or not _open_ride_case(case) or not case.currently_matches or case.earliest <= now:
+        raise ValueError("Für diesen Vorschlag ist derzeit keine Abfrage möglich.")
+    if not case.is_test and not (outbound.outbound_automation_enabled() if automatic else outbound.outbound_enabled()):
+        raise ValueError("Echte Teilnahmeabfragen sind für diese Startart nicht freigegeben.")
     config = RideConfiguration.objects.filter(pk=1).first()
     automation_on = bool(config and config.automatic_inquiries)
     if automation_on != automatic:
@@ -140,11 +163,12 @@ def start_ride_inquiry(case_id, *, automatic=False, now=None):
         if case.travel_date > timezone.localdate(now, timezone=BERLIN) + timedelta(days=lead_days):
             return 0
     seats = {}
+    excluded = set() if case.is_test else set(get_functional_addresses())
     for seat in case.seats.select_related("participant", "session").order_by("pk"):
-        if _matching_test_seat(seat, case):
+        if _matching_ride_seat(seat, case) and normalize_contact_email(seat.participant.email) not in excluded:
             seats.setdefault(seat.participant_id, seat)
     if len(seats) < 2:
-        raise ValueError("Die Testabfrage braucht mindestens zwei passende Testbuchungen.")
+        raise ValueError("Die Abfrage braucht mindestens zwei passende persönliche E-Mail-Adressen.")
 
     invited = set(case.participation_requests.values_list("participant_id", flat=True))
     entries = []
@@ -159,7 +183,7 @@ def start_ride_inquiry(case_id, *, automatic=False, now=None):
         entry.short_token_digest = code_digest(compact_code_v1(entry.token_seed))
         entries.append(entry)
     RideParticipation.objects.bulk_create(entries)
-    RideNotice.objects.bulk_create([
+    _create_notices(case, [
         RideNotice(participation=entry, kind=RideNotice.Kind.INVITATION) for entry in entries
     ])
     return len(entries)
@@ -174,13 +198,15 @@ def run_automatic_ride_inquiries(*, now=None):
     if lead_days is None:
         return 0
     now = now or timezone.now()
-    case_ids = RideCase.objects.filter(
-        is_test=True, direction=RideCase.ROUND_TRIP, currently_matches=True, earliest__gt=now,
+    cases = RideCase.objects.filter(
+        direction=RideCase.ROUND_TRIP, currently_matches=True, earliest__gt=now,
         travel_date__lte=timezone.localdate(now, timezone=BERLIN) + timedelta(days=lead_days),
         removed_at__isnull=True,
-    ).exclude(status=RideCase.Status.CLOSED).filter(uninvited_participants()).values_list("pk", flat=True)
+    ).exclude(status=RideCase.Status.CLOSED).filter(uninvited_participants())
+    if not outbound.outbound_automation_enabled():
+        cases = cases.filter(is_test=True)
     started = 0
-    for case_id in case_ids:
+    for case_id in cases.values_list("pk", flat=True):
         try:
             started += start_ride_inquiry(case_id, automatic=True, now=now)
         except ValueError:
@@ -189,16 +215,17 @@ def run_automatic_ride_inquiries(*, now=None):
     return started
 
 
-def _consenting_entries(case):
-    if not _open_test_case(case):
+def _consenting_entries(case, *, now=None):
+    if not _open_ride_case(case):
         return {}
-    now = timezone.now()
+    now = now or timezone.now()
+    excluded = () if case.is_test else get_functional_addresses()
     return {
         entry.pk: entry
         for entry in _entries().filter(
             case=case, answer=RideParticipation.Answer.YES, consented_at__isnull=False,
         ).order_by("participant__name", "pk")
-        if _has_access(entry, now)
+        if _has_access(entry, now, functional_addresses=excluded)
     }
 
 
@@ -210,7 +237,7 @@ def expire_booking_participation(seat_id):
         entry.expires_at = now
         entry.save(update_fields=["expires_at"])
         if entry.pk in before and len(before) >= 2:
-            RideNotice.objects.bulk_create([
+            _create_notices(entry.case, [
                 RideNotice(participation_id=entry_id, kind=RideNotice.Kind.WITHDRAWAL)
                 for entry_id in before if entry_id != entry.pk
             ])
@@ -219,9 +246,10 @@ def expire_booking_participation(seat_id):
 def portal_overview(participation):
     now = timezone.now()
     entries = _entries().filter(case_id=participation.case_id, expires_at__gt=now).order_by("participant__name", "pk")
-    current = {entry.pk: entry for entry in entries if _has_access(entry, now)}
+    excluded = () if participation.case.is_test else get_functional_addresses()
+    current = {entry.pk: entry for entry in entries if _has_access(entry, now, functional_addresses=excluded)}
     own = current.pop(participation.pk, None)
-    if own is None or not _open_test_case(own.case):
+    if own is None or not _open_ride_case(own.case):
         return 0, []
     available = [entry for entry in current.values() if entry.answer != RideParticipation.Answer.NO]
     if own.answer != RideParticipation.Answer.YES or not own.consented_at:
@@ -239,7 +267,15 @@ def portal_overview(participation):
     return len(available), contacts
 
 
-def _reply_data(answer, brigade, phone, channels, consent):
+def validate_ride_phone(phone, *, is_test):
+    if is_test:
+        if not _TEST_PHONE.fullmatch(phone):
+            raise ValueError("Verwende eine Testnummer wie 000 000 001.")
+    elif not _PHONE.fullmatch(phone) or not 6 <= sum(char.isascii() and char.isdigit() for char in phone) <= 15:
+        raise ValueError("Gib eine gültige Telefonnummer mit Vorwahl ein.")
+
+
+def _reply_data(answer, brigade, phone, channels, consent, *, is_test):
     if answer == RideParticipation.Answer.NO:
         return "", "", []
     if answer != RideParticipation.Answer.YES or not consent:
@@ -251,8 +287,9 @@ def _reply_data(answer, brigade, phone, channels, consent):
     if len(brigade) > 120:
         raise ValueError("Die Feuerwehr darf höchstens 120 Zeichen lang sein.")
     if _PHONE_CHANNELS.intersection(selected):
-        if not _TEST_PHONE.fullmatch(phone):
-            raise ValueError("Verwende eine Testnummer wie 000 000 001.")
+        if len(phone) > 25:
+            raise ValueError("Die Telefonnummer darf höchstens 25 Zeichen lang sein.")
+        validate_ride_phone(phone, is_test=is_test)
     else:
         phone = ""
     return brigade, phone, [channel for channel, _ in CONTACT_CHANNELS if channel in selected]
@@ -263,11 +300,11 @@ def record_ride_reply(participation_id, token_digest, *, answer, brigade="", pho
     _lock_import()
     entry = active_participation(participation_id, token_digest)
     if entry is None:
-        raise ValueError("Dieser Testzugang ist nicht mehr gültig.")
+        raise ValueError("Dieser Zugang ist nicht mehr gültig.")
     case = RideCase.objects.select_for_update().get(pk=entry.case_id)
-    if not _open_test_case(case):
-        raise ValueError("Dieser Testzugang ist nicht mehr gültig.")
-    brigade, phone, channels = _reply_data(answer, brigade, phone, channels, consent)
+    if not _open_ride_case(case):
+        raise ValueError("Dieser Zugang ist nicht mehr gültig.")
+    brigade, phone, channels = _reply_data(answer, brigade, phone, channels, consent, is_test=case.is_test)
     if (entry.answer, entry.brigade, entry.phone, entry.channels) == (answer, brigade, phone, channels):
         return entry
 
@@ -294,7 +331,7 @@ def record_ride_reply(participation_id, token_digest, *, answer, brigade="", pho
             RideNotice(participation_id=entry_id, kind=RideNotice.Kind.WITHDRAWAL)
             for entry_id in sorted(shared_before - {entry.pk})
         )
-    RideNotice.objects.bulk_create(notices)
+    _create_notices(case, notices)
     return entry
 
 
@@ -339,7 +376,7 @@ def notice_preview(notice):
     link = f"{portal}#{code}"
     return {
         "recipient": participation.email,
-        "subject": f"Testvorschau · {label} · {school} · {period}",
+        "subject": ("Testvorschau · " if case.is_test else "") + f"{label} · {school} · {period}",
         "body": (
             f"Hallo {participation.participant.name},\n\n"
             f"{course} · {school} · {period}\n\n"
@@ -350,3 +387,37 @@ def notice_preview(notice):
         "link": link,
         "code": code,
     }
+
+
+@sensitive_variables()
+def ride_mail_payload(notice, *, now):
+    entry = notice.participation
+    if not hasattr(entry, "is_case_member"):
+        entry = _entries().filter(pk=entry.pk).first()
+        if entry is None:
+            return None
+        notice.participation = entry
+    case = entry.case
+    if case.is_test or not portal_enabled() or not _open_ride_case(case) or not _has_access(entry, now):
+        return None
+    if notice.kind == RideNotice.Kind.INVITATION:
+        if now >= min(case.earliest, entry.seat.session.starts_at) and not any(
+            delivery.status == RideMailDelivery.Status.SENT for delivery in notice.deliveries.all()
+        ):
+            return None
+    else:
+        consenting = _consenting_entries(case, now=now)
+        if entry.pk not in consenting:
+            return None
+        if notice.kind != RideNotice.Kind.CONTACTS:
+            latest = next((item for item in reversed(list(entry.notices.all()))
+                           if item.kind != RideNotice.Kind.INVITATION), None)
+            if latest is None or latest.pk != notice.pk:
+                return None
+        if notice.kind != RideNotice.Kind.WITHDRAWAL and len(consenting) < 2:
+            return None
+    preview = notice_preview(notice)
+    normalized = normalize_code(preview["code"])
+    if normalized is None or code_digest(normalized) not in {entry.short_token_digest, entry.token_digest}:
+        return None
+    return {key: preview[key] for key in ("recipient", "subject", "body")}

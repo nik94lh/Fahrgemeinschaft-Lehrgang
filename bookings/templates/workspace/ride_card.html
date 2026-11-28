@@ -27,7 +27,7 @@
     </dl>
     {% if inquiry %}
         <div class="ride-card-inquiries">
-            <p>Testabfrage · <strong>{{ inquiry.label }}</strong></p>
+            <p>{% if item.is_test %}Testabfrage{% else %}Teilnahmeabfrage{% endif %} · <strong>{{ inquiry.label }}</strong></p>
             <dl class="ride-card-inquiry-counts">
                 <div><dt>Einladungen</dt><dd>{{ inquiry.total }}</dd></div>
                 <div{% if inquiry.pending %} class="ride-card-inquiry-open"{% endif %}>
@@ -43,9 +43,9 @@
             {% if inquiry.unavailable %}<p class="ride-card-inquiry-unavailable">{{ inquiry.unavailable }} ohne gültigen Zugang</p>{% endif %}
         </div>
         {% if can_start_inquiry %}
-            <form class="ride-card-inquiry-form" method="post" action="{% url 'ride_inquiry_start' item.pk %}">
+            <form class="ride-card-inquiry-form" method="post" action="{% if item.is_test %}{% url 'ride_inquiry_start' item.pk %}{% else %}{% url 'ride_live_inquiry_start' item.pk %}{% endif %}">
                 {% csrf_token %}
-                <button type="submit">{% if inquiry.total %}Weitere Personen einladen{% else %}Testabfrage starten{% endif %}</button>
+                <button type="submit" class="secondary-button">{% if inquiry.total %}Weitere Personen einladen{% elif item.is_test %}Testabfrage starten{% else %}Abfrage starten{% endif %}</button>
             </form>
         {% endif %}
     {% endif %}
